@@ -15,8 +15,8 @@ jobs:
     steps:
       - name: Appel de ping()
         env:
-          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           curl --fail --silent --show-error -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
             -H "apikey: $SUPABASE_KEY" \

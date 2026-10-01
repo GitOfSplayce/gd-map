@@ -46,7 +46,7 @@ Enfin, sur `/admin` : définir le code d'accès (*Paramètres*), puis importer l
 ## Déployer sur GitHub Pages
 
 1. *Settings → Pages → Build and deployment → Source* : **GitHub Actions**.
-2. *Settings → Secrets and variables → Actions → Variables* :
+2. *Settings → Secrets and variables → Actions*, onglet **Variables** (ou **Secrets**, les deux sont lus) :
    - `VITE_SUPABASE_URL` : `https://xxxx.supabase.co`
    - `VITE_SUPABASE_PUBLISHABLE_KEY` : `sb_publishable_…` (ou la clé `anon`)
    - `BASE_PATH` (facultatif) : à mettre à `/` seulement avec un domaine personnalisé. Par défaut `/<nom-du-repo>/`.
