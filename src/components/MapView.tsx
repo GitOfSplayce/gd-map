@@ -362,10 +362,9 @@ export default function MapView({
         strokeWidth={st.strokeWidth}
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
+        aria-label={ZONE_BY_CODE.get(code)?.nom ?? code}
         {...pointer(code)}
-      >
-        <title>{ZONE_BY_CODE.get(code)?.nom ?? code}</title>
-      </path>
+      />
     )
   }
 
@@ -427,10 +426,9 @@ export default function MapView({
                   stroke="#1b2232"
                   strokeWidth={1.2}
                   vectorEffect="non-scaling-stroke"
+                  aria-label="Monaco (98)"
                   {...pointer(MONACO_CODE)}
-                >
-                  <title>Monaco (98)</title>
-                </circle>
+                />
               )}
 
               {showLabels && (

@@ -53,9 +53,16 @@ export interface Objectif {
   objectif: number | null
 }
 
+export interface Manager {
+  nom: string
+  /** null : couleur automatique. */
+  couleur: string | null
+}
+
 export interface MapData {
   admin: boolean
   commerciaux: Commercial[]
+  managers: Manager[]
   affectations: Affectation[]
   objectifs: Objectif[]
   updated_at: string | null

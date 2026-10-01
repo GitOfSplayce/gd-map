@@ -49,7 +49,7 @@ function toLab(hex: string): [number, number, number] {
   return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))]
 }
 
-function distance(a: string, b: string): number {
+export function colorDistance(a: string, b: string): number {
   const [l1, a1, b1] = toLab(a)
   const [l2, a2, b2] = toLab(b)
   return Math.hypot(l1 - l2, a1 - a2, b1 - b2)
@@ -62,11 +62,11 @@ const EXTRA = Array.from({ length: 72 }, (_, i) => hslToHex((i * 137.508) % 360,
 export function pickDistinctColor(used: string[]): string {
   const taken = used.filter(isHexColor).map((c) => c.toLowerCase())
   const free = PALETTE.find((c) => !taken.includes(c))
-  if (free && taken.every((t) => distance(t, free) > 12)) return free
+  if (free && taken.every((t) => colorDistance(t, free) > 12)) return free
   let best = PALETTE[0]
   let bestScore = -1
   for (const c of [...PALETTE, ...EXTRA]) {
-    const score = taken.length ? Math.min(...taken.map((t) => distance(t, c))) : 100
+    const score = taken.length ? Math.min(...taken.map((t) => colorDistance(t, c))) : 100
     if (score > bestScore) {
       best = c
       bestScore = score
@@ -75,13 +75,60 @@ export function pickDistinctColor(used: string[]): string {
   return best
 }
 
-/** Couleurs stables pour une liste de managers (triée par nom). */
-export function managerColors(names: string[]): Map<string, string> {
-  const sorted = [...new Set(names)].sort((a, b) => a.localeCompare(b, 'fr'))
+/** Seuil (ΔE) sous lequel deux couleurs se confondent sur la carte. */
+export const TOO_CLOSE = 14
+
+/** Candidats classés du plus éloigné au plus proche des couleurs déjà utilisées. */
+export function rankedFreeColors(used: string[], count = 12): string[] {
+  const taken = used.filter(isHexColor).map((c) => c.toLowerCase())
+  const score = (c: string) => (taken.length ? Math.min(...taken.map((t) => colorDistance(t, c))) : 100)
+  return [...new Set([...PALETTE, ...EXTRA])]
+    .map((c) => ({ c, d: score(c) }))
+    .filter((x) => x.d > 0.5)
+    .sort((a, b) => b.d - a.d)
+    .slice(0, count)
+    .map((x) => x.c)
+}
+
+/** « Autre couleur » : parcourt les meilleures couleurs libres, une nouvelle à chaque clic. */
+export function nextDistinctColor(used: string[], current: string): string {
+  const ranked = rankedFreeColors(used)
+  const i = ranked.indexOf(current.toLowerCase())
+  return ranked[(i + 1) % ranked.length] ?? pickDistinctColor(used)
+}
+
+export function hexToHsv(hex: string): [number, number, number] {
+  const [r, g, b] = hexToRgb(isHexColor(hex) ? hex : '#888888').map((v) => v / 255)
+  const max = Math.max(r, g, b)
+  const d = max - Math.min(r, g, b)
+  let h = 0
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+  }
+  return [(h * 60 + 360) % 360, max ? d / max : 0, max]
+}
+
+export function hsvToHex(h: number, s: number, v: number): string {
+  const f = (n: number) => {
+    const k = (n + h / 60) % 6
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1))
+  }
+  return rgbToHex(f(5) * 255, f(3) * 255, f(1) * 255)
+}
+
+/**
+ * Couleurs des managers : celle choisie dans l'admin, sinon une couleur stable de la palette
+ * (même attribution que la migration qui a créé la table, par ordre alphabétique).
+ */
+export function managerColors(names: string[], chosen: { nom: string; couleur: string | null }[] = []): Map<string, string> {
+  const sorted = [...new Set([...names, ...chosen.map((m) => m.nom)])].sort((a, b) => a.localeCompare(b, 'fr'))
+  const fixed = new Map(chosen.filter((m) => m.couleur && isHexColor(m.couleur)).map((m) => [m.nom, m.couleur!]))
   return new Map(
     sorted.map((name, i) => [
       name,
-      i < MANAGER_PALETTE.length ? MANAGER_PALETTE[i] : hslToHex((i * 137.508) % 360, 0.6, 0.45),
+      fixed.get(name) ?? (i < MANAGER_PALETTE.length ? MANAGER_PALETTE[i] : hslToHex((i * 137.508) % 360, 0.6, 0.45)),
     ]),
   )
 }

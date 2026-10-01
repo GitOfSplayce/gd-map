@@ -81,7 +81,7 @@ describe.each([
 
   describe('anonyme (sans connexion)', () => {
     it('ne peut lire aucune table', async () => {
-      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'admins', 'access_attempts']) {
+      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'admins', 'access_attempts', 'managers']) {
         await expect(as('anon', `select * from public.${table}`), table).rejects.toThrow(/permission denied/)
       }
     })
@@ -253,6 +253,44 @@ describe.each([
       await rpc('admin', 'set_access_code', `'Nouveau-code-2027'`)
       expect(await rpc('anon', 'get_map_data', `'Carte-2026!'`)).toEqual({ ok: false, error: 'invalid_code' })
       expect((await rpc('anon', 'get_map_data', `'Nouveau-code-2027'`)).ok).toBe(true)
+    })
+  })
+
+  describe('managers', () => {
+    it('sont créés à la volée par save_commercial (saisie libre, import)', async () => {
+      await rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ nom: 'Manon Test', manager1: ' Victor ', manager2: 'Direction Nord' })])
+      const rows = await as<{ nom: string }>('admin', `select nom from public.managers where nom in ('Victor', 'Direction Nord') order by nom`)
+      expect(rows.map((r) => r.nom)).toEqual(['Direction Nord', 'Victor'])
+    })
+
+    it('sont renvoyés avec la carte', async () => {
+      const res = await rpc('admin', 'get_map_data', 'null')
+      expect((res.managers as { nom: string }[]).map((m) => m.nom)).toContain('Victor')
+    })
+
+    it('renommer met à jour les commerciaux', async () => {
+      await rpc('admin', 'rename_manager', `'Victor', 'Victor H.'`)
+      const [c] = await as<{ manager1: string }>('admin', `select manager1 from public.commerciaux where nom = 'Manon Test'`)
+      expect(c.manager1).toBe('Victor H.')
+    })
+
+    it('renommer vers un nom existant fusionne les deux', async () => {
+      await rpc('admin', 'rename_manager', `'Direction Nord', 'Victor H.'`)
+      const [c] = await as<{ manager1: string; manager2: string }>('admin', `select manager1, manager2 from public.commerciaux where nom = 'Manon Test'`)
+      expect(c).toEqual({ manager1: 'Victor H.', manager2: 'Victor H.' })
+      expect(await as('admin', `select nom from public.managers where nom = 'Direction Nord'`)).toEqual([])
+    })
+
+    it('supprimer un manager laisse ses commerciaux sans manager', async () => {
+      await as('admin', `delete from public.managers where nom = 'Victor H.'`)
+      const [c] = await as<{ manager1: string | null; manager2: string | null }>('admin', `select manager1, manager2 from public.commerciaux where nom = 'Manon Test'`)
+      expect(c).toEqual({ manager1: null, manager2: null })
+    })
+
+    it('un non-admin ne peut ni lire ni modifier les managers', async () => {
+      expect(await as('user', 'select * from public.managers')).toEqual([])
+      await expect(as('user', `insert into public.managers (nom) values ('Pirate')`)).rejects.toThrow(/row-level security/)
+      await expect(rpc('user', 'rename_manager', `'Hélène', 'Pirate'`)).rejects.toThrow(/réservé aux admins/)
     })
   })
 

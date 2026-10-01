@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import ColorPicker from '../components/ColorPicker'
 import Icon from '../components/Icon'
+import Select from '../components/Select'
 import Switch from '../components/Switch'
+import { useConfirm } from '../hooks/useConfirm'
 import { deleteCommercial, saveCommercial } from '../lib/api'
-import { isHexColor, pickDistinctColor } from '../lib/colors'
+import { isHexColor, managerColors, pickDistinctColor } from '../lib/colors'
 import { isARecruter } from '../lib/mapModel'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
 import { plural } from '../lib/text'
 import { STRUCTURE_LABELS, STRUCTURES, type Commercial, type CommercialPayload, type MapData, type Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
+import ZoneAssistant from './ZoneAssistant'
 import ZoneInput from './ZoneInput'
 
 /** Formulaire d'un commercial (valeurs texte, telles que saisies). */
@@ -149,8 +153,17 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
       zones: { MD: '', SP: '', MC: '', BK: '' },
     })
 
+  const confirm = useConfirm()
+
   const remove = async (c: { id?: string; nom: string }) => {
-    if (!c.id || !confirm(`Supprimer ${c.nom} et toutes ses zones ? Cette action est définitive.`)) return false
+    if (!c.id) return false
+    const ok = await confirm({
+      title: `Supprimer ${c.nom} ?`,
+      message: 'Ses zones sont supprimées avec lui. Cette action est définitive.',
+      confirmLabel: 'Supprimer',
+      danger: true,
+    })
+    if (!ok) return false
     await deleteCommercial(c.id)
     await reload()
     setNotice(`${c.nom} a été supprimé.`)
@@ -182,16 +195,17 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
         </div>
         <Switch checked={showInactive} onChange={setShowInactive} label="Afficher les inactifs" />
         <span className="grow" />
-        <label className="row small muted">
+        <div className="row small muted">
           Trier par
-          <select className="select" style={{ width: 'auto' }} value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-            {SORTS.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <Select
+            className="auto"
+            ariaLabel="Trier par"
+            value={sort}
+            options={SORTS.map((x) => ({ value: x.key, label: x.label }))}
+            onChange={(v) => setSort(v as SortKey)}
+            searchable={false}
+          />
+        </div>
       </div>
 
       {notice && (
@@ -313,34 +327,81 @@ interface DrawerProps {
   onDelete: (d: Draft) => Promise<void>
 }
 
+/** Structures effectives : cochées, ou ayant des zones saisies. */
+const effectiveStructures = (d: Draft) => STRUCTURES.filter((s) => d.structures.includes(s) || parseZoneList(d.zones[s]).zones.length > 0)
+
+/** Forme comparable d'un formulaire : espaces, format des zones et casse de la couleur n'en font pas une modification. */
+function fingerprint(d: Draft): string {
+  const t = (v: string) => v.trim().replace(/\s+/g, ' ')
+  return JSON.stringify({
+    nom: t(d.nom),
+    statut: t(d.statut),
+    manager1: t(d.manager1),
+    manager2: t(d.manager2),
+    couleur: d.couleur.toLowerCase(),
+    actif: d.actif,
+    notes: d.notes.trim(),
+    structures: effectiveStructures(d),
+    jours_an: d.jours_an.trim() === '' ? null : Number(d.jours_an.replace(',', '.')),
+    date_manager1: t(d.date_manager1),
+    date_manager2: t(d.date_manager2),
+    actions: t(d.actions),
+    secteur: t(d.secteur),
+    zones: STRUCTURES.map((s) =>
+      formatZoneList(parseZoneList(d.zones[s]).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))),
+    ),
+  })
+}
+
 /** Panneau latéral d'édition d'un commercial. */
 function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
   const [d, setD] = useState<Draft>(draft)
-  const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [assistantFor, setAssistantFor] = useState<Structure | null>(null)
+  const confirm = useConfirm()
 
-  const suggestions = useMemo(() => {
-    const uniq = (list: (string | null | undefined)[]) => [...new Set(list.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'fr'))
-    return {
-      statut: uniq(['VRP', 'Agent commercial', 'ATC', 'À recruter', ...data.commerciaux.map((c) => c.statut)]),
-      managers: uniq(data.commerciaux.flatMap((c) => [c.manager1, c.manager2])),
-    }
+  const initial = useMemo(() => fingerprint(draft), [draft])
+  const dirty = fingerprint(d) !== initial
+
+  const statutOptions = useMemo(() => {
+    const list = [...new Set(['VRP', 'Agent commercial', 'ATC', 'À recruter', ...data.commerciaux.map((c) => c.statut ?? '')].filter(Boolean))]
+    return list.sort((a, b) => a.localeCompare(b, 'fr')).map((v) => ({ value: v, label: v }))
   }, [data])
+
+  const managerOptions = useMemo(() => {
+    const colors = managerColors([], data.managers)
+    const count = (nom: string) => data.commerciaux.filter((c) => c.manager1 === nom || c.manager2 === nom).length
+    return data.managers.map((m) => ({ value: m.nom, label: m.nom, color: colors.get(m.nom), hint: plural(count(m.nom), 'commercial', 'commerciaux') }))
+  }, [data])
+
+  const usedColors = useMemo(
+    () => data.commerciaux.filter((c) => c.id !== d.id).map((c) => ({ color: c.couleur, owner: c.nom })),
+    [data, d.id],
+  )
 
   const set = (patch: Partial<Draft>) => {
     setD((prev) => ({ ...prev, ...patch }))
-    setDirty(true)
     setError(null)
   }
 
-  const close = () => {
-    if (dirty && !confirm('Abandonner les modifications non enregistrées ?')) return
+  const close = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Abandonner les modifications ?',
+        message: 'Les changements faits sur ce commercial ne sont pas enregistrés.',
+        confirmLabel: 'Abandonner',
+        cancelLabel: 'Continuer la saisie',
+        danger: true,
+      })
+      if (!ok) return
+    }
     onClose()
   }
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    if (assistantFor) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && void close()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
@@ -351,7 +412,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
     if (problem) return setError(problem)
     setSaving(true)
     try {
-      await saveCommercial(toPayload(d))
+      await saveCommercial({ ...toPayload(d), structures: effectiveStructures(d) })
       await onSaved(d.nom.trim(), !d.id)
     } catch (err) {
       setError((err as Error).message)
@@ -360,18 +421,18 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
     }
   }
 
-  const setZones = (s: Structure, value: string) =>
-    set({ zones: { ...d.zones, [s]: value }, structures: value.trim() && !d.structures.includes(s) ? [...d.structures, s] : d.structures })
+  const structures = effectiveStructures(d)
 
   return (
     <>
-      <div className="drawer-backdrop" onClick={close} />
+      <div className="drawer-backdrop" onClick={() => void close()} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-label={d.id ? `Modifier ${draft.nom}` : 'Nouveau commercial'}>
         <form onSubmit={submit} className="drawer-form">
           <header className="drawer-head">
             <span className="swatch" style={{ background: d.couleur, width: 18, height: 18 }} />
             <h2 className="grow">{d.id ? draft.nom : 'Nouveau commercial'}</h2>
-            <button type="button" className="btn small ghost icon" onClick={close} aria-label="Fermer" title="Fermer">
+            {dirty && <span className="badge warning">Non enregistré</span>}
+            <button type="button" className="btn small ghost icon" onClick={() => void close()} aria-label="Fermer" title="Fermer">
               <Icon name="x" size={18} />
             </button>
           </header>
@@ -384,44 +445,52 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                   <span>Nom *</span>
                   <input className="input" value={d.nom} onChange={(e) => set({ nom: e.target.value })} autoFocus={!d.id} required />
                 </label>
-                <label className="field">
+                <div className="field">
                   <span>Statut</span>
-                  <input className="input" list="statuts" value={d.statut} onChange={(e) => set({ statut: e.target.value })} />
-                </label>
+                  <Select
+                    ariaLabel="Statut"
+                    value={d.statut}
+                    options={statutOptions}
+                    onChange={(v) => set({ statut: v })}
+                    emptyLabel="— Aucun —"
+                    creatable
+                    createLabel={(t) => `Nouveau statut « ${t} »`}
+                  />
+                </div>
                 <label className="field">
                   <span>Région (secteur)</span>
                   <input className="input" value={d.secteur} onChange={(e) => set({ secteur: e.target.value })} />
                 </label>
-                <label className="field">
-                  <span>Manager 1</span>
-                  <input className="input" list="managers" value={d.manager1} onChange={(e) => set({ manager1: e.target.value })} />
-                </label>
-                <label className="field">
-                  <span>Manager 2</span>
-                  <input className="input" list="managers" value={d.manager2} onChange={(e) => set({ manager2: e.target.value })} />
-                </label>
                 <div className="field">
-                  <span>Couleur sur la carte</span>
-                  <div className="row" style={{ flexWrap: 'nowrap' }}>
-                    <input
-                      type="color"
-                      className="color-input"
-                      value={isHexColor(d.couleur) ? d.couleur : '#888888'}
-                      onChange={(e) => set({ couleur: e.target.value })}
-                      aria-label="Couleur"
-                    />
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => set({ couleur: pickDistinctColor(data.commerciaux.filter((c) => c.id !== d.id).map((c) => c.couleur)) })}
-                    >
-                      <Icon name="shuffle" size={15} />
-                      Autre couleur
-                    </button>
-                  </div>
+                  <span>Manager 1</span>
+                  <Select
+                    ariaLabel="Manager 1"
+                    value={d.manager1}
+                    options={managerOptions}
+                    onChange={(v) => set({ manager1: v })}
+                    emptyLabel="— Aucun —"
+                    creatable
+                    createLabel={(t) => `Nouveau manager « ${t} »`}
+                  />
                 </div>
-                <div className="field" style={{ justifyContent: 'flex-end' }}>
-                  <Switch checked={d.actif} onChange={(on) => set({ actif: on })} label={d.actif ? 'Actif (visible sur la carte)' : 'Inactif (masqué)'} />
+                <div className="field">
+                  <span>Manager 2</span>
+                  <Select
+                    ariaLabel="Manager 2"
+                    value={d.manager2}
+                    options={managerOptions}
+                    onChange={(v) => set({ manager2: v })}
+                    emptyLabel="— Aucun —"
+                    creatable
+                    createLabel={(t) => `Nouveau manager « ${t} »`}
+                  />
+                </div>
+                <div className="field span-2">
+                  <span>Couleur sur la carte</span>
+                  <ColorPicker value={d.couleur} onChange={(c) => set({ couleur: c })} used={usedColors} ariaLabel="Couleur sur la carte" />
+                </div>
+                <div className="field span-2">
+                  <Switch checked={d.actif} onChange={(on) => set({ actif: on })} label={d.actif ? 'Actif : visible sur la carte' : 'Inactif : masqué de la carte'} />
                 </div>
               </div>
             </section>
@@ -429,23 +498,34 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
             <section>
               <h3>Zones par structure</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
-                Format Excel : <code>22, 35P, 52G, 75-7</code> — P = partiel, G = gestion, 75 = tout Paris, 20 = 2A + 2B.
+                Saisie au format Excel (<code>22, 35P, 52G, 75-7</code> : P = partiel, G = gestion, 75 = tout Paris) ou avec
+                l'assistant.
               </p>
-              <div className="stack" style={{ gap: 14 }}>
-                {STRUCTURES.map((s) => (
-                  <div key={s} className="struct-block">
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={d.structures.includes(s)}
-                        onChange={() => set({ structures: d.structures.includes(s) ? d.structures.filter((x) => x !== s) : [...d.structures, s] })}
-                      />
-                      <span className="struct-tag">{s}</span>
-                      <span>{STRUCTURE_LABELS[s]}</span>
-                    </label>
-                    <ZoneInput value={d.zones[s]} onChange={(v) => setZones(s, v)} label={`Zones ${s}`} />
-                  </div>
-                ))}
+              <div className="stack" style={{ gap: 12 }}>
+                {STRUCTURES.map((s) => {
+                  const hasZones = parseZoneList(d.zones[s]).zones.length > 0
+                  return (
+                    <div key={s} className={'struct-block' + (structures.includes(s) ? ' on' : '')}>
+                      <div className="struct-head">
+                        <label className="check" title={hasZones ? 'Videz les zones pour retirer la structure' : undefined}>
+                          <input
+                            type="checkbox"
+                            checked={structures.includes(s)}
+                            disabled={hasZones}
+                            onChange={() => set({ structures: d.structures.includes(s) ? d.structures.filter((x) => x !== s) : [...d.structures, s] })}
+                          />
+                          <span className="struct-tag">{s}</span>
+                          <span>{STRUCTURE_LABELS[s]}</span>
+                        </label>
+                        <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
+                          <Icon name="map" size={15} />
+                          Assistant
+                        </button>
+                      </div>
+                      <ZoneInput value={d.zones[s]} onChange={(v) => set({ zones: { ...d.zones, [s]: v } })} label={`Zones ${s}`} />
+                    </div>
+                  )
+                })}
               </div>
             </section>
 
@@ -475,17 +555,6 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                 </label>
               </div>
             </section>
-
-            <datalist id="statuts">
-              {suggestions.statut.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-            <datalist id="managers">
-              {suggestions.managers.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
           </div>
 
           <footer className="drawer-foot">
@@ -503,7 +572,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                 </button>
               )}
               <span className="grow" />
-              <button type="button" className="btn ghost" onClick={close}>
+              <button type="button" className="btn ghost" onClick={() => void close()}>
                 Annuler
               </button>
               <button type="submit" className="btn primary" disabled={saving || (!dirty && Boolean(d.id))}>
@@ -514,6 +583,15 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
           </footer>
         </form>
       </aside>
+
+      {assistantFor && (
+        <ZoneAssistant
+          title={`Zones ${assistantFor} (${STRUCTURE_LABELS[assistantFor]}) – ${d.nom.trim() || 'nouveau commercial'}`}
+          value={d.zones[assistantFor]}
+          onApply={(text) => set({ zones: { ...d.zones, [assistantFor]: text } })}
+          onClose={() => setAssistantFor(null)}
+        />
+      )}
     </>
   )
 }

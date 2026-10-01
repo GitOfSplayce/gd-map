@@ -133,7 +133,7 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
   const m1 = [...new Set(active.map((c) => c.manager1 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
   const m2 = [...new Set(active.map((c) => c.manager2 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
   const statuts = [...new Set(active.map((c) => c.statut || '(sans statut)'))].sort((a, b) => a.localeCompare(b, 'fr'))
-  const mgrColors = managerColors([...m1, ...m2])
+  const mgrColors = managerColors([...m1, ...m2], data.managers ?? [])
 
   const keyOf = (c: Commercial) =>
     colorMode === 'commercial' || colorMode === 'couverture'

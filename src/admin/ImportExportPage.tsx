@@ -11,6 +11,8 @@ import {
 import { planImport, type DiffItem, type ImportMode } from '../lib/importDiff'
 import { STRUCTURES } from '../lib/types'
 import Icon from '../components/Icon'
+import Select from '../components/Select'
+import { useConfirm } from '../hooks/useConfirm'
 import { agree, plural } from '../lib/text'
 import type { AdminDataProps } from './AdminApp'
 
@@ -118,6 +120,7 @@ function Dropzone({ onFile }: { onFile: (file: File | undefined) => void }) {
 }
 
 export default function ImportExportPage({ data, reload }: AdminDataProps) {
+  const confirm = useConfirm()
   const [fileName, setFileName] = useState<string | null>(null)
   const [workbook, setWorkbook] = useState<WorkBook | null>(null)
   const [sheet, setSheet] = useState(DEFAULT_SHEET)
@@ -158,11 +161,15 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
     if (!plan) return
     if (mode === 'replace' && plan.deleteIds.length) {
       const n = plan.deleteIds.length
-      const ok = confirm(
-        n === 1
-          ? '1 commercial absent du fichier va être supprimé avec ses zones. Continuer ?'
-          : `${n} commerciaux absents du fichier vont être supprimés avec leurs zones. Continuer ?`,
-      )
+      const ok = await confirm({
+        title: n === 1 ? 'Supprimer 1 commercial ?' : `Supprimer ${n} commerciaux ?`,
+        message:
+          n === 1
+            ? "Il est absent du fichier : en mode « Remplacer tout », il est supprimé avec ses zones."
+            : 'Ils sont absents du fichier : en mode « Remplacer tout », ils sont supprimés avec leurs zones.',
+        confirmLabel: "Supprimer et importer",
+        danger: true,
+      })
       if (!ok) return
     }
     setBusy(true)
@@ -276,11 +283,14 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
           <div className="row" style={{ alignItems: 'flex-end', gap: 16 }}>
             <label className="field">
               <span>Onglet</span>
-              <select className="select" value={sheet} onChange={(e) => setSheet(e.target.value)}>
-                {workbook.SheetNames.map((n) => (
-                  <option key={n}>{n}</option>
-                ))}
-              </select>
+              <Select
+                ariaLabel="Onglet"
+                className="auto"
+                value={sheet}
+                options={workbook.SheetNames.map((n) => ({ value: n, label: n }))}
+                onChange={setSheet}
+                searchable={false}
+              />
             </label>
             <div className="field">
               <span>Mode</span>

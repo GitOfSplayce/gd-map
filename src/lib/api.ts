@@ -1,5 +1,5 @@
 import { requireSupabase } from './supabase'
-import type { CommercialPayload, MapData } from './types'
+import type { CommercialPayload, Manager, MapData } from './types'
 
 export type MapDataError = 'invalid_code' | 'not_configured' | 'too_many_attempts' | 'network'
 
@@ -27,6 +27,7 @@ export async function fetchMapData(code: string | null): Promise<{ data: MapData
     data: {
       admin: res.admin,
       commerciaux: res.commerciaux,
+      managers: res.managers ?? [],
       affectations: res.affectations,
       objectifs: res.objectifs,
       updated_at: res.updated_at,
@@ -64,6 +65,35 @@ export async function applyImport(items: CommercialPayload[], deleteIds: string[
   const { data, error } = await requireSupabase().rpc('apply_import', { p_items: items, p_delete_ids: deleteIds })
   if (error) fail(error)
   return data as { saved: number; deleted: number }
+}
+
+// ---------- Managers ----------
+
+export async function createManager(m: Manager): Promise<void> {
+  if (DEMO) return (await demo()).demoCreateManager(m)
+  const { error } = await requireSupabase().from('managers').insert({ nom: m.nom.trim(), couleur: m.couleur })
+  if (error?.code === '23505') throw new Error('Un manager porte déjà ce nom.')
+  if (error) fail(error)
+}
+
+export async function setManagerColor(nom: string, couleur: string): Promise<void> {
+  if (DEMO) return (await demo()).demoSetManagerColor(nom, couleur)
+  const { error } = await requireSupabase().from('managers').update({ couleur }).eq('nom', nom)
+  if (error) fail(error)
+}
+
+/** Renomme (ou fusionne si le nouveau nom existe déjà) ; les commerciaux suivent. */
+export async function renameManager(oldName: string, newName: string): Promise<void> {
+  if (DEMO) return (await demo()).demoRenameManager(oldName, newName)
+  const { error } = await requireSupabase().rpc('rename_manager', { p_old: oldName, p_new: newName })
+  if (error) fail(error)
+}
+
+/** Supprime le manager ; ses commerciaux se retrouvent sans manager à ce niveau. */
+export async function deleteManager(nom: string): Promise<void> {
+  if (DEMO) return (await demo()).demoDeleteManager(nom)
+  const { error } = await requireSupabase().from('managers').delete().eq('nom', nom)
+  if (error) fail(error)
 }
 
 export interface AccessStatus {

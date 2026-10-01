@@ -9,6 +9,7 @@ import { isDemo, requireSupabase } from '../lib/supabase'
 import type { MapData } from '../lib/types'
 import CommerciauxPage from './CommerciauxPage'
 import ImportExportPage from './ImportExportPage'
+import ManagersPage from './ManagersPage'
 import SettingsPage from './SettingsPage'
 
 export interface AdminDataProps {
@@ -91,6 +92,7 @@ function AdminLayout({ email }: { email: string }) {
             <NavLink to="/admin" end>
               Commerciaux
             </NavLink>
+            <NavLink to="/admin/managers">Managers</NavLink>
             <NavLink to="/admin/import">Import / export Excel</NavLink>
             <NavLink to="/admin/parametres">Paramètres</NavLink>
           </nav>
@@ -115,6 +117,7 @@ function AdminLayout({ email }: { email: string }) {
         {data && (
           <Routes>
             <Route index element={<CommerciauxPage data={data} reload={reload} />} />
+            <Route path="managers" element={<ManagersPage data={data} reload={reload} />} />
             <Route path="import" element={<ImportExportPage data={data} reload={reload} />} />
             <Route path="parametres" element={<SettingsPage email={email} />} />
           </Routes>

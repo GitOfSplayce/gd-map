@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { adminUsers, getAccessStatus, setAccessCode, type AccessStatus, type AdminUser } from '../lib/api'
 import Icon from '../components/Icon'
+import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
 import { requireSupabase } from '../lib/supabase'
 
@@ -87,6 +88,7 @@ function AccessCodeCard() {
 }
 
 function AdminsCard({ email }: { email: string }) {
+  const confirm = useConfirm()
   const [admins, setAdmins] = useState<AdminUser[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -217,9 +219,12 @@ function AdminsCard({ email }: { email: string }) {
                         className="btn small danger"
                         disabled={busy}
                         onClick={() => {
-                          if (confirm(`Retirer l'accès admin de ${a.email} ? Son compte sera supprimé.`)) {
-                            void run(() => adminUsers({ action: 'remove', user_id: a.user_id }), `${a.email} n'est plus admin.`)
-                          }
+                          void confirm({
+                            title: `Retirer l'accès de ${a.email} ?`,
+                            message: 'Son compte administrateur est supprimé.',
+                            confirmLabel: 'Retirer',
+                            danger: true,
+                          }).then((ok) => ok && run(() => adminUsers({ action: 'remove', user_id: a.user_id }), `${a.email} n'est plus admin.`))
                         }}
                       >
                         <Icon name="trash" size={15} />

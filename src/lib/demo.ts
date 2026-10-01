@@ -3,7 +3,7 @@
 import sampleUrl from '../../exemples/exemple-import.xlsx?url'
 import { parseSheet, readWorkbook } from './excel'
 import { planImport, type ImportPlan } from './importDiff'
-import type { Commercial, CommercialPayload, MapData } from './types'
+import type { Commercial, CommercialPayload, Manager, MapData } from './types'
 
 /** Données telles qu'elles seraient en base après l'import du plan (identifiants fictifs). */
 export function planToMapData(plan: ImportPlan): MapData {
@@ -24,9 +24,13 @@ export function planToMapData(plan: ImportPlan): MapData {
     actions: p.actions ?? null,
     ordre: p.ordre!,
   }))
+  const managers: Manager[] = [...new Set(commerciaux.flatMap((c) => [c.manager1, c.manager2]).filter(Boolean) as string[])]
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+    .map((nom) => ({ nom, couleur: null }))
   return {
     admin: false,
     commerciaux,
+    managers,
     affectations: plan.payload.flatMap((p, i) => p.affectations!.map((a, j) => ({ ...a, id: `demo-${i}-${j}`, commercial_id: `demo-${i}` }))),
     objectifs: plan.payload.flatMap((p, i) =>
       p.objectifs!.filter((o) => o.ca !== null || o.objectif !== null).map((o) => ({ ...o, commercial_id: `demo-${i}` })),
@@ -60,6 +64,9 @@ export async function demoMapData(): Promise<MapData> {
 
 export async function demoSave(p: CommercialPayload): Promise<string> {
   const s = await getStore()
+  for (const nom of [p.manager1, p.manager2]) {
+    if (nom?.trim() && !s.managers.some((m) => m.nom === nom.trim())) s.managers.push({ nom: nom.trim(), couleur: null })
+  }
   const id = p.id ?? `demo-${crypto.randomUUID()}`
   const existing = s.commerciaux.find((c) => c.id === id)
   const { affectations, objectifs, ...fields } = p
@@ -89,4 +96,36 @@ export async function demoApplyImport(items: CommercialPayload[], deleteIds: str
   for (const id of deleteIds) await demoDelete(id)
   for (const item of items) await demoSave(item)
   return { saved: items.length, deleted: deleteIds.length }
+}
+
+export async function demoCreateManager(m: Manager) {
+  const s = await getStore()
+  if (s.managers.some((x) => x.nom === m.nom.trim())) throw new Error('Un manager porte déjà ce nom.')
+  s.managers.push({ nom: m.nom.trim(), couleur: m.couleur })
+}
+
+export async function demoSetManagerColor(nom: string, couleur: string) {
+  const s = await getStore()
+  const m = s.managers.find((x) => x.nom === nom)
+  if (m) m.couleur = couleur
+}
+
+export async function demoRenameManager(oldName: string, newName: string) {
+  const s = await getStore()
+  const target = newName.trim()
+  for (const c of s.commerciaux) {
+    if (c.manager1 === oldName) c.manager1 = target
+    if (c.manager2 === oldName) c.manager2 = target
+  }
+  if (s.managers.some((m) => m.nom === target)) s.managers = s.managers.filter((m) => m.nom !== oldName)
+  else s.managers = s.managers.map((m) => (m.nom === oldName ? { ...m, nom: target } : m))
+}
+
+export async function demoDeleteManager(nom: string) {
+  const s = await getStore()
+  for (const c of s.commerciaux) {
+    if (c.manager1 === nom) c.manager1 = null
+    if (c.manager2 === nom) c.manager2 = null
+  }
+  s.managers = s.managers.filter((m) => m.nom !== nom)
 }
