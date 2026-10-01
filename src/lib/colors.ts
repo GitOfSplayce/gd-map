@@ -5,13 +5,18 @@ export const BRAND = { saphir: '#1A428A', jaune: '#F5A800', azurin: '#95D4E9', g
 
 export const isHexColor = (s: string) => /^#[0-9a-f]{6}$/i.test(s)
 
-// Palette catégorielle lisible en aplat comme en opacité réduite (pas de teintes trop claires).
-export const PALETTE = [
-  '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42b4d4', '#f032e6', '#9bc53d',
-  '#469990', '#9a6324', '#800000', '#808000', '#000075', '#e6ab02', '#1b9e77', '#d95f02',
-  '#7570b3', '#e7298a', '#66a61e', '#a6761d', '#1f78b4', '#b15928', '#6a3d9a', '#ff7f00',
-  '#33a02c', '#fb9a99', '#cab2d6', '#b2df8a', '#a6cee3', '#fdbf6f',
+// Palette organisée : une colonne par teinte, une ligne par nuance (du plus foncé au plus clair).
+// Teintes lisibles en aplat comme en opacité réduite sur la carte.
+export const PALETTE_HUES = ['Rouge', 'Orange', 'Ambre', 'Citron vert', 'Vert', 'Sarcelle', 'Cyan', 'Bleu', 'Violet', 'Rose']
+export const PALETTE_GRID: string[][] = [
+  ['#991b1b', '#9a3412', '#92400e', '#3f6212', '#166534', '#115e59', '#155e75', '#1e40af', '#5b21b6', '#9d174d'],
+  ['#b91c1c', '#c2410c', '#b45309', '#4d7c0f', '#15803d', '#0f766e', '#0e7490', '#1d4ed8', '#6d28d9', '#be185d'],
+  ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'],
+  ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#2dd4bf', '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6'],
 ]
+
+/** Ordre d'attribution automatique : nuances moyennes d'abord (les plus lisibles), puis foncées, puis claires. */
+export const PALETTE = [...PALETTE_GRID[2], ...PALETTE_GRID[1], ...PALETTE_GRID[3], ...PALETTE_GRID[0]]
 
 const MANAGER_PALETTE = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#17becf',

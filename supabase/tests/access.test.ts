@@ -294,6 +294,25 @@ describe.each([
     })
   })
 
+  describe('compatibilité Supabase', () => {
+    // En production, l'extension safeupdate refuse tout DELETE ou UPDATE sans WHERE venant de l'API
+    it('aucune fonction ne fait de DELETE ou d\'UPDATE sans WHERE', async () => {
+      const fns = await as<{ proname: string; prosrc: string }>(
+        'postgres',
+        `select proname, prosrc from pg_proc where pronamespace = 'public'::regnamespace and prolang = (select oid from pg_language where lanname = 'plpgsql')`,
+      )
+      const offenders = fns.flatMap((f) =>
+        f.prosrc
+          .replace(/--[^\n]*/g, '')
+          .split(';')
+          .map((st) => st.trim().replace(/\s+/g, ' '))
+          .filter((st) => /^(delete from|update) /i.test(st) && !/\bwhere\b/i.test(st))
+          .map((st) => `${f.proname} : ${st.slice(0, 60)}`),
+      )
+      expect(offenders).toEqual([])
+    })
+  })
+
   describe('ping', () => {
     it('répond à un visiteur anonyme (workflow keepalive)', async () => {
       expect(await rpc('anon', 'ping', '')).toBe('ok')

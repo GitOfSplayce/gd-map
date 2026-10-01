@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  PALETTE,
+  PALETTE_GRID,
+  PALETTE_HUES,
   TOO_CLOSE,
   colorDistance,
   hexToHsv,
@@ -26,6 +27,7 @@ export default function ColorPicker({ value, onChange, used, ariaLabel }: Props)
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const [hue, setHue] = useState(() => hexToHsv(value)[0])
   const [hexText, setHexText] = useState(value)
+  const [hovered, setHovered] = useState<string | null>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
 
@@ -111,8 +113,11 @@ export default function ColorPicker({ value, onChange, used, ariaLabel }: Props)
         type="button"
         className={'cp-swatch' + (owners.length ? ' used' : '') + (current ? ' current' : '')}
         style={{ background: c }}
-        title={owners.length ? `Déjà utilisée par ${owners.join(', ')}` : c}
         aria-label={owners.length ? `${c}, déjà utilisée par ${owners.join(', ')}` : c}
+        onMouseEnter={() => setHovered(c)}
+        onMouseLeave={() => setHovered(null)}
+        onFocus={() => setHovered(c)}
+        onBlur={() => setHovered(null)}
         onClick={() => set(c)}
       >
         {current && <Icon name="check" size={13} strokeWidth={3} />}
@@ -160,11 +165,28 @@ export default function ColorPicker({ value, onChange, used, ariaLabel }: Props)
           <div ref={popRef} className="cp-pop" style={pos} role="dialog" aria-label="Choisir une couleur">
             <div className="cp-section">
               <span>Couleurs libres conseillées</span>
-              <div className="cp-grid">{rankedFreeColors(usedColors, 10).map((c) => swatch(c, 'free-' + c))}</div>
+              <div className="cp-grid">
+                {rankedFreeColors(usedColors, 10)
+                  .sort((a, b) => hexToHsv(a)[0] - hexToHsv(b)[0])
+                  .map((c) => swatch(c, 'free-' + c))}
+              </div>
             </div>
             <div className="cp-section">
               <span>Palette</span>
-              <div className="cp-grid">{PALETTE.map((c) => swatch(c, 'pal-' + c))}</div>
+              <div className="cp-grid" role="grid" aria-label={`Palette : ${PALETTE_HUES.join(', ')}, du plus foncé au plus clair`}>
+                {PALETTE_GRID.flatMap((row, i) => row.map((c) => swatch(c, `pal-${i}-${c}`)))}
+              </div>
+              <p className="cp-legend">
+                {hovered ? (
+                  <>
+                    <span className="cp-preview small" style={{ background: hovered }} />
+                    {hovered.toUpperCase()}
+                    {ownerOf(hovered).length ? ` · déjà utilisée par ${ownerOf(hovered).join(', ')}` : ' · libre'}
+                  </>
+                ) : (
+                  'Couleurs estompées : déjà utilisées (survolez pour savoir par qui).'
+                )}
+              </p>
             </div>
             <div className="cp-section">
               <span>Sur mesure</span>

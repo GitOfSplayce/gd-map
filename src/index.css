@@ -904,8 +904,8 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .cp-pop {
   position: fixed;
   z-index: 80;
-  width: 286px;
-  padding: 12px;
+  width: 300px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
@@ -914,23 +914,27 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 }
 .cp-section + .cp-section { margin-top: 12px; }
 .cp-section > span { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.cp-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+.cp-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; }
 .cp-swatch {
-  position: relative;
   display: grid;
   place-items: center;
+  min-width: 0;
   aspect-ratio: 1;
+  padding: 0;
   border: 0;
   border-radius: 6px;
   color: #fff;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
-  transition: transform 0.1s;
+  transition: transform 0.1s, opacity 0.1s;
 }
-.cp-swatch:hover { transform: scale(1.12); z-index: 1; }
-.cp-swatch.current { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--saphir); }
-/* Couleur déjà prise : petit coin blanc barré */
-.cp-swatch.used::after { content: ''; position: absolute; right: -2px; top: -2px; width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2px var(--gris-noir); }
+.cp-swatch:hover { transform: scale(1.12); position: relative; z-index: 1; }
+/* Couleur déjà prise par un autre : estompée (le survol dit par qui) */
+.cp-swatch.used { opacity: 0.32; }
+.cp-swatch.used:hover { opacity: 0.75; }
+.cp-swatch.current { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--saphir); }
+.cp-legend { display: flex; align-items: center; gap: 6px; min-height: 2.6em; margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
+.cp-preview.small { width: 12px; height: 12px; border-radius: 3px; }
 .cp-sv { position: relative; height: 130px; border-radius: 10px; cursor: crosshair; touch-action: none; }
 .cp-sv-white,
 .cp-sv-black { position: absolute; inset: 0; border-radius: 10px; }
