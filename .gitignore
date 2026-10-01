@@ -31,3 +31,6 @@ npm-debug.log*
 .DS_Store
 *.suo
 *.sw?
+
+# Documents internes (charte graphique, etc.)
+*.pdf

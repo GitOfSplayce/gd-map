@@ -83,6 +83,13 @@ export function managerColors(names: string[]): Map<string, string> {
   )
 }
 
+/** Couleur obtenue en posant `hex` avec l'opacité donnée sur un fond blanc. */
+export function blendWithWhite(hex: string, opacity: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  const mix = (c: number) => c * opacity + 255 * (1 - opacity)
+  return rgbToHex(mix(r), mix(g), mix(b))
+}
+
 /** Noir ou blanc selon la luminosité du fond. */
 export function readableTextColor(bg: string): string {
   if (!isHexColor(bg)) return '#111'

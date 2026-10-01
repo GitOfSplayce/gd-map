@@ -1,9 +1,20 @@
-import { geoConicConformal, geoMercator, geoPath, type GeoPermissibleObjects } from 'd3-geo'
+import {
+  geoClipRectangle,
+  geoConicConformal,
+  geoMercator,
+  geoPath,
+  geoStream,
+  type GeoPermissibleObjects,
+  type GeoProjection,
+  type GeoStream,
+} from 'd3-geo'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import polylabel from 'polylabel'
 import type { GeoData } from '../hooks/useGeo'
+import { blendWithWhite, readableTextColor } from '../lib/colors'
 import type { MapModel, ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
@@ -14,10 +25,9 @@ type ZoneFeature = Feature<Polygon | MultiPolygon, { code: string; nom: string }
 interface Shape {
   code: string
   d: string
-  cx: number
-  cy: number
-  area: number
   label: string
+  /** Ancre de l'étiquette et place disponible autour (rayon en px), ou null si la zone n'est pas visible. */
+  anchor: { x: number; y: number; room: number } | null
 }
 
 interface Box {
@@ -52,9 +62,52 @@ function shapeLabel(code: string) {
   return n === 1 ? '1er' : `${n}e`
 }
 
-function toShape(f: ZoneFeature, path: ReturnType<typeof geoPath>): Shape {
-  const [cx, cy] = path.centroid(f as GeoPermissibleObjects)
-  return { code: f.properties.code, d: path(f as GeoPermissibleObjects) ?? '', cx, cy, area: path.area(f as GeoPermissibleObjects), label: shapeLabel(f.properties.code) }
+// Arrondissements dont la plus grande partie est un bois : l'étiquette va dans la partie urbaine
+const LABEL_ANCHORS: Record<string, [number, number]> = {
+  '75-12': [2.3935, 48.8405],
+  '75-16': [2.2735, 48.8605],
+}
+
+const ringArea = (ring: [number, number][]) =>
+  Math.abs(ring.reduce((sum, [x, y], i) => {
+    const [nx, ny] = ring[(i + 1) % ring.length]
+    return sum + x * ny - nx * y
+  }, 0) / 2)
+
+/**
+ * Point le plus « intérieur » de la plus grande partie visible de la zone (algorithme polylabel),
+ * calculé sur la géométrie projetée et découpée au cadre : une zone en croissant (92) ou à moitié hors
+ * de l'écran garde son étiquette bien à l'intérieur.
+ */
+function labelAnchor(f: ZoneFeature, proj: GeoProjection, box: Box): Shape['anchor'] {
+  const polygons: [number, number][][][] = []
+  let rings: [number, number][][] = []
+  let ring: [number, number][] = []
+  const sink = {
+    point: (x: number, y: number) => void ring.push([x, y]),
+    lineStart: () => void (ring = []),
+    lineEnd: () => void (ring.length > 2 && rings.push(ring)),
+    polygonStart: () => void (rings = []),
+    polygonEnd: () => void (rings.length && polygons.push(rings)),
+    sphere: () => undefined,
+  } as GeoStream
+  geoStream(f as GeoPermissibleObjects, proj.stream(geoClipRectangle(box.x, box.y, box.x + box.w, box.y + box.h)(sink)))
+
+  const parts = polygons.map((p) => [...p].sort((a, b) => ringArea(b) - ringArea(a)))
+  const biggest = parts.sort((a, b) => ringArea(b[0]) - ringArea(a[0]))[0]
+  if (!biggest) return null
+  const p = polylabel(biggest, 0.5)
+  const fixed = LABEL_ANCHORS[f.properties.code] && proj(LABEL_ANCHORS[f.properties.code])
+  return fixed ? { x: fixed[0], y: fixed[1], room: p.distance } : { x: p[0], y: p[1], room: p.distance }
+}
+
+function toShape(f: ZoneFeature, path: ReturnType<typeof geoPath>, proj: GeoProjection, box: Box | null): Shape {
+  return {
+    code: f.properties.code,
+    d: path(f as GeoPermissibleObjects) ?? '',
+    label: shapeLabel(f.properties.code),
+    anchor: box ? labelAnchor(f, proj, box) : null,
+  }
 }
 
 function insetBoxes(w: number, h: number): { main: Box; boxes: Box[] } {
@@ -96,12 +149,12 @@ function computeLayout(view: MapViewMode, geo: GeoData, w: number, h: number): L
     const insets = INSET_CODES.map((code, i): Inset => {
       const b = boxes[i]
       const feature = (code === MONACO_CODE ? geo.monaco.features[0] : deps.find((f) => f.properties.code === code)) as ZoneFeature
-      const p = geoPath(geoMercator().fitExtent([[b.x + 6, b.y + 18], [b.x + b.w - 6, b.y + b.h - 6]], feature as GeoPermissibleObjects))
+      const ip = geoMercator().fitExtent([[b.x + 6, b.y + 18], [b.x + b.w - 6, b.y + b.h - 6]], feature as GeoPermissibleObjects)
       const nom = ZONE_BY_CODE.get(code)?.nom ?? code
-      return { ...b, code, title: `${nom} (${code})`, shape: toShape(feature, p) }
+      return { ...b, code, title: `${nom} (${code})`, shape: toShape(feature, geoPath(ip), ip, null) }
     })
 
-    return { main, shapes: metro.map((f) => toShape(f, path)), insets, marker: { code: MONACO_CODE, x: mx, y: my } }
+    return { main, shapes: metro.map((f) => toShape(f, path, proj, main)), insets, marker: { code: MONACO_CODE, x: mx, y: my } }
   }
 
   const main = { x: 0, y: 0, w, h }
@@ -118,9 +171,17 @@ function computeLayout(view: MapViewMode, geo: GeoData, w: number, h: number): L
       const [[x0, y0], [x1, y1]] = path.bounds(f as GeoPermissibleObjects)
       return x1 >= 0 && y1 >= 0 && x0 <= w && y0 <= h
     })
-    .map((f) => toShape(f, path))
+    // Pas d'étiquettes d'arrondissement à l'échelle de l'Île-de-France : trop petites
+    .map((f) => toShape(f, path, proj, view === 'idf' && isParisArr(f.properties.code) ? null : main))
 
   return { main, shapes, insets: [], marker: null }
+}
+
+/** Texte clair sur fond foncé, foncé sur fond clair ; rayures : texte foncé avec halo blanc. */
+function labelColors(st: ZoneStyle | undefined): { text: string; halo: string } {
+  const dark = { text: '#1b2232', halo: 'rgba(255,255,255,0.85)' }
+  if (!st || st.pattern || !st.fill.startsWith('#')) return dark
+  return readableTextColor(blendWithWhite(st.fill, st.fillOpacity)) === '#fff' ? { text: '#ffffff', halo: 'rgba(0,0,0,0.35)' } : dark
 }
 
 export interface MapViewProps {
@@ -159,7 +220,9 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
   const layout = useMemo(() => (size ? computeLayout(view, geo, size.w, size.h) : null), [view, geo, size])
 
   const labelSize = view === 'paris' ? 13 : view === 'idf' ? 11 : 9.5
-  const minLabelArea = view === 'france' ? 140 : 300
+  // L'étiquette n'est affichée que si elle tient dans la zone (la place disponible grandit avec le zoom)
+  const fits = (s: Shape) =>
+    s.anchor !== null && s.anchor.room * scale >= Math.max(labelSize * 0.6, (labelSize * 0.62 * s.label.length) / 2 * 0.85)
 
   // Zoom et déplacement sur la carte principale (les encarts restent fixes)
   useEffect(() => {
@@ -307,23 +370,24 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
 
               {showLabels && (
                 <g className="labels" fontSize={labelSize / k} textAnchor="middle" dominantBaseline="central">
-                  {layout.shapes
-                    .filter((s) => s.area >= minLabelArea)
-                    .map((s) => (
+                  {layout.shapes.filter(fits).map((s) => {
+                    const c = labelColors(styles.get(s.code))
+                    return (
                       <text
                         key={s.code}
                         className="zone-label"
-                        x={s.cx}
-                        y={s.cy}
-                        fill="#1b2232"
-                        stroke="rgba(255,255,255,0.85)"
+                        x={s.anchor!.x}
+                        y={s.anchor!.y}
+                        fill={c.text}
+                        stroke={c.halo}
                         strokeWidth={2.5}
                         style={{ paintOrder: 'stroke', fontFamily: 'system-ui, sans-serif', fontWeight: 600 }}
                         vectorEffect="non-scaling-stroke"
                       >
                         {s.label}
                       </text>
-                    ))}
+                    )
+                  })}
                 </g>
               )}
             </g>

@@ -145,6 +145,6 @@ Les tests SQL jouent les migrations dans [PGlite](https://pglite.dev) (Postgres 
 
 ## Sources des contours
 
-- Départements et DROM : [gregoiredavid/france-geojson](https://github.com/gregoiredavid/france-geojson), d'après l'IGN (Licence Ouverte).
-- Arrondissements de Paris : [opendata.paris.fr](https://opendata.paris.fr/explore/dataset/arrondissements) (ODbL).
+- Départements et DROM (vue France) : [gregoiredavid/france-geojson](https://github.com/gregoiredavid/france-geojson), d'après l'IGN (Licence Ouverte).
+- Île-de-France détaillée et arrondissements de Paris (vues Île-de-France et Paris) : [API Découpage administratif](https://geo.api.gouv.fr), IGN Admin Express (Licence Ouverte). Les départements sont reconstitués à partir des communes et simplifiés dans la même topologie que les arrondissements, pour que les frontières coïncident exactement.
 - Monaco : [geoBoundaries](https://www.geoboundaries.org), d'après OpenStreetMap (ODbL).
