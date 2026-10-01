@@ -1,6 +1,7 @@
 // Lecture et écriture du fichier Excel (onglet V3, en-têtes en ligne 3).
 // Les colonnes sont repérées par le nom de l'en-tête, jamais par leur position.
 import * as XLSX from 'xlsx'
+import { parseAmountInput } from './amounts'
 import { formatZoneList, parseZoneList, type ParsedZone, type ZoneParseIssue } from './parseZones'
 import { structureHeaderKeys } from './structures'
 import { headerKey } from './text'
@@ -109,6 +110,13 @@ function number(v: unknown): number | null | 'invalid' {
   return Number.isFinite(n) ? n : 'invalid'
 }
 
+/** CA et objectifs : nombre Excel, ou texte comme à la saisie (« 120k », « 1,2M », « 120 000 € »). */
+function amount(v: unknown): number | null | 'invalid' {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 'invalid'
+  const n = parseAmountInput(text(v))
+  return Number.isNaN(n) ? 'invalid' : n
+}
+
 const isChecked = (v: unknown) => {
   const s = text(v)
   return s !== null && !['0', '-', 'non', 'n', 'false'].includes(s.toLowerCase())
@@ -185,8 +193,8 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string, structures: rea
         warnings.push(`Zones en ${s} sans « X » dans la colonne ${s} : la structure est ajoutée`)
       }
 
-      const ca = number(get(r, `ca_${s}`))
-      const objectif = number(get(r, `obj_${s}`))
+      const ca = amount(get(r, `ca_${s}`))
+      const objectif = amount(get(r, `obj_${s}`))
       if (ca === 'invalid') warnings.push(`CA ${s} illisible : ignoré`)
       if (objectif === 'invalid') warnings.push(`Objectif ${s} illisible : ignoré`)
       const caN = ca === 'invalid' ? null : ca

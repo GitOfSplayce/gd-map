@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import AmountInput from '../components/AmountInput'
 import ColorPicker from '../components/ColorPicker'
 import { PerfBar } from '../components/Legend'
 import Icon from '../components/Icon'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { useConfirm } from '../hooks/useConfirm'
+import { formatAmountInput, parseAmountInput } from '../lib/amounts'
 import { deleteCommercial, saveCommercial } from '../lib/api'
 import { isHexColor, managerColors, pickDistinctColor } from '../lib/colors'
 import { isARecruter } from '../lib/mapModel'
@@ -40,17 +42,15 @@ interface Draft {
   objectifs: Record<number, Partial<Record<Structure, { ca: string; objectif: string }>>>
 }
 
-/** « 120 000 », « 120000,5 », « 120 000 € » → nombre ; '' → null ; illisible → NaN. */
-const parseAmount = (t: string): number | null => {
-  const clean = t.replace(/[\s\u00a0\u202f€]/g, '').replace(',', '.')
-  return clean === '' ? null : Number(clean)
-}
+/** « 120k », « 1,2M », « 120 000 € » → nombre ; '' → null ; illisible → NaN. */
+const parseAmount = parseAmountInput
+const amountText = (n: number | null) => (n === null ? '' : formatAmountInput(Number(n)))
 
 const objectifsDraft = (c: Commercial, data: MapData): Draft['objectifs'] => {
   const out: Draft['objectifs'] = {}
   for (const o of data.objectifs.filter((x) => x.commercial_id === c.id)) {
     out[o.annee] ??= {}
-    out[o.annee][o.structure] = { ca: o.ca === null ? '' : String(o.ca), objectif: o.objectif === null ? '' : String(o.objectif) }
+    out[o.annee][o.structure] = { ca: amountText(o.ca), objectif: amountText(o.objectif) }
   }
   return out
 }
@@ -133,8 +133,8 @@ function validate(d: Draft, codes: readonly Structure[]): string | null {
   if (d.jours_an.trim() && !Number.isFinite(Number(d.jours_an.replace(',', '.')))) return '« Nb de jour / an » doit être un nombre.'
   for (const [annee, byStructure] of Object.entries(d.objectifs)) {
     for (const [s, v] of Object.entries(byStructure)) {
-      if (Number.isNaN(parseAmount(v!.ca))) return `CA ${s} ${annee} : un montant est attendu.`
-      if (Number.isNaN(parseAmount(v!.objectif))) return `Objectif ${s} ${annee} : un montant est attendu.`
+      if (Number.isNaN(parseAmount(v!.ca))) return `CA ${s} ${annee} : « ${v!.ca} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`
+      if (Number.isNaN(parseAmount(v!.objectif))) return `Objectif ${s} ${annee} : « ${v!.objectif} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`
     }
   }
   return null
@@ -714,10 +714,10 @@ function ObjectifsEditor({
                     <span className="struct-tag">{s}</span>
                   </td>
                   <td>
-                    <input className="input amount" inputMode="decimal" placeholder="—" value={v.ca} onChange={(e) => setValue(s, 'ca', e.target.value)} aria-label={`CA ${s} ${year}`} />
+                    <AmountInput value={v.ca} onChange={(t) => setValue(s, 'ca', t)} ariaLabel={`CA ${s} ${year}`} />
                   </td>
                   <td>
-                    <input className="input amount" inputMode="decimal" placeholder="—" value={v.objectif} onChange={(e) => setValue(s, 'objectif', e.target.value)} aria-label={`Objectif ${s} ${year}`} />
+                    <AmountInput value={v.objectif} onChange={(t) => setValue(s, 'objectif', t)} ariaLabel={`Objectif ${s} ${year}`} />
                   </td>
                   <td>{valid ? <PerfBar perf={{ ca: ca!, objectif: obj!, pct: ca! / obj!, hasData: true }} /> : <span className="muted">—</span>}</td>
                 </tr>
@@ -725,6 +725,11 @@ function ObjectifsEditor({
             })}
           </tbody>
         </table>
+      )}
+      {rows.length > 0 && (
+        <p className="muted small amount-hint">
+          Saisie rapide : <code>120k</code> = 120 000 €, <code>1,2M</code> = 1 200 000 €.
+        </p>
       )}
     </div>
   )
