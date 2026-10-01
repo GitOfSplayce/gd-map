@@ -1218,17 +1218,23 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   .user-badge-name { display: none; }
   .user-badge-initials { display: inline; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
   .user-badge { display: none; }
 }
 /* Tablette : les onglets de l'admin passent sur leur propre ligne, comme sur mobile */
-@media (max-width: 1023px) {
+@media (max-width: 1179px) {
   .admin-shell .topbar { flex-wrap: wrap; }
   .admin-shell .topbar .tabs { order: 3; width: 100%; }
 }
 @media (max-width: 1599px) {
   .admin-shell .topbar .tabs a { padding-left: 10px; padding-right: 10px; }
   .hide-below-1600 { display: none; }
+}
+/* Logo réduit au symbole pour laisser « Voir la carte » en entier */
+@media (max-width: 1439px) {
+  .admin-shell .brand .brand-logo { display: none; }
+  .admin-shell .brand .brand-mark { display: block; }
+  .admin-shell .brand .brand-name { padding-left: 0; border-left: 0; }
 }
 
 @media (max-width: 1100px) {

@@ -119,11 +119,11 @@ function AdminLayout({ email }: { email: string }) {
         }
         actions={
           <>
-            <UserBadge email={email} />
-            <Link className="btn small" to="/" aria-label="Voir la carte">
+            <Link className="btn small" to="/">
               <Icon name="map" size={16} />
-              <span className="hide-below-1600">Voir la carte</span>
+              Voir la carte
             </Link>
+            <UserBadge email={email} />
             <button type="button" className="btn small ghost" onClick={() => void signOut()} title="Déconnexion">
               <Icon name="logout" size={16} />
               <span className="hide-below-1600">Déconnexion</span>
