@@ -2,18 +2,19 @@
 // Les colonnes sont repérées par le nom de l'en-tête, jamais par leur position.
 import * as XLSX from 'xlsx'
 import { formatZoneList, parseZoneList, type ParsedZone, type ZoneParseIssue } from './parseZones'
+import { structureHeaderKeys } from './structures'
 import { headerKey } from './text'
-import { STRUCTURES, type Affectation, type Commercial, type Objectif, type Structure } from './types'
+import type { Affectation, Commercial, Objectif, Structure } from './types'
 
 export const DEFAULT_SHEET = 'V3'
 export const DEFAULT_HEADER_ROW = 3
 
-type Field =
+type BaseField =
   | 'nom' | 'statut' | 'jours_an' | 'manager1' | 'date_manager1' | 'manager2' | 'date_manager2'
   | 'actions' | 'secteur' | 'couleur' | 'actif' | 'notes'
-  | `x_${Structure}` | `dpt_${Structure}` | `ca_${Structure}` | `obj_${Structure}`
+type Field = BaseField | `x_${Structure}` | `dpt_${Structure}` | `ca_${Structure}` | `obj_${Structure}`
 
-const ALIASES: Record<Field, string[]> = {
+const BASE_ALIASES: Record<BaseField, string[]> = {
   nom: ['nom', 'nomducommercial', 'commercial'],
   statut: ['statut'],
   jours_an: ['nbdejouran', 'nbdejoursan', 'nbjoursan', 'joursan'],
@@ -26,17 +27,30 @@ const ALIASES: Record<Field, string[]> = {
   couleur: ['couleur'],
   actif: ['actif'],
   notes: ['notes', 'note'],
-  ...(Object.fromEntries(
-    STRUCTURES.flatMap((s) => {
-      const k = s.toLowerCase()
-      return [
-        [`x_${s}`, [k]],
-        [`dpt_${s}`, [`dpt${k}`, `dept${k}`, `departements${k}`, `zones${k}`]],
-        [`ca_${s}`, [`ca${k}`]],
-        [`obj_${s}`, [`objectif${k}`, `obj${k}`]],
-      ]
-    }),
-  ) as Record<`x_${Structure}` | `dpt_${Structure}` | `ca_${Structure}` | `obj_${Structure}`, string[]>),
+}
+
+/** En-têtes reconnus pour chaque champ, structures comprises (même ordre que structureHeaderKeys). */
+function aliasesFor(structures: readonly Structure[]): Record<Field, string[]> {
+  const out: Record<string, string[]> = { ...BASE_ALIASES }
+  for (const s of structures) {
+    const [x, dpt, dept, departements, zones, ca, objectif, obj] = structureHeaderKeys(s)
+    out[`x_${s}`] = [x]
+    out[`dpt_${s}`] = [dpt, dept, departements, zones]
+    out[`ca_${s}`] = [ca]
+    out[`obj_${s}`] = [objectif, obj]
+  }
+  return out as Record<Field, string[]>
+}
+
+/** « DPT XY » ou « Zones XY » pour une structure XY qui n'existe pas (encore) dans l'admin. */
+function unknownStructureColumns(headers: string[], raw: unknown[], structures: readonly Structure[]): string[] {
+  const known = new Set(structures.map((s) => s.toLowerCase()))
+  const out: string[] = []
+  headers.forEach((h, i) => {
+    const m = /^(?:dpt|dept|departements|zones)([a-z][a-z0-9]{1,5})$/.exec(h)
+    if (m && !known.has(m[1])) out.push(String(raw[i]).trim())
+  })
+  return out
 }
 
 export interface ImportRow {
@@ -67,6 +81,8 @@ export interface SheetParseResult {
   headerRow: number
   columns: Partial<Record<Field, string>>
   missing: string[]
+  /** Colonnes de zones d'une structure inconnue, ignorées (« DPT XY »). */
+  unknownStructures: string[]
   errors: string[]
 }
 
@@ -106,9 +122,13 @@ function findHeaderRow(matrix: unknown[][]): number {
   return DEFAULT_HEADER_ROW - 1
 }
 
-export function parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetParseResult {
+/** Lit l'onglet ; `structures` = codes des structures existantes (colonnes « MD », « DPT MD », « CA MD »…). */
+export function parseSheet(wb: XLSX.WorkBook, sheetName: string, structures: readonly Structure[]): SheetParseResult {
   const ws = wb.Sheets[sheetName]
-  if (!ws) return { rows: [], headerRow: 0, columns: {}, missing: [], errors: [`Onglet « ${sheetName} » introuvable`] }
+  if (!ws) {
+    return { rows: [], headerRow: 0, columns: {}, missing: [], unknownStructures: [], errors: [`Onglet « ${sheetName} » introuvable`] }
+  }
+  const ALIASES = aliasesFor(structures)
 
   const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })
@@ -132,13 +152,14 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetParseResu
   const errors: string[] = []
   if (col.nom === undefined) {
     errors.push('Colonne « Nom » introuvable : vérifiez l\'onglet et la ligne d\'en-tête')
-    return { rows: [], headerRow: h + range.s.r + 1, columns, missing: ['Nom'], errors }
+    return { rows: [], headerRow: h + range.s.r + 1, columns, missing: ['Nom'], unknownStructures: [], errors }
   }
 
   const missing = [
     ...(['statut', 'manager1', 'manager2'] as const).filter((f) => col[f] === undefined).map((f) => ALIASES[f][0]),
-    ...STRUCTURES.filter((s) => col[`dpt_${s}`] === undefined).map((s) => `DPT ${s}`),
+    ...structures.filter((s) => col[`dpt_${s}`] === undefined).map((s) => `DPT ${s}`),
   ]
+  const unknownStructures = unknownStructureColumns(headers, matrix[h] ?? [], structures)
 
   const get = (r: unknown[], f: Field) => (col[f] === undefined ? null : r[col[f]!])
   const rows: ImportRow[] = []
@@ -150,17 +171,17 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetParseResu
 
     const zones = {} as ImportRow['zones']
     const zoneIssues = {} as ImportRow['zoneIssues']
-    const structures: Structure[] = []
+    const rowStructures: Structure[] = []
     const objectifs: ImportRow['objectifs'] = []
 
-    for (const s of STRUCTURES) {
+    for (const s of structures) {
       const parsed = parseZoneList(get(r, `dpt_${s}`))
       zones[s] = parsed.zones
       zoneIssues[s] = parsed.issues
       const checked = isChecked(get(r, `x_${s}`))
-      if (checked) structures.push(s)
+      if (checked) rowStructures.push(s)
       else if (parsed.zones.length) {
-        structures.push(s)
+        rowStructures.push(s)
         warnings.push(`Zones en ${s} sans « X » dans la colonne ${s} : la structure est ajoutée`)
       }
 
@@ -179,7 +200,7 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetParseResu
     const row: ImportRow = {
       rowNumber: h + range.s.r + i + 2,
       nom,
-      structures,
+      structures: rowStructures,
       statut: text(get(r, 'statut')),
       jours_an: jours === 'invalid' ? null : jours,
       manager1: text(get(r, 'manager1')),
@@ -208,30 +229,33 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetParseResu
     rows.push(row)
   })
 
-  return { rows, headerRow: h + range.s.r + 1, columns, missing, errors }
+  return { rows, headerRow: h + range.s.r + 1, columns, missing, unknownStructures, errors }
 }
 
 // ---------------------------------------------------------------------------
 // Export
 
-export const EXPORT_HEADERS = [
-  'Nom', 'MD', 'SP', 'MC', 'BK', 'Statut', 'Nb de jour / an', 'Manager 1', 'Date 1', 'Manager 2', 'Date 2',
-  'Actions', 'Région', 'DPT MD', 'DPT SP', 'DPT MC', 'DPT BK',
-  ...STRUCTURES.flatMap((s) => [`CA ${s}`, `Objectif ${s}`]),
+/** En-têtes de l'export, dans l'ordre du fichier d'origine, avec une colonne de chaque sorte par structure. */
+export const exportHeaders = (structures: readonly Structure[]) => [
+  'Nom', ...structures, 'Statut', 'Nb de jour / an', 'Manager 1', 'Date 1', 'Manager 2', 'Date 2',
+  'Actions', 'Région', ...structures.map((s) => `DPT ${s}`),
+  ...structures.flatMap((s) => [`CA ${s}`, `Objectif ${s}`]),
   'Couleur', 'Actif', 'Notes',
 ]
 
 export function buildExportWorkbook(
+  structures: readonly Structure[],
   commerciaux: Commercial[],
   affectations: Affectation[],
   objectifs: Objectif[],
   annee: number,
 ): XLSX.WorkBook {
   const today = formatDate(new Date())
+  const headers = exportHeaders(structures)
   const rows: unknown[][] = [
     [`Carte commerciale – export du ${today} (CA et objectifs : ${annee})`],
     [],
-    EXPORT_HEADERS,
+    headers,
   ]
 
   for (const c of [...commerciaux].sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom, 'fr'))) {
@@ -239,7 +263,7 @@ export function buildExportWorkbook(
     const obj = (s: Structure) => objectifs.find((o) => o.commercial_id === c.id && o.structure === s && o.annee === annee)
     rows.push([
       c.nom,
-      ...STRUCTURES.map((s) => (c.structures.includes(s) ? 'X' : '')),
+      ...structures.map((s) => (c.structures.includes(s) ? 'X' : '')),
       c.statut ?? '',
       c.jours_an ?? '',
       c.manager1 ?? '',
@@ -248,8 +272,8 @@ export function buildExportWorkbook(
       c.date_manager2 ?? '',
       c.actions ?? '',
       c.secteur ?? '',
-      ...STRUCTURES.map((s) => formatZoneList(own.filter((a) => a.structure === s))),
-      ...STRUCTURES.flatMap((s) => [obj(s)?.ca ?? '', obj(s)?.objectif ?? '']),
+      ...structures.map((s) => formatZoneList(own.filter((a) => a.structure === s))),
+      ...structures.flatMap((s) => [obj(s)?.ca ?? '', obj(s)?.objectif ?? '']),
       c.couleur,
       c.actif ? 'Oui' : 'Non',
       c.notes ?? '',
@@ -257,10 +281,10 @@ export function buildExportWorkbook(
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = EXPORT_HEADERS.map((hdr) =>
-    hdr === 'Nom' ? { wch: 30 } : hdr.startsWith('DPT') ? { wch: 34 } : hdr.length <= 2 ? { wch: 4 } : { wch: 14 },
+  ws['!cols'] = headers.map((hdr) =>
+    hdr === 'Nom' ? { wch: 30 } : hdr.startsWith('DPT') ? { wch: 34 } : structures.includes(hdr) ? { wch: Math.max(4, hdr.length + 1) } : { wch: 14 },
   )
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: rows.length - 1, c: EXPORT_HEADERS.length - 1 } }) }
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: rows.length - 1, c: headers.length - 1 } }) }
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, DEFAULT_SHEET)

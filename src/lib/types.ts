@@ -1,12 +1,7 @@
-export const STRUCTURES = ['MD', 'SP', 'MC', 'BK'] as const
-export type Structure = (typeof STRUCTURES)[number]
+import type { StructureDef } from './structures'
 
-export const STRUCTURE_LABELS: Record<Structure, string> = {
-  MD: 'Maison Davoise',
-  SP: 'Splayce',
-  MC: 'MaucoCartex',
-  BK: 'BK Event',
-}
+/** Code d'une structure (MD, SP…) ; la liste est gérée dans l'admin (voir structures.ts). */
+export type Structure = string
 
 export const COUVERTURES = ['propre', 'partiel', 'gestion'] as const
 export type Couverture = (typeof COUVERTURES)[number]
@@ -67,6 +62,8 @@ export interface MapData {
   admin: boolean
   /** Réglages d'affichage choisis par les admins. */
   settings?: DisplaySettings
+  /** Structures dans l'ordre choisi par les admins. */
+  structures: StructureDef[]
   commerciaux: Commercial[]
   managers: Manager[]
   affectations: Affectation[]

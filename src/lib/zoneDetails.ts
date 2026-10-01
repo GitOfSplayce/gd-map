@@ -1,5 +1,6 @@
 import { strongest, type MapModel, type ZoneEntry } from './mapModel'
-import { STRUCTURES, type Commercial, type Couverture, type Objectif, type Structure } from './types'
+import { structureCodes } from './structures'
+import type { Commercial, Couverture, Objectif, Structure } from './types'
 import { ZONE_BY_CODE, compareZoneCodes, isParisArr, shortZoneLabel } from './zones'
 
 export interface ZonePerson {
@@ -16,6 +17,7 @@ const arrLabel = (code: string) => shortZoneLabel(code).replace('Paris ', '')
 
 /** Commerciaux d'une zone, regroupés par commercial et structure. */
 export function zonePeople(code: string, model: MapModel): ZonePerson[] {
+  const order = structureCodes(model.structures)
   const groups = new Map<string, ZoneEntry[]>()
   for (const e of model.entries.get(code) ?? []) {
     const k = `${e.commercial.id}|${e.affectation.structure}`
@@ -43,7 +45,7 @@ export function zonePeople(code: string, model: MapModel): ZonePerson[] {
     })
     .sort(
       (a, b) =>
-        STRUCTURES.indexOf(a.structure) - STRUCTURES.indexOf(b.structure) ||
+        order.indexOf(a.structure) - order.indexOf(b.structure) ||
         a.commercial.nom.localeCompare(b.commercial.nom, 'fr'),
     )
 }

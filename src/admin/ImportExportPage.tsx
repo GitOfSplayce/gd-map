@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { WorkBook } from 'xlsx'
 import { applyImport } from '../lib/api'
 import {
@@ -9,7 +10,7 @@ import {
   readWorkbook,
 } from '../lib/excel'
 import { planImport, type DiffItem, type ImportMode } from '../lib/importDiff'
-import { STRUCTURES } from '../lib/types'
+import { structureCodes } from '../lib/structures'
 import Icon from '../components/Icon'
 import Select from '../components/Select'
 import { useConfirm } from '../hooks/useConfirm'
@@ -132,15 +133,16 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
   const [done, setDone] = useState<string | null>(null)
   const [exportYear, setExportYear] = useState(THIS_YEAR)
 
-  const parsed = useMemo(() => (workbook ? parseSheet(workbook, sheet) : null), [workbook, sheet])
+  const codes = useMemo(() => structureCodes(data.structures), [data.structures])
+  const parsed = useMemo(() => (workbook ? parseSheet(workbook, sheet, codes) : null), [workbook, sheet, codes])
   const plan = useMemo(() => (parsed && !parsed.errors.length ? planImport(parsed.rows, data, mode, year) : null), [parsed, data, mode, year])
 
   const unknownZones = useMemo(
     () =>
       parsed?.rows.flatMap((r) =>
-        STRUCTURES.flatMap((s) => r.zoneIssues[s].map((i) => ({ row: r.rowNumber, nom: r.nom, structure: s, ...i }))),
+        codes.flatMap((s) => r.zoneIssues[s].map((i) => ({ row: r.rowNumber, nom: r.nom, structure: s, ...i }))),
       ) ?? [],
-    [parsed],
+    [parsed, codes],
   )
 
   const onFile = async (file: File | undefined) => {
@@ -197,7 +199,7 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
   }
 
   const exportExcel = () => {
-    const wb = buildExportWorkbook(data.commerciaux, data.affectations, data.objectifs, exportYear)
+    const wb = buildExportWorkbook(codes, data.commerciaux, data.affectations, data.objectifs, exportYear)
     downloadWorkbook(wb, `carte-commerciale-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
@@ -328,6 +330,19 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
           <div className="small muted">
             En-têtes trouvés en ligne {parsed.headerRow} · {plural(parsed.rows.length, 'ligne')} avec un nom
             {parsed.missing.length > 0 && <> · colonnes absentes : {parsed.missing.join(', ')}</>}
+          </div>
+        )}
+
+        {parsed && parsed.unknownStructures.length > 0 && (
+          <div className="alert warning">
+            <Icon name="alert" size={16} />
+            <div>
+              {parsed.unknownStructures.length === 1 ? 'Colonne ignorée' : 'Colonnes ignorées'} :{' '}
+              {parsed.unknownStructures.map((c) => `« ${c} »`).join(', ')}.{' '}
+              {parsed.unknownStructures.length === 1 ? 'Cette structure n\'existe' : 'Ces structures n\'existent'} pas encore :
+              {parsed.unknownStructures.length === 1 ? 'ajoutez-la' : 'ajoutez-les'} dans l'onglet{' '}
+              <Link to="/admin/structures">Structures</Link>, puis rechargez le fichier.
+            </div>
           </div>
         )}
 

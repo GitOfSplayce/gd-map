@@ -6,7 +6,10 @@ import { buildExportWorkbook, parseSheet, readWorkbook } from './excel'
 import { headerKey } from './text'
 import { planToMapData } from './demo'
 import { planImport, rowAssignments } from './importDiff'
+import { DEFAULT_STRUCTURES, structureCodeIssue, structureCodes } from './structures'
 import type { Affectation, Commercial, Objectif } from './types'
+
+const CODES = structureCodes(DEFAULT_STRUCTURES)
 
 const SAMPLE = fileURLToPath(new URL('../../exemples/exemple-import.xlsx', import.meta.url))
 const REAL = fileURLToPath(new URL('../../Classeur V3.xlsx', import.meta.url))
@@ -30,7 +33,7 @@ describe('headerKey', () => {
 
 describe('import du fichier exemple', () => {
   const wb = load(SAMPLE)
-  const res = parseSheet(wb, 'V3')
+  const res = parseSheet(wb, 'V3', CODES)
 
   it('trouve l\'en-tête en ligne 3 et toutes les colonnes', () => {
     expect(res.errors).toEqual([])
@@ -84,8 +87,8 @@ describe('import du fichier exemple', () => {
   })
 
   it('signale un onglet absent', () => {
-    expect(parseSheet(wb, 'V4').errors[0]).toMatch(/introuvable/)
-    expect(parseSheet(wb, 'Notes').errors[0]).toMatch(/Nom/)
+    expect(parseSheet(wb, 'V4', CODES).errors[0]).toMatch(/introuvable/)
+    expect(parseSheet(wb, 'Notes', CODES).errors[0]).toMatch(/Nom/)
   })
 })
 
@@ -99,7 +102,7 @@ describe('repérage des colonnes par le nom de l\'en-tête', () => {
     ])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'V3')
-    const res = parseSheet(wb, 'V3')
+    const res = parseSheet(wb, 'V3', CODES)
     expect(res.rows[0]).toMatchObject({ nom: 'Test Un', statut: 'VRP', manager1: 'Noémie', manager2: 'Bastien', structures: ['MD', 'SP'] })
     expect(zonesOf(res.rows[0], 'SP')).toEqual(['35P', '53'])
     expect(res.missing).toEqual(['DPT MC', 'DPT BK'])
@@ -107,8 +110,8 @@ describe('repérage des colonnes par le nom de l\'en-tête', () => {
 })
 
 describe('aperçu des changements et export', () => {
-  const rows = parseSheet(load(SAMPLE), 'V3').rows
-  const empty = { commerciaux: [] as Commercial[], affectations: [] as Affectation[], objectifs: [] as Objectif[] }
+  const rows = parseSheet(load(SAMPLE), 'V3', CODES).rows
+  const empty = { structures: DEFAULT_STRUCTURES, commerciaux: [] as Commercial[], affectations: [] as Affectation[], objectifs: [] as Objectif[] }
 
   // Simule l'état de la base après un premier import
   const stateAfterImport = () => planToMapData(planImport(rows, empty, 'merge', 2026))
@@ -145,9 +148,9 @@ describe('aperçu des changements et export', () => {
 
   it('export puis réimport : mêmes données', () => {
     const state = stateAfterImport()
-    const wb = buildExportWorkbook(state.commerciaux, state.affectations, state.objectifs, 2026)
+    const wb = buildExportWorkbook(CODES, state.commerciaux, state.affectations, state.objectifs, 2026)
     const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
-    const back = parseSheet(readWorkbook(buf), 'V3')
+    const back = parseSheet(readWorkbook(buf), 'V3', CODES)
     expect(back.headerRow).toBe(3)
     expect(back.rows).toHaveLength(19)
     const plan = planImport(back.rows, state, 'replace', 2026)
@@ -157,10 +160,69 @@ describe('aperçu des changements et export', () => {
   })
 })
 
+describe('structure ajoutée dans l\'admin', () => {
+  const sheet = (rows: unknown[][]) => {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[], [], ...rows]), 'V3')
+    return wb
+  }
+
+  it('ses colonnes sont lues dès qu\'elle existe, et signalées tant qu\'elle n\'existe pas', () => {
+    const wb = sheet([
+      ['Nom', 'MD', 'DPT MD', 'NV', 'DPT NV', 'CA NV', 'Objectif NV'],
+      ['Test Deux', 'X', '22', 'X', '13, 84P', '1 000', '2000'],
+    ])
+    const before = parseSheet(wb, 'V3', CODES)
+    expect(before.unknownStructures).toEqual(['DPT NV'])
+    expect(before.rows[0].structures).toEqual(['MD'])
+
+    const after = parseSheet(wb, 'V3', [...CODES, 'NV'])
+    expect(after.unknownStructures).toEqual([])
+    expect(after.rows[0].structures).toEqual(['MD', 'NV'])
+    expect(zonesOf(after.rows[0], 'NV')).toEqual(['13', '84P'])
+    expect(after.rows[0].objectifs).toContainEqual({ structure: 'NV', ca: 1000, objectif: 2000 })
+  })
+
+  it('l\'export a une colonne de chaque sorte par structure, dans l\'ordre choisi', () => {
+    const codes = ['SP', 'MD', 'NV']
+    const c: Commercial = { id: 'x', nom: 'Test', statut: null, manager1: null, manager2: null, couleur: '#123456', actif: true, structures: ['NV'], secteur: null, ordre: 1 }
+    const wb = buildExportWorkbook(codes, [c], [{ id: 'a', commercial_id: 'x', structure: 'NV', zone_code: '13', couverture: 'propre' }], [], 2026)
+    const header = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets.V3, { header: 1 })[2] as string[]
+    expect(header.slice(0, 4)).toEqual(['Nom', 'SP', 'MD', 'NV'])
+    expect(header.filter((h) => h.startsWith('DPT'))).toEqual(['DPT SP', 'DPT MD', 'DPT NV'])
+    expect(header.filter((h) => h.startsWith('CA '))).toEqual(['CA SP', 'CA MD', 'CA NV'])
+    const back = parseSheet(wb, 'V3', codes)
+    expect(back.missing).toEqual([])
+    expect(zonesOf(back.rows[0], 'NV')).toEqual(['13'])
+  })
+})
+
+describe('code d\'une nouvelle structure', () => {
+  it('2 à 6 majuscules ou chiffres, commençant par une lettre', () => {
+    expect(structureCodeIssue('NV', CODES)).toBeNull()
+    expect(structureCodeIssue('GD2026', CODES)).toBeNull()
+    expect(structureCodeIssue('', CODES)).toMatch(/obligatoire/)
+    expect(structureCodeIssue('N', CODES)).toMatch(/2 à 6/)
+    expect(structureCodeIssue('2B', CODES)).toMatch(/2 à 6/)
+    expect(structureCodeIssue('TROPLONG', CODES)).toMatch(/2 à 6/)
+  })
+
+  it('refuse un doublon et ce qui rendrait une colonne Excel ambiguë', () => {
+    expect(structureCodeIssue('MD', CODES)).toMatch(/déjà utilisé/)
+    expect(structureCodeIssue('NOM', CODES)).toMatch(/colonne du fichier/)
+    expect(structureCodeIssue('STATUT', CODES)).toMatch(/colonne du fichier/)
+    expect(structureCodeIssue('ALL', CODES)).toMatch(/colonne du fichier/)
+    // « CAMD » : sa colonne « CAMD » se confondrait avec « CA MD »
+    expect(structureCodeIssue('CAMD', CODES)).toMatch(/se confondraient avec celles de MD/)
+    expect(structureCodeIssue('DPTSP', CODES)).toMatch(/se confondraient avec celles de SP/)
+  })
+})
+
 describe.skipIf(!existsSync(REAL))('fichier réel Classeur V3.xlsx (local uniquement, non versionné)', () => {
   it('se lit sans erreur bloquante', () => {
-    const res = parseSheet(load(REAL), 'V3')
+    const res = parseSheet(load(REAL), 'V3', CODES)
     expect(res.errors).toEqual([])
+    expect(res.unknownStructures).toEqual([])
     expect(res.headerRow).toBe(3)
     expect(res.rows.length).toBeGreaterThan(50)
     const unknown = res.rows.flatMap((r) => Object.values(r.zoneIssues).flat().filter((i) => i.level === 'error'))

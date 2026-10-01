@@ -2,7 +2,8 @@ import type { MapModel } from '../lib/mapModel'
 import Icon from './Icon'
 import { PerfBar } from './Legend'
 import { perfBucketOf, perfText } from '../lib/performance'
-import { COUVERTURE_LABELS, STRUCTURE_LABELS, STRUCTURES } from '../lib/types'
+import { structureCodes, structureName } from '../lib/structures'
+import { COUVERTURE_LABELS } from '../lib/types'
 import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
 import { IDF_CODES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 import type { MapViewMode } from './MapView'
@@ -58,10 +59,10 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
 
       {!people.length && <p className="muted">Aucun commercial sur cette zone avec les filtres actuels.</p>}
 
-      {STRUCTURES.filter((s) => people.some((p) => p.structure === s)).map((s) => (
+      {structureCodes(model.structures).filter((s) => people.some((p) => p.structure === s)).map((s) => (
         <div className="zp-section" key={s}>
           <h3>
-            {s} – {STRUCTURE_LABELS[s]}
+            {s} – {structureName(model.structures, s)}
           </h3>
           {people
             .filter((p) => p.structure === s)

@@ -25,13 +25,10 @@ import {
 } from '../lib/mapModel'
 import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
-import { STRUCTURE_LABELS, STRUCTURES, type MapData } from '../lib/types'
+import { sortStructures } from '../lib/structures'
+import type { MapData } from '../lib/types'
 import CodeGate from './CodeGate'
 
-const TABS: { key: Tab; label: string; sub: string }[] = [
-  { key: 'ALL', label: 'Globale', sub: 'Toutes structures' },
-  ...STRUCTURES.map((s) => ({ key: s as Tab, label: s, sub: STRUCTURE_LABELS[s] })),
-]
 const VIEWS: { key: MapViewMode; label: string }[] = [
   { key: 'france', label: 'France' },
   { key: 'idf', label: 'Île-de-France' },
@@ -72,7 +69,15 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
     const v = params.get(key) as T | null
     return v && allowed.includes(v) ? v : fallback
   }
-  const tab = pick<Tab>('onglet', TABS.map((t) => t.key), 'ALL')
+  // Onglets : vue globale puis une par structure, dans l'ordre choisi dans l'admin
+  const tabs = useMemo<{ key: Tab; label: string; sub: string }[]>(
+    () => [
+      { key: 'ALL', label: 'Globale', sub: 'Toutes structures' },
+      ...sortStructures(data.structures).map((s) => ({ key: s.code, label: s.code, sub: s.nom })),
+    ],
+    [data.structures],
+  )
+  const tab = pick<Tab>('onglet', tabs.map((t) => t.key), 'ALL')
   const view = pick<MapViewMode>('vue', VIEWS.map((v) => v.key), 'france')
   // CA et objectifs : réservés aux admins (vue Performance, année, chiffres de la légende)
   const colorModes = COLOR_MODES.filter((c) => c.key !== 'performance' || data.admin)
@@ -133,7 +138,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   }
 
   const filterCount = activeFilterCount(filters)
-  const tabInfo = TABS.find((t) => t.key === tab)!
+  const tabInfo = tabs.find((t) => t.key === tab)!
   const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString('fr-FR') : null
 
   const reload = async () => {
@@ -172,7 +177,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
       <AppHeader
         nav={
           <nav className="tabs" role="tablist" aria-label="Structure">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
@@ -263,7 +268,16 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
             <Icon name="image" size={16} className={exporting ? 'spin' : undefined} />
             {exporting ? 'Export…' : 'Export PNG'}
           </button>
-          <Switch checked={showLabels} onChange={(on) => setParam('codes', on ? '1' : '0', '1')} label="Codes" />
+          <Switch
+            checked={showLabels}
+            onChange={(on) => setParam('codes', on ? '1' : '0', '1')}
+            label={
+              <>
+                <span className="hide-mobile">Code postal</span>
+                <span className="show-mobile">CP</span>
+              </>
+            }
+          />
         </div>
         <div className="updated hide-mobile">
           {updated && <span>Données du {updated}</span>}

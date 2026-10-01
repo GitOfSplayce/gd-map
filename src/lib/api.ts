@@ -1,4 +1,5 @@
 import { requireSupabase } from './supabase'
+import type { StructureDef } from './structures'
 import type { CommercialPayload, DisplaySettings, Manager, MapData } from './types'
 
 export type MapDataError = 'invalid_code' | 'not_configured' | 'too_many_attempts' | 'network'
@@ -29,6 +30,7 @@ export async function fetchMapData(code: string | null): Promise<{ data: MapData
       commerciaux: res.commerciaux,
       managers: res.managers ?? [],
       settings: res.settings,
+      structures: res.structures ?? [],
       affectations: res.affectations,
       objectifs: res.objectifs,
       updated_at: res.updated_at,
@@ -95,6 +97,40 @@ export async function deleteManager(nom: string): Promise<void> {
   if (DEMO) return (await demo()).demoDeleteManager(nom)
   const { error } = await requireSupabase().from('managers').delete().eq('nom', nom)
   if (error) fail(error)
+}
+
+// ---------- Structures ----------
+
+function structureFail(error: { message: string; code?: string } | null): never {
+  if (error?.code === '23505') throw new Error('Une structure porte déjà ce code.')
+  if (error?.code === '23514') throw new Error('Code invalide : 2 à 6 lettres majuscules ou chiffres, en commençant par une lettre.')
+  fail(error)
+}
+
+export async function createStructure(s: StructureDef): Promise<void> {
+  if (DEMO) return (await demo()).demoCreateStructure(s)
+  const { error } = await requireSupabase().from('structures').insert(s)
+  if (error) structureFail(error)
+}
+
+/** Modifie le nom et, si besoin, le code (zones, objectifs et commerciaux suivent). */
+export async function updateStructure(code: string, patch: { code: string; nom: string }): Promise<void> {
+  if (DEMO) return (await demo()).demoUpdateStructure(code, patch)
+  const { error } = await requireSupabase().from('structures').update(patch).eq('code', code)
+  if (error) structureFail(error)
+}
+
+/** Supprime la structure avec ses zones et ses CA/objectifs. */
+export async function deleteStructure(code: string): Promise<void> {
+  if (DEMO) return (await demo()).demoDeleteStructure(code)
+  const { error } = await requireSupabase().from('structures').delete().eq('code', code)
+  if (error) structureFail(error)
+}
+
+export async function reorderStructures(codes: string[]): Promise<void> {
+  if (DEMO) return (await demo()).demoReorderStructures(codes)
+  const { error } = await requireSupabase().rpc('reorder_structures', { p_codes: codes })
+  if (error) structureFail(error)
 }
 
 /** Mode d'affichage des zones partagées proposé par défaut à tout le monde. */

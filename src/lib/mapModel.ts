@@ -2,7 +2,8 @@
 import { managerColors } from './colors'
 import { nameKey } from './text'
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
-import { STRUCTURES, type Affectation, type Commercial, type Couverture, type MapData, type Objectif, type Structure } from './types'
+import { inStructureOrder, structureCodes, type StructureDef } from './structures'
+import type { Affectation, Commercial, Couverture, MapData, Objectif, Structure } from './types'
 import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
 
 /**
@@ -140,6 +141,8 @@ export interface MapModel {
   colorOf: (key: string) => string
   styleOf: (code: string, highlighted: Set<string>) => ZoneStyle
   objectifOf: (commercialId: string, structure: Structure) => Objectif | undefined
+  /** Structures dans l'ordre choisi par les admins. */
+  structures: StructureDef[]
   managers: { manager1: string[]; manager2: string[] }
   statuts: string[]
   visibleCommerciaux: Commercial[]
@@ -152,7 +155,10 @@ export function buildMapModel(
   colorMode: ColorMode,
   year: number = defaultYear(data.objectifs),
 ): MapModel {
-  const structs: readonly Structure[] = tab === 'ALL' ? STRUCTURES : [tab]
+  const order = structureCodes(data.structures)
+  const structs: readonly Structure[] = tab === 'ALL' ? order : [tab]
+  /** « MD · SP », dans l'ordre des structures. */
+  const structuresText = (c: Commercial) => inStructureOrder(c.structures, order).join(' · ')
   const perfOfPeople = (ids: Iterable<string>) => sumPerf(data.objectifs, ids, year, structs)
   const hasFigures = data.objectifs.length > 0
   const byId = new Map(data.commerciaux.map((c) => [c.id, c]))
@@ -280,7 +286,7 @@ export function buildMapModel(
         color: colorOf(key),
         detail: isManager
           ? `${people.length} commercia${people.length > 1 ? 'ux' : 'l'}`
-          : [people[0].statut, people[0].structures.join(' · ')].filter(Boolean).join(' – '),
+          : [people[0].statut, structuresText(people[0])].filter(Boolean).join(' – '),
         zoneCount: zones.size,
         perf: hasFigures ? perfOfPeople(people.map((p) => p.id)) : undefined,
       }
@@ -365,7 +371,7 @@ export function buildMapModel(
       key: c.id,
       label: c.nom,
       color: perfBucketOf(perf.pct).color,
-      detail: [c.statut, c.structures.join(' · ')].filter(Boolean).join(' – '),
+      detail: [c.statut, structuresText(c)].filter(Boolean).join(' – '),
       zoneCount: new Set(data.affectations.filter((a) => a.commercial_id === c.id).map((a) => a.zone_code)).size,
       perf,
     }))
@@ -378,6 +384,7 @@ export function buildMapModel(
     colorOf,
     styleOf,
     objectifOf,
+    structures: data.structures,
     managers: { manager1: m1, manager2: m2 },
     statuts,
     visibleCommerciaux,

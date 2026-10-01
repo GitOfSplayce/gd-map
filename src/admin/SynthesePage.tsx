@@ -8,7 +8,8 @@ import { downloadWorkbook } from '../lib/excel'
 import { NO_MANAGER } from '../lib/mapModel'
 import { availableYears, defaultYear, formatPct, sumPerf, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
-import { STRUCTURE_LABELS, STRUCTURES, type Structure } from '../lib/types'
+import { inStructureOrder, structureCodes, structureName } from '../lib/structures'
+import type { Structure } from '../lib/types'
 import { formatEuros } from '../lib/zoneDetails'
 import type { AdminDataProps } from './AdminApp'
 
@@ -38,14 +39,15 @@ export default function SynthesePage({ data }: AdminDataProps) {
   const [showEmpty, setShowEmpty] = useState(false)
 
   const years = availableYears(data.objectifs)
-  const structures = useMemo<readonly Structure[]>(() => (scope === 'ALL' ? STRUCTURES : [scope]), [scope])
+  const codes = useMemo(() => structureCodes(data.structures), [data.structures])
+  const structures = useMemo<readonly Structure[]>(() => (scope === 'ALL' ? codes : [scope]), [scope, codes])
 
   const rows = useMemo<Row[]>(() => {
     const people = data.commerciaux.filter((c) => scope === 'ALL' || c.structures.includes(scope))
     if (groupBy === 'structure') {
-      return STRUCTURES.map((s) => ({
+      return codes.map((s) => ({
         key: s,
-        nom: `${s} – ${STRUCTURE_LABELS[s]}`,
+        nom: `${s} – ${structureName(data.structures, s)}`,
         detail: plural(data.commerciaux.filter((c) => c.structures.includes(s)).length, 'commercial', 'commerciaux'),
         perf: sumPerf(data.objectifs, data.commerciaux.map((c) => c.id), year, [s]),
       }))
@@ -54,7 +56,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
       return people.map((c) => ({
         key: c.id,
         nom: c.nom,
-        detail: [c.statut, c.structures.join(' · '), !c.actif && 'inactif'].filter(Boolean).join(' – '),
+        detail: [c.statut, inStructureOrder(c.structures, codes).join(' · '), !c.actif && 'inactif'].filter(Boolean).join(' – '),
         perf: sumPerf(data.objectifs, [c.id], year, structures),
       }))
     }
@@ -69,7 +71,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
       detail: plural(ids.length, 'commercial', 'commerciaux'),
       perf: sumPerf(data.objectifs, ids, year, structures),
     }))
-  }, [data, year, scope, groupBy, structures])
+  }, [data, year, scope, groupBy, structures, codes])
 
   const value = (r: Row): number | string => {
     if (sort.key === 'nom') return r.nom
@@ -151,7 +153,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
           />
         </div>
         <div className="seg">
-          {(['ALL', ...STRUCTURES] as const).map((s) => (
+          {['ALL', ...codes].map((s) => (
             <button key={s} type="button" aria-pressed={scope === s} onClick={() => setScope(s)} disabled={groupBy === 'structure'}>
               {s === 'ALL' ? 'Toutes' : s}
             </button>

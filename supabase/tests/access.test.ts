@@ -81,7 +81,7 @@ describe.each([
 
   describe('anonyme (sans connexion)', () => {
     it('ne peut lire aucune table', async () => {
-      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'admins', 'access_attempts', 'managers']) {
+      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'admins', 'access_attempts', 'managers', 'structures']) {
         await expect(as('anon', `select * from public.${table}`), table).rejects.toThrow(/permission denied/)
       }
     })
@@ -300,6 +300,95 @@ describe.each([
       expect(await as('user', 'select * from public.managers')).toEqual([])
       await expect(as('user', `insert into public.managers (nom) values ('Pirate')`)).rejects.toThrow(/row-level security/)
       await expect(rpc('user', 'rename_manager', `'Hélène', 'Pirate'`)).rejects.toThrow(/réservé aux admins/)
+    })
+  })
+
+  describe('structures', () => {
+    const codes = async () => (await as<{ code: string }>('admin', 'select code from public.structures order by ordre, code')).map((r) => r.code)
+    const structuresOf = async (nom: string) =>
+      (await as<{ structures: string[] }>('admin', `select structures from public.commerciaux where nom = $1`, [nom]))[0].structures
+
+    it('partent des quatre structures d\'origine, renvoyées avec la carte (visiteurs compris)', async () => {
+      expect(await codes()).toEqual(['MD', 'SP', 'MC', 'BK'])
+      const visitor = await rpc('anon', 'get_map_data', `'Nouveau-code-2027'`)
+      expect(visitor.structures).toEqual([
+        { code: 'MD', nom: 'Maison Davoise', ordre: 1 },
+        { code: 'SP', nom: 'Splayce', ordre: 2 },
+        { code: 'MC', nom: 'MaucoCartex', ordre: 3 },
+        { code: 'BK', nom: 'BK Event', ordre: 4 },
+      ])
+    })
+
+    it('un admin en ajoute une, utilisable aussitôt pour les zones et les objectifs', async () => {
+      await as('admin', `insert into public.structures (code, nom, ordre) values ('NV', 'Nouvelle structure', 5)`)
+      await rpc('admin', 'save_commercial', '$1::jsonb', [
+        JSON.stringify({
+          nom: 'Structure Test',
+          structures: ['MD', 'NV'],
+          affectations: [
+            { structure: 'NV', zone_code: '13', couverture: 'propre' },
+            { structure: 'MD', zone_code: '84', couverture: 'propre' },
+          ],
+          objectifs: [{ structure: 'NV', annee: 2026, ca: 10, objectif: 20 }],
+        }),
+      ])
+      expect(await structuresOf('Structure Test')).toEqual(['MD', 'NV'])
+    })
+
+    it('refuse un code mal formé, réservé ou une structure inconnue', async () => {
+      await expect(as('admin', `insert into public.structures (code, nom) values ('nv2', 'Minuscules')`)).rejects.toThrow(/check constraint/)
+      await expect(as('admin', `insert into public.structures (code, nom) values ('ALL', 'Onglet Globale')`)).rejects.toThrow(/check constraint/)
+      await expect(as('admin', `insert into public.structures (code, nom) values ('MD', 'Doublon')`)).rejects.toThrow(/duplicate key/)
+      const [{ id }] = await as<{ id: string }>('admin', `select id from public.commerciaux where nom = 'Structure Test'`)
+      await expect(rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, structures: ['ZZ'] })])).rejects.toThrow(
+        /Structure inconnue : ZZ/,
+      )
+      await expect(
+        rpc('admin', 'save_commercial', '$1::jsonb', [
+          JSON.stringify({ id, affectations: [{ structure: 'ZZ', zone_code: '13', couverture: 'propre' }] }),
+        ]),
+      ).rejects.toThrow(/foreign key/)
+      expect(await structuresOf('Structure Test')).toEqual(['MD', 'NV'])
+    })
+
+    it('changer le code met à jour zones, objectifs et commerciaux', async () => {
+      await as('admin', `update public.structures set code = 'NS' where code = 'NV'`)
+      expect(await structuresOf('Structure Test')).toEqual(['MD', 'NS'])
+      const [{ n }] = await as<{ n: number }>('admin', `select count(*)::int as n from public.affectations where structure = 'NS'`)
+      expect(n).toBe(1)
+      const [{ o }] = await as<{ o: number }>('admin', `select count(*)::int as o from public.objectifs where structure = 'NS'`)
+      expect(o).toBe(1)
+    })
+
+    it('se réordonnent en une fois', async () => {
+      await rpc('admin', 'reorder_structures', `array['NS', 'SP', 'MD', 'MC', 'BK']`)
+      expect(await codes()).toEqual(['NS', 'SP', 'MD', 'MC', 'BK'])
+      await rpc('admin', 'reorder_structures', `array['MD', 'SP', 'MC', 'BK', 'NS']`)
+    })
+
+    it('supprimer une structure retire ses zones, ses objectifs et la coche des commerciaux', async () => {
+      await as('admin', `delete from public.structures where code = 'NS'`)
+      expect(await structuresOf('Structure Test')).toEqual(['MD'])
+      const [{ n }] = await as<{ n: number }>('admin', `select count(*)::int as n from public.affectations where structure = 'NS'`)
+      expect(n).toBe(0)
+      const [{ o }] = await as<{ o: number }>('admin', `select count(*)::int as o from public.objectifs where structure = 'NS'`)
+      expect(o).toBe(0)
+      // Les zones des autres structures restent
+      const [{ md }] = await as<{ md: number }>(
+        'admin',
+        `select count(*)::int as md from public.affectations a join public.commerciaux c on c.id = a.commercial_id where c.nom = 'Structure Test'`,
+      )
+      expect(md).toBe(1)
+      await as('admin', `delete from public.commerciaux where nom = 'Structure Test'`)
+    })
+
+    it('un non-admin ne peut ni lire ni modifier les structures', async () => {
+      expect(await as('user', 'select * from public.structures')).toEqual([])
+      await expect(as('user', `insert into public.structures (code, nom) values ('PI', 'Pirate')`)).rejects.toThrow(/row-level security/)
+      await expect(as('anon', `insert into public.structures (code, nom) values ('PI', 'Pirate')`)).rejects.toThrow(/permission denied/)
+      await expect(rpc('user', 'reorder_structures', `array['BK']`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('anon', 'reorder_structures', `array['BK']`)).rejects.toThrow(/permission denied/)
+      expect(await codes()).toEqual(['MD', 'SP', 'MC', 'BK'])
     })
   })
 

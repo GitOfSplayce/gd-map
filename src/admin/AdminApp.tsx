@@ -12,6 +12,7 @@ import ImportExportPage from './ImportExportPage'
 import ManagersPage from './ManagersPage'
 import SynthesePage from './SynthesePage'
 import SettingsPage from './SettingsPage'
+import StructuresPage from './StructuresPage'
 
 export interface AdminDataProps {
   data: MapData
@@ -94,21 +95,22 @@ function AdminLayout({ email }: { email: string }) {
               Commerciaux
             </NavLink>
             <NavLink to="/admin/managers">Managers</NavLink>
+            <NavLink to="/admin/structures">Structures</NavLink>
             <NavLink to="/admin/synthese">Synthèse</NavLink>
-            <NavLink to="/admin/import">Import / export Excel</NavLink>
+            <NavLink to="/admin/import">Import / export</NavLink>
             <NavLink to="/admin/parametres">Paramètres</NavLink>
           </nav>
         }
         actions={
           <>
-            <span className="small muted hide-mobile">{email}</span>
-            <Link className="btn small" to="/">
+            <span className="small muted header-email">{email}</span>
+            <Link className="btn small" to="/" aria-label="Voir la carte">
               <Icon name="map" size={16} />
-              Voir la carte
+              <span className="hide-below-1100">Voir la carte</span>
             </Link>
             <button type="button" className="btn small ghost" onClick={() => void signOut()} title="Déconnexion">
               <Icon name="logout" size={16} />
-              <span className="hide-mobile">Déconnexion</span>
+              <span className="hide-below-1440">Déconnexion</span>
             </button>
           </>
         }
@@ -120,6 +122,7 @@ function AdminLayout({ email }: { email: string }) {
           <Routes>
             <Route index element={<CommerciauxPage data={data} reload={reload} />} />
             <Route path="managers" element={<ManagersPage data={data} reload={reload} />} />
+            <Route path="structures" element={<StructuresPage data={data} reload={reload} />} />
             <Route path="synthese" element={<SynthesePage data={data} reload={reload} />} />
             <Route path="import" element={<ImportExportPage data={data} reload={reload} />} />
             <Route path="parametres" element={<SettingsPage email={email} data={data} reload={reload} />} />

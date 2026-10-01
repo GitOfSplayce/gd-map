@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react'
+
 interface Props {
   checked: boolean
   onChange: (checked: boolean) => void
-  label: string
+  label: ReactNode
   className?: string
 }
 

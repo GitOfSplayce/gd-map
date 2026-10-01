@@ -3,8 +3,8 @@ import { pickDistinctColor } from './colors'
 import type { ImportRow } from './excel'
 import { nameKey } from './text'
 import { formatZoneList } from './parseZones'
+import { structureCodes, type StructureDef } from './structures'
 import {
-  STRUCTURES,
   type Affectation,
   type Commercial,
   type CommercialPayload,
@@ -51,12 +51,12 @@ const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' 
 const same = (a: unknown, b: unknown) => show(a).trim() === show(b).trim()
 
 export function rowAssignments(row: ImportRow): ZoneAssignment[] {
-  return STRUCTURES.flatMap((s) => row.zones[s].map((z) => ({ structure: s, zone_code: z.code, couverture: z.couverture })))
+  return Object.entries(row.zones).flatMap(([s, zones]) => zones.map((z) => ({ structure: s, zone_code: z.code, couverture: z.couverture })))
 }
 
-function compareZones(before: ZoneAssignment[], after: ZoneAssignment[]): ZoneChange[] {
+function compareZones(before: ZoneAssignment[], after: ZoneAssignment[], structures: readonly Structure[]): ZoneChange[] {
   const changes: ZoneChange[] = []
-  for (const s of STRUCTURES) {
+  for (const s of structures) {
     const b = new Map(before.filter((a) => a.structure === s).map((a) => [a.zone_code, a.couverture]))
     const a = new Map(after.filter((x) => x.structure === s).map((x) => [x.zone_code, x.couverture]))
     const added = [...a].filter(([code]) => !b.has(code)).map(([code, c]) => code + SUFFIX[c])
@@ -69,7 +69,7 @@ function compareZones(before: ZoneAssignment[], after: ZoneAssignment[]): ZoneCh
   return changes
 }
 
-function compareFields(row: ImportRow, c: Commercial, objectifs: Objectif[], annee: number): FieldChange[] {
+function compareFields(row: ImportRow, c: Commercial, objectifs: Objectif[], annee: number, structures: readonly Structure[]): FieldChange[] {
   const out: FieldChange[] = []
   const check = (label: string, before: unknown, after: unknown) => {
     if (!same(before, after)) out.push({ label, before: show(before), after: show(after) })
@@ -87,7 +87,7 @@ function compareFields(row: ImportRow, c: Commercial, objectifs: Objectif[], ann
   if (row.couleur !== undefined) check('Couleur', c.couleur, row.couleur)
   if (row.actif !== undefined) check('Actif', c.actif ? 'Oui' : 'Non', row.actif ? 'Oui' : 'Non')
   if (row.notes !== undefined) check('Notes', c.notes, row.notes)
-  for (const s of STRUCTURES) {
+  for (const s of structures) {
     const o = objectifs.find((x) => x.commercial_id === c.id && x.structure === s && x.annee === annee)
     const n = row.objectifs.find((x) => x.structure === s)
     check(`CA ${s} ${annee}`, o?.ca, n?.ca)
@@ -96,7 +96,7 @@ function compareFields(row: ImportRow, c: Commercial, objectifs: Objectif[], ann
   return out
 }
 
-function rowPayload(row: ImportRow, ordre: number, annee: number): CommercialPayload {
+function rowPayload(row: ImportRow, ordre: number, annee: number, structures: readonly Structure[]): CommercialPayload {
   const p: CommercialPayload = {
     nom: row.nom,
     structures: row.structures,
@@ -111,7 +111,7 @@ function rowPayload(row: ImportRow, ordre: number, annee: number): CommercialPay
     ordre,
     affectations: rowAssignments(row),
     // Les CA/objectifs absents du fichier sont effacés pour l'année importée
-    objectifs: STRUCTURES.map((s) => {
+    objectifs: structures.map((s) => {
       const o = row.objectifs.find((x) => x.structure === s)
       return { structure: s, annee, ca: o?.ca ?? null, objectif: o?.objectif ?? null }
     }),
@@ -124,10 +124,11 @@ function rowPayload(row: ImportRow, ordre: number, annee: number): CommercialPay
 
 export function planImport(
   rows: ImportRow[],
-  current: { commerciaux: Commercial[]; affectations: Affectation[]; objectifs: Objectif[] },
+  current: { structures: StructureDef[]; commerciaux: Commercial[]; affectations: Affectation[]; objectifs: Objectif[] },
   mode: ImportMode,
   annee: number,
 ): ImportPlan {
+  const structures = structureCodes(current.structures)
   const byName = new Map(current.commerciaux.map((c) => [nameKey(c.nom), c]))
   const seen = new Set<string>()
   const duplicates: ImportRow[] = []
@@ -143,18 +144,19 @@ export function planImport(
     }
     seen.add(key)
     const existing = byName.get(key)
-    const p = rowPayload(row, i + 1, annee)
+    const p = rowPayload(row, i + 1, annee, structures)
 
     if (!existing) {
       if (!p.couleur) p.couleur = pickDistinctColor(usedColors)
       usedColors.push(p.couleur)
-      items.push({ kind: 'add', nom: row.nom, row, fields: [], zones: compareZones([], p.affectations!) })
+      items.push({ kind: 'add', nom: row.nom, row, fields: [], zones: compareZones([], p.affectations!, structures) })
     } else {
       p.id = existing.id
-      const fields = compareFields(row, existing, current.objectifs, annee)
+      const fields = compareFields(row, existing, current.objectifs, annee, structures)
       const zones = compareZones(
         current.affectations.filter((a) => a.commercial_id === existing.id),
         p.affectations!,
+        structures,
       )
       items.push({
         kind: fields.length || zones.length ? 'update' : 'unchanged',
@@ -179,7 +181,7 @@ export function planImport(
         nom: c.nom,
         existing: c,
         fields: [],
-        zones: STRUCTURES.filter((s) => own.some((a) => a.structure === s)).map((s) => ({
+        zones: structures.filter((s) => own.some((a) => a.structure === s)).map((s) => ({
           structure: s,
           added: [],
           removed: formatZoneList(own.filter((a) => a.structure === s)).split(', '),

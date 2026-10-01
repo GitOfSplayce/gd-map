@@ -847,6 +847,11 @@ td.managers .muted { display: inline-block; width: 12px; font-size: 11px; font-w
 .zone-summary { display: flex; flex-direction: column; gap: 3px; }
 .zone-summary > div { display: flex; align-items: baseline; gap: 8px; }
 .struct-tag { flex: none; padding: 1px 6px; border-radius: 5px; background: var(--saphir-50); color: var(--saphir); font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.code-input { width: 92px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.code-input[aria-invalid='true'] { border-color: var(--warning); }
+.field-issue { margin-top: 4px; color: var(--warning); }
+.col-order { width: 76px; }
+.order-btns { display: flex; gap: 2px; }
 .zone-text { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 
 .drawer-backdrop { position: fixed; inset: 0; z-index: 49; background: rgb(20 53 111 / 22%); animation: fade-in 0.15s ease-out; }
@@ -1167,6 +1172,18 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 
 /* ---------- Petits écrans ---------- */
 
+/* En-tête de l'admin : l'e-mail (aussi dans Paramètres) puis les libellés des boutons laissent la place aux onglets */
+@media (max-width: 1500px) {
+  .header-email { display: none; }
+}
+@media (max-width: 1440px) {
+  .admin-shell .topbar .tabs a { padding-left: 10px; padding-right: 10px; }
+  .hide-below-1440 { display: none; }
+}
+@media (max-width: 1100px) {
+  .hide-below-1100 { display: none; }
+}
+
 @media (max-width: 1100px) {
   .brand .brand-logo { display: none; }
   .brand .brand-mark { display: block; }
@@ -1175,7 +1192,8 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 
 /* Panneau du bas (mobile) : éléments masqués sur grand écran */
 .sheet-handle,
-.sheet-toggle { display: none; }
+.sheet-toggle,
+.show-mobile { display: none; }
 
 @media (max-width: 900px) {
   /* La carte occupe tout l'écran visible (dvh : tient compte des barres du navigateur) */
@@ -1217,6 +1235,7 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   .toolbar .seg::-webkit-scrollbar { display: none; }
   .toolbar .seg button { flex: none; }
   .hide-mobile { display: none !important; }
+  .show-mobile { display: inline; }
   .map-controls { top: 12px; bottom: auto; flex-direction: row; }
   .map-controls button + button { border-top: 0; border-left: 1px solid var(--border); }
   .brand .brand-name small { display: none; }

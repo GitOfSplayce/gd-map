@@ -20,9 +20,10 @@ export default function HelpPage() {
         <section>
           <h1>Utiliser la carte</h1>
           <p>
-            La carte montre les secteurs des commerciaux du groupe : <strong>MD</strong> (Maison Davoise), <strong>SP</strong>{' '}
-            (Splayce), <strong>MC</strong> (MaucoCartex) et <strong>BK</strong> (BK Event). L'onglet <em>Globale</em> réunit
-            toutes les structures.
+            La carte montre les secteurs des commerciaux du groupe, avec un onglet par structure (<strong>MD</strong> Maison
+            Davoise, <strong>SP</strong> Splayce, <strong>MC</strong> MaucoCartex, <strong>BK</strong> BK Event…). L'onglet{' '}
+            <em>Globale</em> réunit toutes les structures. Les admins ajoutent, renomment ou réordonnent les structures dans
+            l'onglet <em>Structures</em> de l'admin.
           </p>
           <ul>
             <li>
@@ -164,11 +165,12 @@ export default function HelpPage() {
           <h2>Import Excel</h2>
           <p>
             Onglet <code>V3</code> par défaut, en-têtes en ligne 3. Les colonnes sont reconnues par leur nom :{' '}
-            <code>Nom</code>, <code>MD</code> <code>SP</code> <code>MC</code> <code>BK</code> (« X » = appartient à la
-            structure), <code>Statut</code>, <code>Manager 1</code>, <code>Manager 2</code>, <code>DPT MD</code>…
-            <code>DPT BK</code>, et en option <code>Nb de jour / an</code>, <code>Date 1</code>, <code>Date 2</code>,{' '}
+            <code>Nom</code>, une colonne par structure (<code>MD</code>, <code>SP</code>… : « X » = appartient à la
+            structure), <code>Statut</code>, <code>Manager 1</code>, <code>Manager 2</code>, <code>DPT MD</code>,{' '}
+            <code>DPT SP</code>…, et en option <code>Nb de jour / an</code>, <code>Date 1</code>, <code>Date 2</code>,{' '}
             <code>Actions</code>, <code>Région</code>, <code>CA MD</code>, <code>Objectif MD</code>… Une ligne sans nom est
-            ignorée.
+            ignorée. Pour une nouvelle structure, créez-la d'abord dans l'admin (onglet <em>Structures</em>) : ses colonnes
+            sont ensuite lues à l'import et ajoutées à l'export.
           </p>
           <ul>
             <li>

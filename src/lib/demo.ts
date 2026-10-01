@@ -3,10 +3,11 @@
 import sampleUrl from '../../exemples/exemple-import.xlsx?url'
 import { parseSheet, readWorkbook } from './excel'
 import { planImport, type ImportPlan } from './importDiff'
+import { DEFAULT_STRUCTURES, structureCodes, type StructureDef } from './structures'
 import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData } from './types'
 
 /** Données telles qu'elles seraient en base après l'import du plan (identifiants fictifs). */
-export function planToMapData(plan: ImportPlan): MapData {
+export function planToMapData(plan: ImportPlan, structures: StructureDef[] = DEFAULT_STRUCTURES): MapData {
   const commerciaux = plan.payload.map((p, i) => ({
     id: `demo-${i}`,
     nom: p.nom!,
@@ -29,6 +30,7 @@ export function planToMapData(plan: ImportPlan): MapData {
     .map((nom) => ({ nom, couleur: null }))
   return {
     admin: false,
+    structures,
     commerciaux,
     managers,
     affectations: plan.payload.flatMap((p, i) => p.affectations!.map((a, j) => ({ ...a, id: `demo-${i}-${j}`, commercial_id: `demo-${i}` }))),
@@ -41,8 +43,9 @@ export function planToMapData(plan: ImportPlan): MapData {
 
 export async function loadDemoData(): Promise<MapData> {
   const buf = await (await fetch(sampleUrl)).arrayBuffer()
-  const { rows } = parseSheet(readWorkbook(buf), 'V3')
-  const plan = planImport(rows, { commerciaux: [], affectations: [], objectifs: [] }, 'replace', new Date().getFullYear())
+  const { rows } = parseSheet(readWorkbook(buf), 'V3', structureCodes(DEFAULT_STRUCTURES))
+  const empty = { structures: DEFAULT_STRUCTURES, commerciaux: [], affectations: [], objectifs: [] }
+  const plan = planImport(rows, empty, 'replace', new Date().getFullYear())
   return planToMapData(plan)
 }
 
@@ -128,6 +131,35 @@ export async function demoDeleteManager(nom: string) {
     if (c.manager2 === nom) c.manager2 = null
   }
   s.managers = s.managers.filter((m) => m.nom !== nom)
+}
+
+export async function demoCreateStructure(def: StructureDef) {
+  const s = await getStore()
+  if (s.structures.some((x) => x.code === def.code)) throw new Error('Une structure porte déjà ce code.')
+  s.structures = [...s.structures, def]
+}
+
+export async function demoUpdateStructure(code: string, patch: { code: string; nom: string }) {
+  const s = await getStore()
+  if (patch.code !== code && s.structures.some((x) => x.code === patch.code)) throw new Error('Une structure porte déjà ce code.')
+  s.structures = s.structures.map((x) => (x.code === code ? { ...x, ...patch } : x))
+  if (patch.code === code) return
+  for (const c of s.commerciaux) c.structures = c.structures.map((x) => (x === code ? patch.code : x))
+  for (const a of s.affectations) if (a.structure === code) a.structure = patch.code
+  for (const o of s.objectifs) if (o.structure === code) o.structure = patch.code
+}
+
+export async function demoDeleteStructure(code: string) {
+  const s = await getStore()
+  s.structures = s.structures.filter((x) => x.code !== code)
+  for (const c of s.commerciaux) c.structures = c.structures.filter((x) => x !== code)
+  s.affectations = s.affectations.filter((a) => a.structure !== code)
+  s.objectifs = s.objectifs.filter((o) => o.structure !== code)
+}
+
+export async function demoReorderStructures(codes: string[]) {
+  const s = await getStore()
+  s.structures = s.structures.map((x) => (codes.includes(x.code) ? { ...x, ordre: codes.indexOf(x.code) + 1 } : x))
 }
 
 export async function demoSetDefaultSharedMode(mode: DisplaySettings['default_shared_mode']) {

@@ -1,9 +1,9 @@
 # Carte commerciale Groupe
 
-Cartographie des secteurs commerciaux du groupe : **MD** (Maison Davoise), **SP** (Splayce), **MC** (MaucoCartex) et **BK** (BK Event).
+Cartographie des secteurs commerciaux du groupe, par structure : **MD** (Maison Davoise), **SP** (Splayce), **MC** (MaucoCartex) et **BK** (BK Event) au départ ; les admins ajoutent les suivantes dans l'admin (onglet *Structures*).
 
 - **Consultation** : protégée par un code d'accès. On envoie le lien et le code séparément.
-- **Administration** (`/admin`, e-mail + mot de passe) : saisie des commerciaux et de leurs zones, import et export du fichier Excel, gestion du code, des admins et de l'affichage par défaut des zones partagées.
+- **Administration** (`/admin`, e-mail + mot de passe) : saisie des commerciaux et de leurs zones, managers, structures, import et export du fichier Excel, gestion du code, des admins et de l'affichage par défaut des zones partagées.
 
 Stack : Vite + React + TypeScript, carte en D3 + SVG, Supabase (Postgres, Auth, RLS, Edge Function), SheetJS pour l'Excel dans le navigateur. Hébergement sur GitHub Pages, déployé par GitHub Actions.
 
@@ -61,7 +61,7 @@ Le workflow `keepalive.yml` appelle la base deux fois par semaine pour éviter l
 
 ### Carte
 
-- Onglets **Globale / MD / SP / MC / BK** ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
+- Onglets **Globale** puis un par structure (MD, SP, MC, BK…, dans l'ordre choisi dans l'admin) ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
 - Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
 - **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
 - **CA et objectifs** (admins connectés uniquement) : saisie par structure et par année dans le panneau d'un commercial ou par l'Excel ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
@@ -79,12 +79,14 @@ Onglet `V3` par défaut, en-têtes en ligne 3. Les colonnes sont **repérées pa
 | Colonne | Contenu |
 |---|---|
 | `Nom` | nom du commercial (vide = ligne ignorée) |
-| `MD`, `SP`, `MC`, `BK` | « X » = appartient à la structure |
+| une colonne par structure : `MD`, `SP`, `MC`, `BK`… | « X » = appartient à la structure |
 | `Statut`, `Manager 1`, `Manager 2` | texte |
-| `DPT MD`, `DPT SP`, `DPT MC`, `DPT BK` | liste de zones |
-| `CA MD`, `Objectif MD` … `CA BK`, `Objectif BK` | nombres, facultatifs (année choisie à l'import) |
+| `DPT MD`, `DPT SP`… (une par structure) | liste de zones |
+| `CA MD`, `Objectif MD`… (par structure) | nombres, facultatifs (année choisie à l'import) |
 | `Nb de jour / an`, `Date 1`, `Date 2`, `Actions`, `Région` | facultatifs, conservés pour l'export |
 | `Couleur`, `Actif`, `Notes` | facultatifs, ajoutés par l'export |
+
+Les colonnes d'une structure sont celles de son code (onglet *Structures* de l'admin) : une structure créée dans l'admin est lue à l'import et ajoutée à l'export. Une colonne `DPT XY` dont la structure n'existe pas est ignorée et signalée dans l'aperçu.
 
 Lecture des listes de zones (`src/lib/parseZones.ts`) :
 
@@ -117,7 +119,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 src/
   pages/        MapPage (carte), CodeGate (code d'accès), HelpPage (/aide)
   components/   MapView (D3 : projections, encarts, zones partagées, zoom), légende, filtres, infobulle, panneau
-  admin/        connexion, liste modifiable, import/export Excel, paramètres
+  admin/        connexion, commerciaux, managers, structures, synthèse, import/export Excel, paramètres
   lib/          parseZones (listes de zones), excel (lecture/écriture), importDiff (aperçu),
                 mapModel (couleurs, zones partagées, filtres), zones (référentiel), api (Supabase)
 public/geo/     contours GeoJSON : départements + DROM, détail Île-de-France, arrondissements, Monaco

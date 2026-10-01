@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FILTERS, HEAT_BUCKETS, buildMapModel, heatBucketOf } from './mapModel'
 import { agree, plural } from './text'
+import { DEFAULT_STRUCTURES } from './structures'
 import type { Affectation, Commercial, Couverture, MapData, Structure } from './types'
 
 const commercial = (id: string, structures: Structure[] = ['MD']): Commercial => ({
@@ -27,6 +28,7 @@ const aff = (commercial_id: string, zone_code: string, couverture: Couverture = 
 
 const data = (affectations: Affectation[], commerciaux = ['A', 'B', 'C'].map((id) => commercial(id, ['MD', 'SP']))): MapData => ({
   admin: false,
+  structures: DEFAULT_STRUCTURES,
   commerciaux,
   managers: [],
   affectations,

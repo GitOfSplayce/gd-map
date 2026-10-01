@@ -11,7 +11,8 @@ import { isARecruter } from '../lib/mapModel'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
 import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
-import { STRUCTURE_LABELS, STRUCTURES, type Commercial, type CommercialPayload, type MapData, type Structure } from '../lib/types'
+import { structureCodes, structureName } from '../lib/structures'
+import type { Commercial, CommercialPayload, MapData, Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
 import ZoneAssistant from './ZoneAssistant'
 import ZoneInput from './ZoneInput'
@@ -55,8 +56,14 @@ const objectifsDraft = (c: Commercial, data: MapData): Draft['objectifs'] => {
 
 const zoneTexts = (c: Commercial, data: MapData) => {
   const own = data.affectations.filter((a) => a.commercial_id === c.id)
-  return Object.fromEntries(STRUCTURES.map((s) => [s, formatZoneList(own.filter((a) => a.structure === s))])) as Record<Structure, string>
+  return Object.fromEntries(structureCodes(data.structures).map((s) => [s, formatZoneList(own.filter((a) => a.structure === s))])) as Record<
+    Structure,
+    string
+  >
 }
+
+/** Texte des zones d'une structure (vide si la structure vient d'être créée). */
+const zonesText = (d: Draft, s: Structure) => d.zones[s] ?? ''
 
 function toDraft(c: Commercial, data: MapData): Draft {
   return {
@@ -80,9 +87,9 @@ function toDraft(c: Commercial, data: MapData): Draft {
   }
 }
 
-function toPayload(d: Draft): CommercialPayload {
-  const affectations = STRUCTURES.flatMap((s) =>
-    parseZoneList(d.zones[s]).zones.map((z) => ({ structure: s, zone_code: z.code, couverture: z.couverture })),
+function toPayload(d: Draft, codes: readonly Structure[]): CommercialPayload {
+  const affectations = codes.flatMap((s) =>
+    parseZoneList(zonesText(d, s)).zones.map((z) => ({ structure: s, zone_code: z.code, couverture: z.couverture })),
   )
   const jours = d.jours_an.trim() === '' ? null : Number(d.jours_an.replace(',', '.'))
   return {
@@ -94,7 +101,7 @@ function toPayload(d: Draft): CommercialPayload {
     couleur: d.couleur,
     actif: d.actif,
     notes: d.notes,
-    structures: STRUCTURES.filter((s) => d.structures.includes(s) || d.zones[s].trim() !== ''),
+    structures: effectiveStructures(d, codes),
     jours_an: jours !== null && Number.isFinite(jours) ? jours : null,
     date_manager1: d.date_manager1,
     date_manager2: d.date_manager2,
@@ -114,11 +121,11 @@ function toPayload(d: Draft): CommercialPayload {
   }
 }
 
-function validate(d: Draft): string | null {
+function validate(d: Draft, codes: readonly Structure[]): string | null {
   if (!d.nom.trim()) return 'Le nom est obligatoire.'
   if (!isHexColor(d.couleur)) return 'Couleur invalide.'
-  for (const s of STRUCTURES) {
-    const bad = parseZoneList(d.zones[s]).issues.filter((i) => i.level === 'error')
+  for (const s of codes) {
+    const bad = parseZoneList(zonesText(d, s)).issues.filter((i) => i.level === 'error')
     if (bad.length === 1) return `Zones ${s} : « ${bad[0].raw} » n'est pas une zone connue.`
     if (bad.length > 1) return `Zones ${s} : ${bad.map((i) => `« ${i.raw} »`).join(', ')} ne sont pas des zones connues.`
   }
@@ -143,6 +150,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 ]
 
 export default function CommerciauxPage({ data, reload }: AdminDataProps) {
+  const codes = useMemo(() => structureCodes(data.structures), [data.structures])
   const [search, setSearch] = useState('')
   const [structureFilter, setStructureFilter] = useState<Structure | 'ALL'>('ALL')
   const [showInactive, setShowInactive] = useState(true)
@@ -185,7 +193,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
       actions: '',
       secteur: '',
       ordre: Math.max(0, ...data.commerciaux.map((c) => c.ordre)) + 1,
-      zones: { MD: '', SP: '', MC: '', BK: '' },
+      zones: Object.fromEntries(codes.map((s) => [s, ''])),
       objectifs: {},
     })
 
@@ -223,7 +231,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
           <input className="input" type="search" placeholder="Rechercher (nom, manager, zone…)" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="seg">
-          {(['ALL', ...STRUCTURES] as const).map((s) => (
+          {['ALL', ...codes].map((s) => (
             <button key={s} type="button" aria-pressed={structureFilter === s} onClick={() => setStructureFilter(s)}>
               {s === 'ALL' ? 'Toutes' : s}
             </button>
@@ -299,13 +307,13 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                   </td>
                   <td>
                     <div className="zone-summary">
-                      {STRUCTURES.filter((s) => c.structures.includes(s) || z[s]).map((s) => (
+                      {codes.filter((s) => c.structures.includes(s) || z[s]).map((s) => (
                         <div key={s}>
                           <span className="struct-tag">{s}</span>
                           <span className={z[s] ? 'zone-text' : 'zone-text muted'}>{z[s] || 'aucune zone'}</span>
                         </div>
                       ))}
-                      {!c.structures.length && !STRUCTURES.some((s) => z[s]) && <span className="muted">—</span>}
+                      {!c.structures.length && !codes.some((s) => z[s]) && <span className="muted">—</span>}
                     </div>
                   </td>
                   <td className="col-actions">
@@ -364,10 +372,11 @@ interface DrawerProps {
 }
 
 /** Structures effectives : cochées, ou ayant des zones saisies. */
-const effectiveStructures = (d: Draft) => STRUCTURES.filter((s) => d.structures.includes(s) || parseZoneList(d.zones[s]).zones.length > 0)
+const effectiveStructures = (d: Draft, codes: readonly Structure[]) =>
+  codes.filter((s) => d.structures.includes(s) || parseZoneList(zonesText(d, s)).zones.length > 0)
 
 /** Forme comparable d'un formulaire : espaces, format des zones et casse de la couleur n'en font pas une modification. */
-function fingerprint(d: Draft): string {
+function fingerprint(d: Draft, codes: readonly Structure[]): string {
   const t = (v: string) => v.trim().replace(/\s+/g, ' ')
   return JSON.stringify({
     nom: t(d.nom),
@@ -377,7 +386,7 @@ function fingerprint(d: Draft): string {
     couleur: d.couleur.toLowerCase(),
     actif: d.actif,
     notes: d.notes.trim(),
-    structures: effectiveStructures(d),
+    structures: effectiveStructures(d, codes),
     jours_an: d.jours_an.trim() === '' ? null : Number(d.jours_an.replace(',', '.')),
     date_manager1: t(d.date_manager1),
     date_manager2: t(d.date_manager2),
@@ -389,8 +398,8 @@ function fingerprint(d: Draft): string {
       )
       .filter(([, , ca, obj]) => ca !== null || obj !== null)
       .sort((a, b) => String(a).localeCompare(String(b))),
-    zones: STRUCTURES.map((s) =>
-      formatZoneList(parseZoneList(d.zones[s]).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))),
+    zones: codes.map((s) =>
+      formatZoneList(parseZoneList(zonesText(d, s)).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))),
     ),
   })
 }
@@ -402,9 +411,10 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
   const [error, setError] = useState<string | null>(null)
   const [assistantFor, setAssistantFor] = useState<Structure | null>(null)
   const confirm = useConfirm()
+  const codes = useMemo(() => structureCodes(data.structures), [data.structures])
 
-  const initial = useMemo(() => fingerprint(draft), [draft])
-  const dirty = fingerprint(d) !== initial
+  const initial = useMemo(() => fingerprint(draft, codes), [draft, codes])
+  const dirty = fingerprint(d, codes) !== initial
 
   const statutOptions = useMemo(() => {
     const list = [...new Set(['VRP', 'Agent commercial', 'ATC', 'À recruter', ...data.commerciaux.map((c) => c.statut ?? '')].filter(Boolean))]
@@ -450,11 +460,11 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    const problem = validate(d)
+    const problem = validate(d, codes)
     if (problem) return setError(problem)
     setSaving(true)
     try {
-      await saveCommercial({ ...toPayload(d), structures: effectiveStructures(d) })
+      await saveCommercial(toPayload(d, codes))
       await onSaved(d.nom.trim(), !d.id)
     } catch (err) {
       setError((err as Error).message)
@@ -463,7 +473,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
     }
   }
 
-  const structures = effectiveStructures(d)
+  const structures = effectiveStructures(d, codes)
 
   return (
     <>
@@ -544,8 +554,8 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                 l'assistant.
               </p>
               <div className="stack" style={{ gap: 12 }}>
-                {STRUCTURES.map((s) => {
-                  const hasZones = parseZoneList(d.zones[s]).zones.length > 0
+                {codes.map((s) => {
+                  const hasZones = parseZoneList(zonesText(d, s)).zones.length > 0
                   return (
                     <div key={s} className={'struct-block' + (structures.includes(s) ? ' on' : '')}>
                       <div className="struct-head">
@@ -557,14 +567,14 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                             onChange={() => set({ structures: d.structures.includes(s) ? d.structures.filter((x) => x !== s) : [...d.structures, s] })}
                           />
                           <span className="struct-tag">{s}</span>
-                          <span>{STRUCTURE_LABELS[s]}</span>
+                          <span>{structureName(data.structures, s)}</span>
                         </label>
                         <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
                           <Icon name="map" size={15} />
                           Assistant
                         </button>
                       </div>
-                      <ZoneInput value={d.zones[s]} onChange={(v) => set({ zones: { ...d.zones, [s]: v } })} label={`Zones ${s}`} />
+                      <ZoneInput value={zonesText(d, s)} onChange={(v) => set({ zones: { ...d.zones, [s]: v } })} label={`Zones ${s}`} />
                     </div>
                   )
                 })}
@@ -633,8 +643,8 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
 
       {assistantFor && (
         <ZoneAssistant
-          title={`Zones ${assistantFor} (${STRUCTURE_LABELS[assistantFor]}) – ${d.nom.trim() || 'nouveau commercial'}`}
-          value={d.zones[assistantFor]}
+          title={`Zones ${assistantFor} (${structureName(data.structures, assistantFor)}) – ${d.nom.trim() || 'nouveau commercial'}`}
+          value={zonesText(d, assistantFor)}
           onApply={(text) => set({ zones: { ...d.zones, [assistantFor]: text } })}
           onClose={() => setAssistantFor(null)}
         />
