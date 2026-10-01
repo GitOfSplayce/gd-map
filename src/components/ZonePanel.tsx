@@ -1,7 +1,7 @@
 import type { MapModel } from '../lib/mapModel'
 import Icon from './Icon'
 import { COUVERTURE_LABELS, STRUCTURE_LABELS, STRUCTURES } from '../lib/types'
-import { formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
+import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
 import { IDF_CODES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 import type { MapViewMode } from './MapView'
 
@@ -23,6 +23,15 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
     <div className="zone-panel">
       <p className="zp-title">{title}</p>
       <div className="zp-meta">{subtitle}</div>
+
+      {model.colorMode === 'couverture' && (
+        <div className="zp-cov">
+          <span className="swatch" style={{ background: model.coverageOf(code).bucket.color }} />
+          <span>
+            <strong>Couverture</strong> : {coverageText(code, model)}
+          </span>
+        </div>
+      )}
 
       {view === 'france' && (code === '75' || isParisArr(code)) && (
         <button type="button" className="btn small" onClick={() => onChangeView('paris')}>

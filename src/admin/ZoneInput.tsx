@@ -19,7 +19,7 @@ export default function ZoneInput({ value, onChange, label }: Props) {
         className="input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="22, 35P, 75-7"
+        placeholder="ex. 22, 35P, 75-7"
         aria-label={label}
         aria-invalid={parsed.issues.some((i) => i.level === 'error')}
         spellCheck={false}

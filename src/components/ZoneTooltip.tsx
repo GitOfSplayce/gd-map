@@ -1,6 +1,7 @@
 import type { MapModel } from '../lib/mapModel'
+import { plural } from '../lib/text'
 import { COUVERTURE_LABELS } from '../lib/types'
-import { formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
+import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
 
 interface Props {
   code: string
@@ -24,6 +25,12 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
     <div className="tooltip" style={{ left, top }} role="tooltip">
       <div className="t-title">{title}</div>
       <div className="t-sub">{subtitle}</div>
+      {model.colorMode === 'couverture' && (
+        <div className="t-cov">
+          <span className="swatch" style={{ background: model.coverageOf(code).bucket.color }} />
+          {coverageText(code, model)}
+        </div>
+      )}
       {!people.length && <div className="t-empty">Aucun commercial sur cette zone</div>}
       {shown.map((p) => (
         <div className="t-row" key={p.commercial.id + p.structure}>
@@ -44,7 +51,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
           </div>
         </div>
       ))}
-      {people.length > shown.length && <div className="t-meta">… et {people.length - shown.length} autre(s), cliquez pour le détail</div>}
+      {people.length > shown.length && <div className="t-meta">… et {plural(people.length - shown.length, 'autre')}, cliquez pour le détail</div>}
     </div>
   )
 }

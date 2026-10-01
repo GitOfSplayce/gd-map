@@ -15,8 +15,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import polylabel from 'polylabel'
 import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
-import { blendWithWhite, readableTextColor } from '../lib/colors'
-import type { MapModel, ZoneStyle } from '../lib/mapModel'
+import { blendWithWhite, mixColors, readableTextColor } from '../lib/colors'
+import type { MapModel, SharedMode, ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
 export type MapViewMode = 'france' | 'idf' | 'paris'
@@ -152,7 +152,7 @@ function computeLayout(view: MapViewMode, geo: GeoData, w: number, h: number): L
       const feature = (code === MONACO_CODE ? geo.monaco.features[0] : deps.find((f) => f.properties.code === code)) as ZoneFeature
       const ip = geoMercator().fitExtent([[b.x + 6, b.y + 18], [b.x + b.w - 6, b.y + b.h - 6]], feature as GeoPermissibleObjects)
       const nom = ZONE_BY_CODE.get(code)?.nom ?? code
-      return { ...b, code, title: `${nom} (${code})`, shape: toShape(feature, geoPath(ip), ip, null) }
+      return { ...b, code, title: `${nom} (${code})`, shape: toShape(feature, geoPath(ip), ip, b) }
     })
 
     return { main, shapes: metro.map((f) => toShape(f, path, proj, main)), insets, marker: { code: MONACO_CODE, x: mx, y: my } }
@@ -197,10 +197,23 @@ export interface MapViewProps {
   onSelect: (code: string) => void
   /** Clic à côté des zones (fond de carte, cadre d'un encart) : sert à tout désélectionner. */
   onBackground: () => void
+  sharedMode: SharedMode
   onSvg: (el: SVGSVGElement | null) => void
 }
 
-export default function MapView({ view, geo, model, highlighted, selected, showLabels, onHover, onSelect, onBackground, onSvg }: MapViewProps) {
+export default function MapView({
+  view,
+  geo,
+  model,
+  highlighted,
+  selected,
+  showLabels,
+  onHover,
+  onSelect,
+  onBackground,
+  sharedMode,
+  onSvg,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const innerSvg = useRef<SVGSVGElement | null>(null)
   const layerRef = useRef<SVGGElement>(null)
@@ -294,28 +307,49 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
     onClick: () => onSelect(code),
   })
 
-  const outlinePath = (code: string, d: string, key: string) => {
-    const outline = styles.get(code)?.outline
-    if (!outline) return null
+  // Zones partagées en camemberts : rayon en pixels écran, selon la place disponible dans la zone
+  const pieRadius = (s: Shape) => (s.anchor ? clamp(s.anchor.room * 0.7, 6, 11) : 0)
+  const hasPie = (s: Shape) =>
+    sharedMode === 'camemberts' && Boolean(styles.get(s.code)?.slices) && s.anchor !== null && s.anchor.room >= 6
+
+  const pieFor = (s: Shape, k: number) => {
+    if (!hasPie(s)) return null
+    const slices = styles.get(s.code)!.slices!
+    const r = pieRadius(s) / k
+    const { x, y } = s.anchor!
+    const step = (2 * Math.PI) / slices.length
     return (
-      <path
-        key={key}
-        d={d}
-        fill="none"
-        stroke={outline.color}
-        strokeWidth={2.4}
-        strokeDasharray="7 4"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-        pointerEvents="none"
-      />
+      <g key={'pie-' + s.code} pointerEvents="none">
+        <circle cx={x} cy={y} r={r + 1.6 / k} fill="#ffffff" />
+        {slices.map((sl, i) => {
+          const a0 = -Math.PI / 2 + i * step
+          const a1 = a0 + step
+          const large = step > Math.PI ? 1 : 0
+          const [x0, y0] = [x + r * Math.cos(a0), y + r * Math.sin(a0)]
+          const [x1, y1] = [x + r * Math.cos(a1), y + r * Math.sin(a1)]
+          return (
+            <path
+              key={i}
+              d={`M${x},${y}L${x0},${y0}A${r},${r} 0 ${large} 1 ${x1},${y1}Z`}
+              fill={sl.color}
+              fillOpacity={Math.max(sl.opacity, 0.35)}
+              stroke="#ffffff"
+              strokeWidth={0.8}
+              vectorEffect="non-scaling-stroke"
+            />
+          )
+        })}
+      </g>
     )
   }
 
   const isSelected = (code: string) => selected === code || (selected === '75' && isParisArr(code))
 
-  const zonePath = (code: string, d: string, key?: string) => {
-    const st = styles.get(code)!
+  const zonePath = (code: string, d: string, key?: string, shape?: Shape) => {
+    const base = styles.get(code)!
+    // En mode camemberts, la zone partagée reste claire : le camembert porte les couleurs
+    const st =
+      shape && hasPie(shape) ? { ...base, fill: mixColors(base.slices!.map((sl) => sl.color)), fillOpacity: base.fillOpacity * 0.3 } : base
     return (
       <path
         key={key ?? code}
@@ -373,13 +407,14 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
           <g clipPath="url(#main-clip)">
             <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} fill="transparent" onClick={onBackground} />
             <g ref={layerRef}>
-              {layout.shapes.map((s) => zonePath(s.code, s.d))}
+              {layout.shapes.map((s) => zonePath(s.code, s.d, undefined, s))}
 
-              {/* Contours « gestion » puis zone sélectionnée, dessinés au-dessus des voisines */}
-              {layout.shapes.map((s) => outlinePath(s.code, s.d, 'out-' + s.code))}
+              {/* Contour de la zone sélectionnée, dessiné au-dessus des voisines */}
               {layout.shapes.filter((s) => isSelected(s.code)).map((s) => (
                 <path key={'sel-' + s.code} d={s.d} fill="none" stroke="#111" strokeWidth={2.4} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               ))}
+
+              {layout.shapes.map((s) => pieFor(s, k))}
 
               {layout.marker && (
                 <circle
@@ -407,7 +442,7 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
                         key={s.code}
                         className="zone-label"
                         x={s.anchor!.x}
-                        y={s.anchor!.y}
+                        y={s.anchor!.y + (hasPie(s) ? (pieRadius(s) + labelSize * 0.8) / k : 0)}
                         fill={c.text}
                         stroke={c.halo}
                         strokeWidth={2.5}
@@ -429,8 +464,8 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
               <text x={inset.x + 7} y={inset.y + 12} fontSize={10} fill="#5b6475" style={{ fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 600 }}>
                 {inset.title}
               </text>
-              {zonePath(inset.code, inset.shape.d, `inset-${inset.code}`)}
-              {outlinePath(inset.code, inset.shape.d, `inset-out-${inset.code}`)}
+              {zonePath(inset.code, inset.shape.d, `inset-${inset.code}`, inset.shape)}
+              {pieFor(inset.shape, 1)}
               {isSelected(inset.code) && <path d={inset.shape.d} fill="none" stroke="#111" strokeWidth={2.4} pointerEvents="none" />}
             </g>
           ))}

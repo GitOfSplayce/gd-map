@@ -63,11 +63,13 @@ Le workflow `keepalive.yml` appelle la base deux fois par semaine pour éviter l
 
 - Onglets **Globale / MD / SP / MC / BK** ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
 - Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
-- **Propre** = plein, **Partiel** = atténué, **Gestion** = clair avec contour pointillé. Zone partagée = rayures aux couleurs de chacun.
+- **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée : rayures aux couleurs de chacun, ou camemberts (choix dans la légende).
+- Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
 - Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail.
 - Filtres (manager, commercial, couverture, statut, « masquer les À recruter »), légende cliquable, export PNG.
-- L'adresse garde l'onglet, la vue et le mode de couleur (`?onglet=MD&vue=paris&couleur=manager1`).
+- L'adresse garde l'onglet, la vue, le mode de couleur et l'affichage des zones partagées (`?onglet=MD&vue=paris&couleur=couverture&partage=camemberts`).
+- Charte graphique GDCom 2023 : couleurs, Montserrat (auto-hébergée), logotype officiel.
 
 ### Format Excel
 

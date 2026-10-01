@@ -59,3 +59,12 @@ export function zoneTitle(code: string): { title: string; subtitle: string } {
 
 const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 export const formatEuros = (n: number | null | undefined) => (n === null || n === undefined ? '—' : euros.format(n))
+
+const scoreFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 })
+
+/** « Couverte · score 1,5 (2 commerciaux) » pour la carte de chaleur. */
+export function coverageText(code: string, model: MapModel): string {
+  const c = model.coverageOf(code)
+  const people = c.people === 0 ? 'aucun commercial' : c.people === 1 ? '1 commercial' : `${c.people} commerciaux`
+  return `${c.bucket.label} · score ${scoreFormat.format(c.score)} (${people})`
+}

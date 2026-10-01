@@ -1,5 +1,8 @@
 // Couleurs : attribution automatique de couleurs bien distinctes, et couleurs des managers.
 
+/** Couleurs de la charte GDCom 2023. */
+export const BRAND = { saphir: '#1A428A', jaune: '#F5A800', azurin: '#95D4E9', grisNoir: '#3C3C3B' }
+
 export const isHexColor = (s: string) => /^#[0-9a-f]{6}$/i.test(s)
 
 // Palette catégorielle lisible en aplat comme en opacité réduite (pas de teintes trop claires).
@@ -87,6 +90,14 @@ export function managerColors(names: string[]): Map<string, string> {
 export function shade(hex: string, amount: number): string {
   const [r, g, b] = hexToRgb(hex)
   return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount))
+}
+
+/** Moyenne de plusieurs couleurs (teinte de fond d'une zone partagée en mode camemberts). */
+export function mixColors(colors: string[]): string {
+  const rgbs = colors.filter(isHexColor).map(hexToRgb)
+  if (!rgbs.length) return '#ffffff'
+  const avg = (i: number) => rgbs.reduce((sum, c) => sum + c[i], 0) / rgbs.length
+  return rgbToHex(avg(0), avg(1), avg(2))
 }
 
 /** Couleur obtenue en posant `hex` avec l'opacité donnée sur un fond blanc. */

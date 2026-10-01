@@ -12,7 +12,16 @@ import { useAdminSession } from '../hooks/useAdminSession'
 import { useGeo } from '../hooks/useGeo'
 import { useMapAccess } from '../hooks/useMapAccess'
 import { exportMapPng } from '../lib/exportPng'
-import { DEFAULT_FILTERS, activeFilterCount, buildMapModel, type ColorMode, type Filters, type Tab } from '../lib/mapModel'
+import {
+  DEFAULT_FILTERS,
+  activeFilterCount,
+  buildMapModel,
+  type ColorMode,
+  type Filters,
+  type SharedMode,
+  type Tab,
+} from '../lib/mapModel'
+import { plural } from '../lib/text'
 import { STRUCTURE_LABELS, STRUCTURES, type MapData } from '../lib/types'
 import CodeGate from './CodeGate'
 
@@ -29,7 +38,9 @@ const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'commercial', label: 'Commercial' },
   { key: 'manager1', label: 'Manager 1' },
   { key: 'manager2', label: 'Manager 2' },
+  { key: 'couverture', label: 'Couverture' },
 ]
+const SHARED_MODES: SharedMode[] = ['rayures', 'camemberts']
 
 export default function MapPage() {
   const admin = useAdminSession()
@@ -61,6 +72,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const view = pick<MapViewMode>('vue', VIEWS.map((v) => v.key), 'france')
   const colorMode = pick<ColorMode>('couleur', COLOR_MODES.map((c) => c.key), 'commercial')
   const showLabels = params.get('codes') !== '0'
+  const sharedMode = pick<SharedMode>('partage', SHARED_MODES, 'rayures')
 
   const setParam = (key: string, value: string, fallback: string) =>
     setParams(
@@ -129,7 +141,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
       const parts = [
         VIEWS.find((v) => v.key === view)!.label,
         `couleur : ${COLOR_MODES.find((c) => c.key === colorMode)!.label}`,
-        filterCount ? `${filterCount} filtre(s) actif(s)` : null,
+        filterCount ? `${plural(filterCount, 'filtre actif', 'filtres actifs')}` : null,
         `export du ${new Date().toLocaleDateString('fr-FR')}`,
       ]
       await exportMapPng(svgRef.current, {
@@ -258,6 +270,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
                 setSelected(code)
                 setShowFilters(false)
               }}
+              sharedMode={sharedMode}
               onBackground={() => {
                 setSelected(null)
                 setHighlighted(new Set())
@@ -318,10 +331,14 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
           ) : (
             <>
               <div className="sidebar-head">
-                <h2 className="grow">Légende</h2>
-                <span className="muted small">
-                  {model.legend.length} {colorMode === 'commercial' ? 'commerciaux' : 'managers'}
-                </span>
+                <h2 className="grow">{colorMode === 'couverture' ? 'Couverture' : 'Légende'}</h2>
+                {colorMode !== 'couverture' && (
+                  <span className="muted small">
+                    {colorMode === 'commercial'
+                      ? plural(model.legend.length, 'commercial', 'commerciaux')
+                      : plural(model.legend.length, 'manager')}
+                  </span>
+                )}
               </div>
               <div className="sidebar-body">
                 <Legend
@@ -330,6 +347,8 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
                   highlighted={highlighted}
                   onToggle={toggleHighlight}
                   onClear={() => setHighlighted(new Set())}
+                  sharedMode={sharedMode}
+                  onSharedMode={(m) => setParam('partage', m, 'rayures')}
                 />
               </div>
             </>

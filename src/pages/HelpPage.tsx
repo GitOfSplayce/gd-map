@@ -30,7 +30,8 @@ export default function HelpPage() {
               arrondissement. Molette, pincement ou boutons + / − pour zoomer.
             </li>
             <li>
-              <strong>Couleur</strong> : par commercial (par défaut), par Manager 1 ou par Manager 2.
+              <strong>Couleur</strong> : par commercial (par défaut), par Manager 1, par Manager 2, ou{' '}
+              <strong>Couverture</strong> (carte de chaleur, voir plus bas).
             </li>
             <li>
               <strong>Survol</strong> d'une zone : nom, code et commerciaux présents. <strong>Clic</strong> : détail dans le
@@ -67,11 +68,27 @@ export default function HelpPage() {
               <strong>Gestion</strong> : trame de points et contour en pointillés.
             </li>
             <li>
-              <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers) : rayures aux couleurs de chacun.
+              <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers) : au choix dans la légende,{' '}
+              <em>Rayures</em> aux couleurs de chacun, ou <em>Camemberts</em> (la zone garde une teinte légère et un petit
+              camembert montre qui la partage ; plus lisible en vue Globale).
             </li>
             <li>
               À Paris, « 75 » saisi seul couvre les 20 arrondissements ; un arrondissement se saisit <code>75-7</code>.
             </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Vue « Couverture »</h2>
+          <p>
+            Dans <strong>Couleur → Couverture</strong>, chaque zone est colorée selon un score : chaque commercial présent
+            compte <strong>1</strong> en propre, <strong>½</strong> en partiel et <strong>¼</strong> en gestion. Les
+            filtres et l'onglet s'appliquent (par exemple : la couverture MD seule).
+          </p>
+          <ul>
+            <li>Gris : non couverte · bleu très clair : faible (gestion ou partiel seulement)</li>
+            <li>Bleu azurin : couverte (≈ 1 commercial) · bleu moyen : renforcée (≈ 2) · bleu saphir : forte (3 ou plus)</li>
+            <li>Un clic sur un niveau de la légende isole ses zones, pratique pour repérer les zones non couvertes.</li>
           </ul>
         </section>
 

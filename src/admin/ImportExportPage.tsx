@@ -11,6 +11,7 @@ import {
 import { planImport, type DiffItem, type ImportMode } from '../lib/importDiff'
 import { STRUCTURES } from '../lib/types'
 import Icon from '../components/Icon'
+import { agree, plural } from '../lib/text'
 import type { AdminDataProps } from './AdminApp'
 
 const KIND_LABELS: Record<DiffItem['kind'], string> = {
@@ -28,8 +29,8 @@ function DiffEntry({ item }: { item: DiffItem }) {
         <span className={`badge ${item.kind === 'unchanged' ? '' : item.kind}`}>{KIND_LABELS[item.kind]}</span>
         <strong>{item.nom}</strong>
         {item.row && <span className="muted small">ligne {item.row.rowNumber}</span>}
-        {item.kind === 'update' && <span className="muted small">{changes} changement(s)</span>}
-        {item.row?.warnings.length ? <span className="badge warning">{item.row.warnings.length} avertissement(s)</span> : null}
+        {item.kind === 'update' && <span className="muted small">{plural(changes, 'changement')}</span>}
+        {item.row?.warnings.length ? <span className="badge warning">{plural(item.row.warnings.length, 'avertissement')}</span> : null}
       </summary>
       <div className="diff-body">
         {item.fields.map((f) => (
@@ -156,7 +157,12 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
   const apply = async () => {
     if (!plan) return
     if (mode === 'replace' && plan.deleteIds.length) {
-      const ok = confirm(`${plan.deleteIds.length} commercial(aux) absent(s) du fichier vont être supprimé(s) avec leurs zones. Continuer ?`)
+      const n = plan.deleteIds.length
+      const ok = confirm(
+        n === 1
+          ? '1 commercial absent du fichier va être supprimé avec ses zones. Continuer ?'
+          : `${n} commerciaux absents du fichier vont être supprimés avec leurs zones. Continuer ?`,
+      )
       if (!ok) return
     }
     setBusy(true)
@@ -164,7 +170,10 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
     try {
       const res = await applyImport(plan.payload, plan.deleteIds)
       await reload()
-      setDone(`Import terminé : ${res.saved} commercial(aux) enregistré(s), ${res.deleted} supprimé(s).`)
+      setDone(
+        `Import terminé : ${plural(res.saved, 'commercial enregistré', 'commerciaux enregistrés')}` +
+          (res.deleted ? `, ${plural(res.deleted, 'supprimé')}.` : '.'),
+      )
       setWorkbook(null)
       setFileName(null)
     } catch (e) {
@@ -307,7 +316,7 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
 
         {parsed && !parsed.errors.length && (
           <div className="small muted">
-            En-têtes trouvés en ligne {parsed.headerRow} · {parsed.rows.length} ligne(s) avec un nom
+            En-têtes trouvés en ligne {parsed.headerRow} · {plural(parsed.rows.length, 'ligne')} avec un nom
             {parsed.missing.length > 0 && <> · colonnes absentes : {parsed.missing.join(', ')}</>}
           </div>
         )}
@@ -316,37 +325,52 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
           <>
             <div className="stat-grid">
               <div className="stat">
-                <b style={{ color: 'var(--success)' }}>{plan.counts.add}</b>ajout(s)
+                <b style={{ color: 'var(--success)' }}>{plan.counts.add}</b>
+                {agree(plan.counts.add, 'ajout')}
               </div>
               <div className="stat">
-                <b style={{ color: 'var(--accent)' }}>{plan.counts.update}</b>modification(s)
+                <b>{plan.counts.update}</b>
+                {agree(plan.counts.update, 'modification')}
               </div>
               <div className="stat">
-                <b style={{ color: 'var(--danger)' }}>{plan.counts.delete}</b>suppression(s)
+                <b style={{ color: 'var(--danger)' }}>{plan.counts.delete}</b>
+                {agree(plan.counts.delete, 'suppression')}
               </div>
               <div className="stat">
-                <b>{plan.counts.unchanged}</b>inchangé(s)
+                <b style={{ color: 'var(--muted)' }}>{plan.counts.unchanged}</b>
+                {agree(plan.counts.unchanged, 'inchangé')}
               </div>
             </div>
 
             {unknownZones.length > 0 && (
               <div className="alert warning">
-                <strong>{unknownZones.filter((z) => z.level === 'error').length} valeur(s) de zone inconnue(s)</strong>, ignorée(s) à
-                l'import :
-                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                  {unknownZones.map((z, i) => (
-                    <li key={i}>
-                      Ligne {z.row} ({z.nom}), DPT {z.structure} : {z.message}
-                    </li>
-                  ))}
-                </ul>
+                <Icon name="alert" size={16} />
+                <div>
+                  <strong>
+                    {(() => {
+                      const n = unknownZones.filter((z) => z.level === 'error').length
+                      return n === 1 ? '1 valeur de zone inconnue, ignorée' : `${n} valeurs de zone inconnues, ignorées`
+                    })()}
+                  </strong>{' '}
+                  à l'import :
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                    {unknownZones.map((z, i) => (
+                      <li key={i}>
+                        Ligne {z.row} ({z.nom}), DPT {z.structure} : {z.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
 
             {plan.duplicates.length > 0 && (
               <div className="alert warning">
-                Nom(s) en double, seule la première ligne est prise en compte :{' '}
-                {plan.duplicates.map((d) => `${d.nom} (ligne ${d.rowNumber})`).join(', ')}
+                <Icon name="alert" size={16} />
+                <div>
+                  {plan.duplicates.length === 1 ? 'Nom en double' : 'Noms en double'}, seule la première ligne est prise en compte :{' '}
+                  {plan.duplicates.map((d) => `${d.nom} (ligne ${d.rowNumber})`).join(', ')}
+                </div>
               </div>
             )}
 

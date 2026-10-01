@@ -1,10 +1,13 @@
-// Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, rayures et légende.
-import { managerColors, shade } from './colors'
+// Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, zones partagées, couverture et légende.
+import { managerColors } from './colors'
 import { nameKey } from './text'
 import type { Affectation, Commercial, Couverture, MapData, Objectif, Structure } from './types'
-import { PARIS_ARR_CODES, isParisArr } from './zones'
+import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
 
-export type ColorMode = 'commercial' | 'manager1' | 'manager2'
+/** `couverture` : carte de chaleur du niveau de couverture, à la place des couleurs des commerciaux. */
+export type ColorMode = 'commercial' | 'manager1' | 'manager2' | 'couverture'
+/** Affichage des zones partagées par plusieurs commerciaux (ou managers). */
+export type SharedMode = 'rayures' | 'camemberts'
 export type Tab = 'ALL' | Structure
 export type ManagerField = 'manager1' | 'manager2'
 
@@ -62,11 +65,42 @@ export interface ZoneStyle {
   stroke: string
   strokeWidth: number
   pattern: ZonePattern | null
-  /** Contour pointillé « gestion », dessiné au-dessus des zones voisines pour rester entier. */
-  outline: { color: string } | null
+  /** Zone partagée : une part par commercial (ou manager), pour l'affichage en camemberts. */
+  slices: Stripe[] | null
 }
 
 export const COUVERTURE_OPACITY: Record<Couverture, number> = { propre: 0.88, partiel: 0.5, gestion: 0.3 }
+
+// ---------- Carte de chaleur de la couverture ----------
+
+/** Poids d'un commercial dans une zone selon sa couverture (on additionne les commerciaux distincts). */
+export const COVERAGE_WEIGHT: Record<Couverture, number> = { propre: 1, partiel: 0.5, gestion: 0.25 }
+
+export interface HeatBucket {
+  key: string
+  label: string
+  detail: string
+  color: string
+  /** Score minimal (inclus) pour entrer dans ce niveau. */
+  min: number
+}
+
+// Du gris (non couvert) au Bleu Saphir (forte couverture), en passant par le Bleu Azurin de la charte
+export const HEAT_BUCKETS: HeatBucket[] = [
+  { key: 'cov:0', label: 'Non couverte', detail: 'aucun commercial', color: '#e3e8ee', min: 0 },
+  { key: 'cov:1', label: 'Faible', detail: 'gestion ou partiel seulement', color: '#cdebf5', min: 0.01 },
+  { key: 'cov:2', label: 'Couverte', detail: '≈ 1 commercial', color: '#86c6e3', min: 1 },
+  { key: 'cov:3', label: 'Renforcée', detail: '≈ 2 commerciaux', color: '#3f78bd', min: 2 },
+  { key: 'cov:4', label: 'Forte', detail: '3 commerciaux ou plus', color: '#1a428a', min: 3 },
+]
+
+export const heatBucketOf = (score: number) => [...HEAT_BUCKETS].reverse().find((b) => score >= b.min)!
+
+export interface ZoneCoverage {
+  score: number
+  people: number
+  bucket: HeatBucket
+}
 const COUVERTURE_RANK: Record<Couverture, number> = { propre: 3, partiel: 2, gestion: 1 }
 const EMPTY_FILL = '#e9ecf1'
 const BORDER = '#ffffff'
@@ -78,8 +112,10 @@ export const strongest = (list: Couverture[]): Couverture =>
   list.reduce<Couverture>((best, c) => (COUVERTURE_RANK[c] > COUVERTURE_RANK[best] ? c : best), 'gestion')
 
 export interface MapModel {
+  colorMode: ColorMode
   /** Entrées par code de zone affichée (départements, arrondissements, DROM, Monaco). */
   entries: Map<string, ZoneEntry[]>
+  coverageOf: (code: string) => ZoneCoverage
   legend: LegendItem[]
   colorOf: (key: string) => string
   styleOf: (code: string, highlighted: Set<string>) => ZoneStyle
@@ -100,7 +136,9 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
   const mgrColors = managerColors([...m1, ...m2])
 
   const keyOf = (c: Commercial) =>
-    colorMode === 'commercial' ? c.id : `m:${(colorMode === 'manager1' ? c.manager1 : c.manager2) || NO_MANAGER}`
+    colorMode === 'commercial' || colorMode === 'couverture'
+      ? c.id
+      : `m:${(colorMode === 'manager1' ? c.manager1 : c.manager2) || NO_MANAGER}`
   const colorOf = (key: string) =>
     key.startsWith('m:') ? (mgrColors.get(key.slice(2)) ?? '#888') : (byId.get(key)?.couleur ?? '#888')
 
@@ -138,6 +176,30 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
   const parisAll = [...paris, ...[...bySource].filter(([code]) => isParisArr(code)).flatMap(([, l]) => l)]
   if (parisAll.length) entries.set('75', parisAll)
 
+  // Couverture : somme des poids des commerciaux distincts ; le département 75 vaut la moyenne de ses arrondissements
+  const coverageCache = new Map<string, ZoneCoverage>()
+  const coverageOf = (code: string): ZoneCoverage => {
+    const cached = coverageCache.get(code)
+    if (cached) return cached
+    let score: number
+    let people: number
+    if (code === '75') {
+      const arrs = PARIS_ARR_CODES.map(coverageOf)
+      score = arrs.reduce((sum, a) => sum + a.score, 0) / arrs.length
+      people = new Set((entries.get('75') ?? []).map((e) => e.commercial.id)).size
+    } else {
+      const perPerson = new Map<string, Couverture[]>()
+      for (const e of entries.get(code) ?? []) {
+        perPerson.set(e.commercial.id, [...(perPerson.get(e.commercial.id) ?? []), e.affectation.couverture])
+      }
+      score = [...perPerson.values()].reduce((sum, list) => sum + COVERAGE_WEIGHT[strongest(list)], 0)
+      people = perPerson.size
+    }
+    const result = { score, people, bucket: heatBucketOf(score) }
+    coverageCache.set(code, result)
+    return result
+  }
+
   // Légende : une ligne par commercial ou par manager, avec le nombre de zones saisies
   const legendZones = new Map<string, Set<string>>()
   const legendPeople = new Map<string, Map<string, Commercial>>()
@@ -151,7 +213,16 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
       legendPeople.get(e.key)!.set(e.commercial.id, e.commercial)
     }
   }
-  const legend: LegendItem[] = [...legendZones]
+  // En mode couverture : un niveau par ligne, compté sur les départements, DROM et Monaco
+  const heatLegend: LegendItem[] = HEAT_BUCKETS.map((b) => ({
+    key: b.key,
+    label: b.label,
+    color: b.color,
+    detail: b.detail,
+    zoneCount: ZONES.filter((z) => z.type !== 'arrondissement' && coverageOf(z.code).bucket.key === b.key).length,
+  }))
+
+  const legend: LegendItem[] = colorMode === 'couverture' ? heatLegend : [...legendZones]
     .map(([key, zones]) => {
       const people = [...legendPeople.get(key)!.values()]
       const isManager = key.startsWith('m:')
@@ -181,8 +252,10 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     if (cached) return cached
 
     let style: ZoneStyle
-    if (!list.length) {
-      style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, outline: null }
+    if (colorMode === 'couverture') {
+      style = { fill: coverageOf(code).bucket.color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
+    } else if (!list.length) {
+      style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else {
       // Une couleur par clé (commercial ou manager), avec sa couverture la plus forte dans la zone
       const perKey = new Map<string, Couverture[]>()
@@ -192,19 +265,12 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
       const allGestion = list.every((e) => e.affectation.couverture === 'gestion')
 
       if (stripes.length === 1 && allGestion) {
-        // Gestion : trame de points sur fond teinté + contour pointillé appuyé
+        // Gestion : trame de points sur fond teinté (élément graphique de la charte)
         const color = stripes[0].color
         const id = 'dots-' + color.slice(1)
-        style = {
-          fill: `url(#${id})`,
-          fillOpacity: 1,
-          stroke: BORDER,
-          strokeWidth: 0.8,
-          pattern: { id, kind: 'dots', color },
-          outline: { color: shade(color, 0.25) },
-        }
+        style = { fill: `url(#${id})`, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: { id, kind: 'dots', color }, slices: null }
       } else if (stripes.length === 1) {
-        style = { fill: stripes[0].color, fillOpacity: stripes[0].opacity, stroke: BORDER, strokeWidth: 0.8, pattern: null, outline: null }
+        style = { fill: stripes[0].color, fillOpacity: stripes[0].opacity, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
       } else {
         const id = 'stripes-' + stripes.map((s) => s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
         style = {
@@ -213,16 +279,17 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
           stroke: BORDER,
           strokeWidth: 0.8,
           pattern: { id, kind: 'stripes', stripes },
-          outline: allGestion ? { color: '#3C3C3B' } : null,
+          slices: stripes,
         }
       }
     }
 
     if (highlighted.size) {
-      const hit = list.some((e) => highlighted.has(e.key))
+      const hit =
+        colorMode === 'couverture' ? highlighted.has(coverageOf(code).bucket.key) : list.some((e) => highlighted.has(e.key))
       style = hit
         ? { ...style, stroke: '#1b2232', strokeWidth: 1.8 }
-        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER, outline: null }
+        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER }
     }
 
     styleCache.set(cacheKey, style)
@@ -235,7 +302,9 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     data.objectifs.find((o) => o.commercial_id === commercialId && o.structure === structure && o.annee === year)
 
   return {
+    colorMode,
     entries,
+    coverageOf,
     legend,
     colorOf,
     styleOf,
