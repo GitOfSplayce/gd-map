@@ -86,10 +86,11 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
       {onSharedMode && (
         <div className="shared-mode">
           <span>Zones partagées</span>
-          <div className="seg small shared-seg">
+          <div className="shared-picker" role="group" aria-label="Affichage des zones partagées">
             {SHARED_MODES.map((m) => (
               <button key={m.key} type="button" aria-pressed={sharedMode === m.key} onClick={() => onSharedMode(m.key)}>
-                {m.label}
+                <KeySwatch kind={m.key} />
+                <span>{m.label}</span>
               </button>
             ))}
           </div>
