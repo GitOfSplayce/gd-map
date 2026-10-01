@@ -3,7 +3,7 @@
 import sampleUrl from '../../exemples/exemple-import.xlsx?url'
 import { parseSheet, readWorkbook } from './excel'
 import { planImport, type ImportPlan } from './importDiff'
-import type { Commercial, CommercialPayload, Manager, MapData } from './types'
+import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData } from './types'
 
 /** Données telles qu'elles seraient en base après l'import du plan (identifiants fictifs). */
 export function planToMapData(plan: ImportPlan): MapData {
@@ -51,7 +51,7 @@ export async function loadDemoData(): Promise<MapData> {
 let store: MapData | null = null
 
 async function getStore(): Promise<MapData> {
-  store ??= { ...(await loadDemoData()), admin: true }
+  store ??= { ...(await loadDemoData()), admin: true, settings: { default_shared_mode: 'rayures' } }
   return store
 }
 
@@ -128,4 +128,9 @@ export async function demoDeleteManager(nom: string) {
     if (c.manager2 === nom) c.manager2 = null
   }
   s.managers = s.managers.filter((m) => m.nom !== nom)
+}
+
+export async function demoSetDefaultSharedMode(mode: DisplaySettings['default_shared_mode']) {
+  const s = await getStore()
+  s.settings = { default_shared_mode: mode }
 }

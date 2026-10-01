@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { BRAND } from '../lib/colors'
 import Icon from './Icon'
-import { COUVERTURE_OPACITY, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
+import { COUVERTURE_OPACITY, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
 
-type SwatchKind = 'propre' | 'partiel' | 'gestion' | 'rayures' | 'camemberts'
+type SwatchKind = 'propre' | 'partiel' | 'gestion' | SharedMode
 
 /** Pastille de légende dessinée comme sur la carte (mêmes motifs). */
-function KeySwatch({ kind }: { kind: SwatchKind }) {
+export function KeySwatch({ kind }: { kind: SwatchKind }) {
   const c = BRAND.saphir
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
@@ -34,6 +34,22 @@ function KeySwatch({ kind }: { kind: SwatchKind }) {
           [-18, -9, 0, 9, 18].map((o, i) => (
             <path key={o} d={`M${o},18 L${o + 18},0 L${o + 22.5},0 L${o + 4.5},18 Z`} fill={i % 2 ? BRAND.jaune : c} />
           ))}
+        {kind === 'decoupage' && (
+          <>
+            <rect width="6" height="18" fill={c} />
+            <rect x="6" width="6" height="18" fill={BRAND.jaune} />
+            <rect x="12" width="6" height="18" fill="#3f9b6b" />
+          </>
+        )}
+        {kind === 'dominante' && (
+          <>
+            <rect width="18" height="18" fill={c} fillOpacity={COUVERTURE_OPACITY.propre} />
+            <rect x="7" y="9.5" width="10" height="7" rx="3.5" fill="#ffffff" />
+            <text x="12" y="13.2" fontSize="5.6" fontWeight="700" fill={c} textAnchor="middle" dominantBaseline="central">
+              +2
+            </text>
+          </>
+        )}
         {kind === 'camemberts' && (
           <>
             <rect width="18" height="18" fill="#eef3fa" />
@@ -70,13 +86,12 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
       {onSharedMode && (
         <div className="shared-mode">
           <span>Zones partagées</span>
-          <div className="seg small">
-            <button type="button" aria-pressed={sharedMode === 'rayures'} onClick={() => onSharedMode('rayures')}>
-              Rayures
-            </button>
-            <button type="button" aria-pressed={sharedMode === 'camemberts'} onClick={() => onSharedMode('camemberts')}>
-              Camemberts
-            </button>
+          <div className="seg small shared-seg">
+            {SHARED_MODES.map((m) => (
+              <button key={m.key} type="button" aria-pressed={sharedMode === m.key} onClick={() => onSharedMode(m.key)}>
+                {m.label}
+              </button>
+            ))}
           </div>
         </div>
       )}

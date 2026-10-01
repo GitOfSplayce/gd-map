@@ -11,7 +11,14 @@ import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
  */
 export type ColorMode = 'commercial' | 'manager1' | 'manager2' | 'couverture' | 'performance'
 /** Affichage des zones partagées par plusieurs commerciaux (ou managers). */
-export type SharedMode = 'rayures' | 'camemberts'
+export type SharedMode = 'rayures' | 'decoupage' | 'camemberts' | 'dominante'
+
+export const SHARED_MODES: { key: SharedMode; label: string; detail: string }[] = [
+  { key: 'rayures', label: 'Rayures', detail: 'rayures aux couleurs de chacun' },
+  { key: 'decoupage', label: 'Découpage', detail: 'une bande par commercial' },
+  { key: 'camemberts', label: 'Camemberts', detail: 'zone claire et petit camembert' },
+  { key: 'dominante', label: 'Dominante', detail: 'couleur du principal et badge « +2 »' },
+]
 export type Tab = 'ALL' | Structure
 export type ManagerField = 'manager1' | 'manager2'
 

@@ -303,6 +303,25 @@ describe.each([
     })
   })
 
+  describe('mode des zones partagées par défaut', () => {
+    it('vaut « rayures » et part avec la carte', async () => {
+      const res = await rpc('admin', 'get_map_data', 'null')
+      expect(res.settings).toEqual({ default_shared_mode: 'rayures' })
+    })
+
+    it('un admin le change, pour tout le monde', async () => {
+      await rpc('admin', 'set_default_shared_mode', `'decoupage'`)
+      const visitor = await rpc('anon', 'get_map_data', `'Nouveau-code-2027'`)
+      expect(visitor.settings).toEqual({ default_shared_mode: 'decoupage' })
+    })
+
+    it('refuse un mode inconnu et les non-admins', async () => {
+      await expect(rpc('admin', 'set_default_shared_mode', `'paillettes'`)).rejects.toThrow(/Mode inconnu/)
+      await expect(rpc('user', 'set_default_shared_mode', `'rayures'`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('anon', 'set_default_shared_mode', `'rayures'`)).rejects.toThrow(/permission denied/)
+    })
+  })
+
   describe('compatibilité Supabase', () => {
     // En production, l'extension safeupdate refuse tout DELETE ou UPDATE sans WHERE venant de l'API
     it('aucune fonction ne fait de DELETE ou d\'UPDATE sans WHERE', async () => {

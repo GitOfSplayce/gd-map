@@ -38,7 +38,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
   const [showEmpty, setShowEmpty] = useState(false)
 
   const years = availableYears(data.objectifs)
-  const structures: readonly Structure[] = scope === 'ALL' ? STRUCTURES : [scope]
+  const structures = useMemo<readonly Structure[]>(() => (scope === 'ALL' ? STRUCTURES : [scope]), [scope])
 
   const rows = useMemo<Row[]>(() => {
     const people = data.commerciaux.filter((c) => scope === 'ALL' || c.structures.includes(scope))

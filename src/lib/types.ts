@@ -59,8 +59,14 @@ export interface Manager {
   couleur: string | null
 }
 
+export interface DisplaySettings {
+  default_shared_mode: 'rayures' | 'decoupage' | 'camemberts' | 'dominante'
+}
+
 export interface MapData {
   admin: boolean
+  /** Réglages d'affichage choisis par les admins. */
+  settings?: DisplaySettings
   commerciaux: Commercial[]
   managers: Manager[]
   affectations: Affectation[]

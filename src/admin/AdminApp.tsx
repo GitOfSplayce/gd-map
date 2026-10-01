@@ -122,7 +122,7 @@ function AdminLayout({ email }: { email: string }) {
             <Route path="managers" element={<ManagersPage data={data} reload={reload} />} />
             <Route path="synthese" element={<SynthesePage data={data} reload={reload} />} />
             <Route path="import" element={<ImportExportPage data={data} reload={reload} />} />
-            <Route path="parametres" element={<SettingsPage email={email} />} />
+            <Route path="parametres" element={<SettingsPage email={email} data={data} reload={reload} />} />
           </Routes>
         )}
       </main>

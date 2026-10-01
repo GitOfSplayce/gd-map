@@ -463,6 +463,8 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
   height: 100dvh;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
+  /* Une seule colonne, jamais plus large que l'écran (un contenu trop long défile dans son bloc) */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .topbar {
@@ -653,10 +655,13 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 .coverage-key { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 12px; margin-bottom: 14px; font-size: 12px; color: var(--muted); font-weight: 500; }
 .coverage-key > div { display: flex; align-items: center; gap: 7px; }
 .key-swatch { flex: none; display: block; }
-.shared-mode { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.shared-mode { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
 .shared-mode > span { font-weight: 600; color: var(--muted); }
 .seg.small { padding: 2px; }
 .seg.small button { padding: 4px 9px; font-size: 12px; }
+/* 2 × 2 : les quatre modes tiennent dans la légende, même étroite */
+.seg.shared-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+.seg.shared-seg button { justify-content: center; min-width: 0; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; }
 .heat-key { margin-bottom: 12px; font-size: 12.5px; }
 .perf-line { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
 .perf-bar { flex: none; width: 56px; height: 6px; border-radius: 3px; background: #e6ebf1; overflow: hidden; }
@@ -866,6 +871,27 @@ th.num .sort-btn { justify-content: flex-end; width: 100%; }
 .struct-block .zone-cell { gap: 8px; }
 .struct-block .input { background: var(--surface); }
 input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
+
+.mode-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.mode-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mode-card:hover { border-color: var(--saphir); }
+.mode-card[aria-checked='true'] { border-color: var(--saphir); background: var(--saphir-50); box-shadow: inset 3px 0 0 var(--jaune); }
+.mode-card .key-swatch { width: 30px; height: 30px; }
+.mode-card strong { display: block; color: var(--saphir); }
+.mode-card small { display: block; color: var(--muted); font-size: 12px; }
+.mode-check { position: absolute; top: 8px; right: 8px; color: var(--saphir); }
 
 /* Liste déroulante (remplace <select>) */
 .select-btn {
@@ -1164,6 +1190,11 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   .topbar .tabs { order: 3; width: 100%; }
   .toolbar { padding: 8px 12px; gap: 8px; }
   .toolbar .group > .label { display: none; }
+  /* Les choix trop longs (5 modes de couleur pour un admin) défilent au lieu d'élargir la page */
+  .toolbar .group { min-width: 0; max-width: 100%; }
+  .toolbar .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .toolbar .seg::-webkit-scrollbar { display: none; }
+  .toolbar .seg button { flex: none; }
   .hide-mobile { display: none !important; }
   .map-controls { top: 12px; bottom: auto; flex-direction: row; }
   .map-controls button + button { border-top: 0; border-left: 1px solid var(--border); }

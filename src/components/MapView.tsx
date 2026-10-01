@@ -16,7 +16,7 @@ import polylabel from 'polylabel'
 import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
 import { blendWithWhite, mixColors, readableTextColor } from '../lib/colors'
-import type { MapModel, SharedMode, ZoneStyle } from '../lib/mapModel'
+import type { MapModel, SharedMode, Stripe, ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
 export type MapViewMode = 'france' | 'idf' | 'paris'
@@ -292,6 +292,15 @@ export default function MapView({
     return [...byId.values()]
   }, [styles])
 
+  // Mode découpage : une bande verticale par commercial, à la taille de chaque zone (dégradé à arrêts francs)
+  const splitId = (slices: Stripe[]) => 'split-' + slices.map((s) => s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
+  const splits = useMemo(() => {
+    if (sharedMode !== 'decoupage') return []
+    const byId = new Map<string, Stripe[]>()
+    for (const st of styles.values()) if (st.slices) byId.set(splitId(st.slices), st.slices)
+    return [...byId]
+  }, [styles, sharedMode])
+
   const setSvg = (el: SVGSVGElement | null) => {
     innerSvg.current = el
     onSvg(el)
@@ -345,11 +354,46 @@ export default function MapView({
 
   const isSelected = (code: string) => selected === code || (selected === '75' && isParisArr(code))
 
-  const zonePath = (code: string, d: string, key?: string, shape?: Shape) => {
+  /** Commercial (ou manager) principal d'une zone partagée : la couverture la plus forte. */
+  const dominant = (slices: Stripe[]) => slices.reduce((best, sl) => (sl.opacity > best.opacity ? sl : best), slices[0])
+
+  /** Style effectif d'une zone selon l'affichage choisi pour les zones partagées. */
+  const effectiveStyle = (code: string, shape?: Shape): ZoneStyle => {
     const base = styles.get(code)!
-    // En mode camemberts, la zone partagée reste claire : le camembert porte les couleurs
-    const st =
-      shape && hasPie(shape) ? { ...base, fill: mixColors(base.slices!.map((sl) => sl.color)), fillOpacity: base.fillOpacity * 0.3 } : base
+    if (!base.slices) return base
+    const dim = base.fillOpacity // < 1 quand la zone est estompée (mise en évidence d'un autre commercial)
+    if (sharedMode === 'decoupage') return { ...base, fill: `url(#${splitId(base.slices)})`, fillOpacity: dim }
+    if (sharedMode === 'dominante') {
+      const top = dominant(base.slices)
+      return { ...base, fill: top.color, fillOpacity: top.opacity * dim }
+    }
+    // Camemberts : la zone reste claire, le camembert porte les couleurs
+    if (shape && hasPie(shape)) return { ...base, fill: mixColors(base.slices.map((sl) => sl.color)), fillOpacity: dim * 0.3 }
+    return base
+  }
+
+  // Mode dominante : badge « +2 » (autres commerciaux de la zone)
+  const hasBadge = (s: Shape) =>
+    sharedMode === 'dominante' && Boolean(styles.get(s.code)?.slices) && s.anchor !== null && s.anchor.room >= 6
+  const badgeFor = (s: Shape, k: number) => {
+    if (!hasBadge(s)) return null
+    const others = styles.get(s.code)!.slices!.length - 1
+    const { x, y } = s.anchor!
+    const dy = showLabels && fits(s) ? (labelSize * 0.95) / k : 0
+    const h = 13 / k
+    const w = (others > 9 ? 26 : 20) / k
+    return (
+      <g key={'badge-' + s.code} pointerEvents="none">
+        <rect x={x - w / 2} y={y + dy - h / 2} width={w} height={h} rx={h / 2} fill="#1a428a" stroke="#ffffff" strokeWidth={1.2} vectorEffect="non-scaling-stroke" />
+        <text x={x} y={y + dy} fontSize={9 / k} fill="#ffffff" textAnchor="middle" dominantBaseline="central" style={{ fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 700 }}>
+          +{others}
+        </text>
+      </g>
+    )
+  }
+
+  const zonePath = (code: string, d: string, key?: string, shape?: Shape) => {
+    const st = effectiveStyle(code, shape)
     return (
       <path
         key={key ?? code}
@@ -396,6 +440,14 @@ export default function MapView({
                 </pattern>
               )
             })}
+            {splits.map(([id, slices]) => (
+              <linearGradient key={id} id={id} x1="0" y1="0" x2="1" y2="0">
+                {slices.flatMap((sl, i) => [
+                  <stop key={i + 'a'} offset={i / slices.length} stopColor={sl.color} stopOpacity={sl.opacity} />,
+                  <stop key={i + 'b'} offset={(i + 1) / slices.length} stopColor={sl.color} stopOpacity={sl.opacity} />,
+                ])}
+              </linearGradient>
+            ))}
             <clipPath id="main-clip">
               <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} />
             </clipPath>
@@ -421,8 +473,8 @@ export default function MapView({
                   cx={layout.marker.x}
                   cy={layout.marker.y}
                   r={5 / k}
-                  fill={styles.get(MONACO_CODE)?.pattern ? `url(#${styles.get(MONACO_CODE)!.pattern!.id})` : (styles.get(MONACO_CODE)?.fill ?? '#ccc')}
-                  fillOpacity={Math.max(styles.get(MONACO_CODE)?.fillOpacity ?? 1, 0.6)}
+                  fill={styles.get(MONACO_CODE) ? effectiveStyle(MONACO_CODE).fill : '#ccc'}
+                  fillOpacity={Math.max(styles.get(MONACO_CODE) ? effectiveStyle(MONACO_CODE).fillOpacity : 1, 0.6)}
                   stroke="#1b2232"
                   strokeWidth={1.2}
                   vectorEffect="non-scaling-stroke"
@@ -434,7 +486,7 @@ export default function MapView({
               {showLabels && (
                 <g className="labels" fontSize={labelSize / k} textAnchor="middle" dominantBaseline="central">
                   {layout.shapes.filter(fits).map((s) => {
-                    const c = labelColors(styles.get(s.code))
+                    const c = labelColors(effectiveStyle(s.code, s))
                     return (
                       <text
                         key={s.code}
@@ -453,6 +505,8 @@ export default function MapView({
                   })}
                 </g>
               )}
+
+              {layout.shapes.map((s) => badgeFor(s, k))}
             </g>
           </g>
 

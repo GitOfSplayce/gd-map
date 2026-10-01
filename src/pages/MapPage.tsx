@@ -15,6 +15,7 @@ import { useMapAccess } from '../hooks/useMapAccess'
 import { exportMapPng } from '../lib/exportPng'
 import {
   DEFAULT_FILTERS,
+  SHARED_MODES,
   activeFilterCount,
   buildMapModel,
   type ColorMode,
@@ -43,7 +44,7 @@ const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'couverture', label: 'Couverture' },
   { key: 'performance', label: 'Performance' },
 ]
-const SHARED_MODES: SharedMode[] = ['rayures', 'camemberts']
+const SHARED_MODE_KEYS = SHARED_MODES.map((m) => m.key)
 
 export default function MapPage() {
   const admin = useAdminSession()
@@ -79,7 +80,9 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const years = useMemo(() => availableYears(data.objectifs), [data.objectifs])
   const year = Number(params.get('annee')) || defaultYear(data.objectifs)
   const showLabels = params.get('codes') !== '0'
-  const sharedMode = pick<SharedMode>('partage', SHARED_MODES, 'rayures')
+  // Mode choisi dans l'adresse, sinon celui fixé par les admins (Paramètres), sinon les rayures
+  const defaultShared: SharedMode = data.settings?.default_shared_mode ?? 'rayures'
+  const sharedMode = pick<SharedMode>('partage', SHARED_MODE_KEYS, defaultShared)
 
   const setParam = (key: string, value: string, fallback: string) =>
     setParams(
@@ -397,7 +400,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
                 onToggle={toggleHighlight}
                 onClear={() => setHighlighted(new Set())}
                 sharedMode={sharedMode}
-                onSharedMode={(m) => setParam('partage', m, 'rayures')}
+                onSharedMode={(m) => setParam('partage', m, defaultShared)}
               />
             )}
           </div>

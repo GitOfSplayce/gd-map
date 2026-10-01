@@ -3,7 +3,11 @@ import { adminUsers, getAccessStatus, setAccessCode, type AccessStatus, type Adm
 import Icon from '../components/Icon'
 import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
+import { KeySwatch } from '../components/Legend'
+import { setDefaultSharedMode } from '../lib/api'
+import { SHARED_MODES, type SharedMode } from '../lib/mapModel'
 import { requireSupabase } from '../lib/supabase'
+import type { AdminDataProps } from './AdminApp'
 
 const MIN_CODE = 6
 const MIN_PASSWORD = 10
@@ -297,7 +301,64 @@ function MyPasswordCard() {
   )
 }
 
-export default function SettingsPage({ email }: { email: string }) {
+function DisplayCard({ data, reload }: AdminDataProps) {
+  const current = data.settings?.default_shared_mode ?? 'rayures'
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+
+  const choose = async (mode: SharedMode) => {
+    if (mode === current) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      await setDefaultSharedMode(mode)
+      await reload()
+      setMessage({ kind: 'success', text: `Zones partagées affichées par défaut en « ${SHARED_MODES.find((m) => m.key === mode)!.label} ».` })
+    } catch (e) {
+      setMessage({ kind: 'error', text: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <h2>Affichage de la carte</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        Affichage des zones partagées par plusieurs commerciaux, proposé par défaut à tous ceux qui ouvrent la carte.
+        Chacun peut ensuite en changer dans la légende.
+      </p>
+      <div className="mode-cards" role="radiogroup" aria-label="Zones partagées par défaut">
+        {SHARED_MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            role="radio"
+            aria-checked={current === m.key}
+            className="mode-card"
+            disabled={busy}
+            onClick={() => void choose(m.key)}
+          >
+            <KeySwatch kind={m.key} />
+            <span>
+              <strong>{m.label}</strong>
+              <small>{m.detail}</small>
+            </span>
+            {current === m.key && <Icon name="check" size={16} className="mode-check" />}
+          </button>
+        ))}
+      </div>
+      {message && (
+        <div className={`alert ${message.kind}`}>
+          <Icon name={message.kind === 'success' ? 'check' : 'alert'} size={16} />
+          {message.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function SettingsPage({ email, data, reload }: { email: string } & AdminDataProps) {
   return (
     <>
       <header>
@@ -305,6 +366,7 @@ export default function SettingsPage({ email }: { email: string }) {
       </header>
       <div className="stack" style={{ gap: 20 }}>
         <AccessCodeCard />
+        <DisplayCard data={data} reload={reload} />
         <AdminsCard email={email} />
         <MyPasswordCard />
       </div>

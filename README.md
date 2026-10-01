@@ -3,7 +3,7 @@
 Cartographie des secteurs commerciaux du groupe : **MD** (Maison Davoise), **SP** (Splayce), **MC** (MaucoCartex) et **BK** (BK Event).
 
 - **Consultation** : protégée par un code d'accès. On envoie le lien et le code séparément.
-- **Administration** (`/admin`, e-mail + mot de passe) : saisie des commerciaux et de leurs zones, import et export du fichier Excel, gestion du code et des admins.
+- **Administration** (`/admin`, e-mail + mot de passe) : saisie des commerciaux et de leurs zones, import et export du fichier Excel, gestion du code, des admins et de l'affichage par défaut des zones partagées.
 
 Stack : Vite + React + TypeScript, carte en D3 + SVG, Supabase (Postgres, Auth, RLS, Edge Function), SheetJS pour l'Excel dans le navigateur. Hébergement sur GitHub Pages, déployé par GitHub Actions.
 
@@ -63,7 +63,7 @@ Le workflow `keepalive.yml` appelle la base deux fois par semaine pour éviter l
 
 - Onglets **Globale / MD / SP / MC / BK** ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
 - Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
-- **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée : rayures aux couleurs de chacun, ou camemberts (choix dans la légende).
+- **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
 - **CA et objectifs** (admins connectés uniquement) : saisie par structure et par année dans le panneau d'un commercial ou par l'Excel ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
@@ -103,7 +103,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 | Anonyme | rien, sauf appeler `get_map_data(code)` et `ping()` |
 | Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones. Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
 | Connecté, non admin | rien |
-| Admin (`public.admins`) | lire et modifier les données, changer le code, gérer les admins |
+| Admin (`public.admins`) | lire et modifier les données, changer le code, gérer les admins, régler l'affichage par défaut |
 
 - Aucune règle RLS n'autorise la lecture anonyme ; les droits du rôle `anon` sur les tables sont en plus révoqués.
 - Le code est stocké en **bcrypt** (`settings.access_code_hash`), illisible même par un admin.
@@ -116,10 +116,10 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 ```
 src/
   pages/        MapPage (carte), CodeGate (code d'accès), HelpPage (/aide)
-  components/   MapView (D3 : projections, encarts, rayures, zoom), légende, filtres, infobulle, panneau
+  components/   MapView (D3 : projections, encarts, zones partagées, zoom), légende, filtres, infobulle, panneau
   admin/        connexion, liste modifiable, import/export Excel, paramètres
   lib/          parseZones (listes de zones), excel (lecture/écriture), importDiff (aperçu),
-                mapModel (couleurs, rayures, filtres), zones (référentiel), api (Supabase)
+                mapModel (couleurs, zones partagées, filtres), zones (référentiel), api (Supabase)
 public/geo/     contours GeoJSON : départements + DROM, détail Île-de-France, arrondissements, Monaco
 supabase/
   migrations/   schéma, RLS, fonctions, remplissage des zones

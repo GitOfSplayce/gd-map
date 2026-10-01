@@ -1,5 +1,5 @@
 import { requireSupabase } from './supabase'
-import type { CommercialPayload, Manager, MapData } from './types'
+import type { CommercialPayload, DisplaySettings, Manager, MapData } from './types'
 
 export type MapDataError = 'invalid_code' | 'not_configured' | 'too_many_attempts' | 'network'
 
@@ -28,6 +28,7 @@ export async function fetchMapData(code: string | null): Promise<{ data: MapData
       admin: res.admin,
       commerciaux: res.commerciaux,
       managers: res.managers ?? [],
+      settings: res.settings,
       affectations: res.affectations,
       objectifs: res.objectifs,
       updated_at: res.updated_at,
@@ -93,6 +94,13 @@ export async function renameManager(oldName: string, newName: string): Promise<v
 export async function deleteManager(nom: string): Promise<void> {
   if (DEMO) return (await demo()).demoDeleteManager(nom)
   const { error } = await requireSupabase().from('managers').delete().eq('nom', nom)
+  if (error) fail(error)
+}
+
+/** Mode d'affichage des zones partagées proposé par défaut à tout le monde. */
+export async function setDefaultSharedMode(mode: DisplaySettings['default_shared_mode']): Promise<void> {
+  if (DEMO) return (await demo()).demoSetDefaultSharedMode(mode)
+  const { error } = await requireSupabase().rpc('set_default_shared_mode', { p_mode: mode })
   if (error) fail(error)
 }
 

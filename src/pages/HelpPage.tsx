@@ -65,12 +65,14 @@ export default function HelpPage() {
               <strong>Partiel</strong> : remplissage atténué.
             </li>
             <li>
-              <strong>Gestion</strong> : trame de points et contour en pointillés.
+              <strong>Gestion</strong> : trame de points.
             </li>
             <li>
-              <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers) : au choix dans la légende,{' '}
-              <em>Rayures</em> aux couleurs de chacun, ou <em>Camemberts</em> (la zone garde une teinte légère et un petit
-              camembert montre qui la partage ; plus lisible en vue Globale).
+              <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers), au choix dans la légende :{' '}
+              <em>Rayures</em> aux couleurs de chacun ; <em>Découpage</em>, une bande verticale par commercial ;{' '}
+              <em>Camemberts</em>, la zone garde une teinte légère et un petit camembert montre qui la partage ;{' '}
+              <em>Dominante</em>, la couleur du principal (propre avant partiel avant gestion) avec un badge « +2 » pour
+              les autres. Le mode proposé à l'ouverture se règle dans l'admin (Paramètres).
             </li>
             <li>
               À Paris, « 75 » saisi seul couvre les 20 arrondissements ; un arrondissement se saisit <code>75-7</code>.
