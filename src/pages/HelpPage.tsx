@@ -40,13 +40,13 @@ export default function HelpPage() {
             </li>
             <li>
               <strong>Légende</strong> : un clic sur un nom met ses zones en évidence. Plusieurs noms peuvent être
-              sélectionnés.
+              sélectionnés. Les postes « À recruter » sont regroupés à part, en fin de liste, avec leur couleur.
             </li>
             <li>
               <strong>Filtres</strong> : manager, commercial, couverture, statut (dont « masquer les À recruter »).
             </li>
             <li>
-              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende.
+              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende (dont la section « À recruter »).
             </li>
             <li>
               L'adresse de la page garde l'onglet, la vue et le mode de couleur : on peut la copier pour partager une vue

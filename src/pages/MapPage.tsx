@@ -15,6 +15,7 @@ import { useMapAccess } from '../hooks/useMapAccess'
 import { exportMapPng } from '../lib/exportPng'
 import {
   DEFAULT_FILTERS,
+  LEGEND_GROUP_TITLES,
   SHARED_MODES,
   activeFilterCount,
   buildMapModel,
@@ -154,7 +155,9 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
     if (!svgRef.current) return
     setExporting(true)
     try {
-      const legend = model.legend.filter((l) => !highlighted.size || highlighted.has(l.key))
+      const legend = model.legend
+        .filter((l) => !highlighted.size || highlighted.has(l.key))
+        .map((l) => ({ label: l.shortLabel ?? l.label, color: l.color, group: l.group && LEGEND_GROUP_TITLES[l.group] }))
       const parts = [
         VIEWS.find((v) => v.key === view)!.label,
         `couleur : ${COLOR_MODES.find((c) => c.key === colorMode)!.label}`,

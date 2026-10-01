@@ -3,6 +3,7 @@ import { pickDistinctColor } from './colors'
 import type { ImportRow } from './excel'
 import { nameKey } from './text'
 import { formatZoneList } from './parseZones'
+import { statutNormalizer } from './statuts'
 import { structureCodes, type StructureDef } from './structures'
 import {
   type Affectation,
@@ -129,6 +130,8 @@ export function planImport(
   annee: number,
 ): ImportPlan {
   const structures = structureCodes(current.structures)
+  // Statuts ramenés à une seule écriture (« A recruter » → « À recruter ») avant comparaison et enregistrement
+  const normStatut = statutNormalizer([...current.commerciaux.map((c) => c.statut), ...rows.map((r) => r.statut)])
   const byName = new Map(current.commerciaux.map((c) => [nameKey(c.nom), c]))
   const seen = new Set<string>()
   const duplicates: ImportRow[] = []
@@ -136,7 +139,8 @@ export function planImport(
   const payload: CommercialPayload[] = []
   const usedColors = current.commerciaux.map((c) => c.couleur)
 
-  rows.forEach((row, i) => {
+  rows.forEach((fileRow, i) => {
+    const row = { ...fileRow, statut: normStatut(fileRow.statut) }
     const key = nameKey(row.nom)
     if (seen.has(key)) {
       duplicates.push(row)

@@ -1,10 +1,33 @@
 // Export PNG : la carte (SVG sérialisé) avec un titre et la légende, dessinés sur un canvas.
 
+export interface ExportLegendItem {
+  label: string
+  color: string
+  /** Titre du groupe (« À recruter ») : les éléments d'un groupe sont listés à part, sous ce titre. */
+  group?: string
+}
+
 interface ExportOptions {
   title: string
   subtitle: string
-  legend: { label: string; color: string }[]
+  legend: ExportLegendItem[]
   filename: string
+}
+
+type LegendRow = { kind: 'item'; label: string; color: string } | { kind: 'title'; text: string } | { kind: 'gap' }
+
+/** Lignes de la légende réparties en colonnes : un titre de groupe n'est jamais seul en bas d'une colonne. */
+function legendRows(legend: ExportLegendItem[], perCol: number): LegendRow[] {
+  const rows: LegendRow[] = []
+  legend.forEach((item, i) => {
+    if (item.group && item.group !== legend[i - 1]?.group) {
+      if (rows.length % perCol !== 0) rows.push({ kind: 'gap' })
+      if (rows.length % perCol === perCol - 1) rows.push({ kind: 'gap' })
+      rows.push({ kind: 'title', text: item.group })
+    }
+    rows.push({ kind: 'item', label: item.label, color: item.color })
+  })
+  return rows
 }
 
 const FONT = 'Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
@@ -24,8 +47,9 @@ export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend
   const header = 64
   const rowH = 20
   const colW = 230
-  const perCol = Math.max(1, Math.floor((h - 16) / rowH))
-  const cols = legend.length ? Math.ceil(legend.length / perCol) : 0
+  const perCol = Math.max(2, Math.floor((h - 16) / rowH))
+  const rows = legendRows(legend, perCol)
+  const cols = rows.length ? Math.ceil(rows.length / perCol) : 0
   const width = w + cols * colW + (cols ? 16 : 0)
   const height = header + h + 8
 
@@ -47,10 +71,20 @@ export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend
 
   ctx.drawImage(img, 0, header, w, h)
 
-  ctx.font = `12.5px ${FONT}`
-  legend.forEach((item, i) => {
+  rows.forEach((row, i) => {
     const x = w + 16 + Math.floor(i / perCol) * colW
     const y = header + 8 + (i % perCol) * rowH
+    if (row.kind === 'gap') return
+    if (row.kind === 'title') {
+      ctx.font = `700 11px ${FONT}`
+      ctx.fillStyle = '#1a428a'
+      ctx.fillText(row.text.toUpperCase(), x, y + 13)
+      ctx.fillStyle = '#f5a800'
+      ctx.fillRect(x, y + 17, 22, 2)
+      return
+    }
+    const item = row
+    ctx.font = `12.5px ${FONT}`
     ctx.fillStyle = item.color
     ctx.fillRect(x, y, 13, 13)
     ctx.strokeStyle = 'rgba(0,0,0,0.15)'

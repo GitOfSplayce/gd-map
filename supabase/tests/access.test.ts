@@ -392,6 +392,25 @@ describe.each([
     })
   })
 
+  describe('statuts', () => {
+    it('la migration ramène chaque statut à une seule écriture (casse, accents, espaces)', async () => {
+      const noms = ['St 1', 'St 2', 'St 3', 'St 4', 'St 5', 'St 6', 'St 7']
+      const statuts = ['A recruter', ' à  recruter ', 'Agent Commercial', 'ATC Splayce', 'ATC Splayce', 'atc splayce', 'VRP']
+      for (const [i, nom] of noms.entries()) {
+        await as('postgres', `insert into public.commerciaux (nom, statut) values ($1, $2)`, [nom, statuts[i]])
+      }
+      const file = readdirSync(MIGRATIONS).find((f) => f.endsWith('_statuts.sql'))!
+      await db.exec(readFileSync(MIGRATIONS + file, 'utf8'))
+      const rows = await as<{ statut: string }>('postgres', `select statut from public.commerciaux where nom like 'St %' order by nom`)
+      expect(rows.map((r) => r.statut)).toEqual(['À recruter', 'À recruter', 'Agent commercial', 'ATC Splayce', 'ATC Splayce', 'ATC Splayce', 'VRP'])
+      // Rejouée, elle ne change plus rien
+      await db.exec(readFileSync(MIGRATIONS + file, 'utf8'))
+      const again = await as<{ statut: string }>('postgres', `select statut from public.commerciaux where nom like 'St %' order by nom`)
+      expect(again).toEqual(rows)
+      await as('postgres', `delete from public.commerciaux where nom like 'St %'`)
+    })
+  })
+
   describe('mode des zones partagées par défaut', () => {
     it('vaut « rayures » et part avec la carte', async () => {
       const res = await rpc('admin', 'get_map_data', 'null')

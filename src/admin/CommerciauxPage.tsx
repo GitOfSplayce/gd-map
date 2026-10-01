@@ -11,6 +11,7 @@ import { isARecruter } from '../lib/mapModel'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
 import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
+import { statutChoices, statutNormalizer } from '../lib/statuts'
 import { structureCodes, structureName } from '../lib/structures'
 import type { Commercial, CommercialPayload, MapData, Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
@@ -416,10 +417,10 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
   const initial = useMemo(() => fingerprint(draft, codes), [draft, codes])
   const dirty = fingerprint(d, codes) !== initial
 
-  const statutOptions = useMemo(() => {
-    const list = [...new Set(['VRP', 'Agent commercial', 'ATC', 'À recruter', ...data.commerciaux.map((c) => c.statut ?? '')].filter(Boolean))]
-    return list.sort((a, b) => a.localeCompare(b, 'fr')).map((v) => ({ value: v, label: v }))
-  }, [data])
+  // Une seule entrée par statut, quelles que soient la casse et les accents ; l'enregistrement reprend cette écriture
+  const statuts = useMemo(() => data.commerciaux.map((c) => c.statut), [data])
+  const statutOptions = useMemo(() => statutChoices(statuts).map((v) => ({ value: v, label: v })), [statuts])
+  const normStatut = useMemo(() => statutNormalizer(statuts), [statuts])
 
   const managerOptions = useMemo(() => {
     const colors = managerColors([], data.managers)
@@ -464,7 +465,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
     if (problem) return setError(problem)
     setSaving(true)
     try {
-      await saveCommercial(toPayload(d, codes))
+      await saveCommercial({ ...toPayload(d, codes), statut: normStatut(d.statut) })
       await onSaved(d.nom.trim(), !d.id)
     } catch (err) {
       setError((err as Error).message)

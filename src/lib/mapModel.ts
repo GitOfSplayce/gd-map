@@ -63,6 +63,18 @@ export interface LegendItem {
   zoneCount: number
   /** CA et objectif de l'année (admins), pour un commercial ou l'équipe d'un manager. */
   perf?: Perf
+  /** Postes « À recruter » : regroupés à part dans la légende et l'export PNG. */
+  group?: 'a-recruter'
+  /** Libellé sous le titre du groupe (« Centre » pour « À recruter – Centre »). */
+  shortLabel?: string
+}
+
+export const LEGEND_GROUP_TITLES: Record<NonNullable<LegendItem['group']>, string> = { 'a-recruter': 'À recruter' }
+
+/** « À recruter – Centre » → « Centre » ; le nom entier s'il ne commence pas par « À recruter ». */
+export function aRecruterShortLabel(nom: string): string {
+  const rest = nom.replace(/^\s*[aà]\s+recruter\s*[-–—:]?\s*/i, '').trim()
+  return rest || nom
 }
 
 export interface Stripe {
@@ -280,13 +292,15 @@ export function buildMapModel(
     .map(([key, zones]) => {
       const people = [...legendPeople.get(key)!.values()]
       const isManager = key.startsWith('m:')
+      const recruit = colorMode === 'commercial' && isARecruter(people[0])
       return {
         key,
+        ...(recruit && { group: 'a-recruter' as const, shortLabel: aRecruterShortLabel(people[0].nom) }),
         label: isManager ? key.slice(2) : people[0].nom,
         color: colorOf(key),
         detail: isManager
           ? `${people.length} commercia${people.length > 1 ? 'ux' : 'l'}`
-          : [people[0].statut, structuresText(people[0])].filter(Boolean).join(' – '),
+          : [!recruit && people[0].statut, structuresText(people[0])].filter(Boolean).join(' – '),
         zoneCount: zones.size,
         perf: hasFigures ? perfOfPeople(people.map((p) => p.id)) : undefined,
       }

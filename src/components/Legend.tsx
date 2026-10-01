@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { BRAND } from '../lib/colors'
 import Icon from './Icon'
-import { COUVERTURE_OPACITY, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
+import { COUVERTURE_OPACITY, LEGEND_GROUP_TITLES, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
 
@@ -176,26 +176,34 @@ export default function Legend({ items, ranking, year, colorMode, highlighted, o
       </div>
       {!items.length && <p className="muted">Aucune zone à afficher avec ces filtres.</p>}
       <ul className="legend-list">
-        {visible.map((it) => (
-          <li key={it.key}>
-            <button
-              type="button"
-              className="legend-item"
-              aria-pressed={highlighted.has(it.key)}
-              onClick={() => onToggle(it.key)}
-              title={heat ? 'Cliquer pour isoler les zones de ce niveau' : 'Cliquer pour mettre ses zones en évidence'}
-            >
-              <span className="swatch" style={{ background: it.color }} />
-              <span style={{ minWidth: 0 }}>
-                <span className="l-name">{it.label}</span>
-                {it.detail && <span className="l-detail">{it.detail}</span>}
-                {it.perf?.hasData && <PerfBar perf={it.perf} />}
-              </span>
-              <span className="l-count">
-                {plural(it.zoneCount, 'zone')}
-              </span>
-            </button>
-          </li>
+        {visible.map((it, i) => (
+          <Fragment key={it.key}>
+            {it.group && it.group !== visible[i - 1]?.group && (
+              <li className="legend-group">
+                <span>{LEGEND_GROUP_TITLES[it.group]}</span>
+                <span className="muted">{visible.filter((x) => x.group === it.group).length}</span>
+              </li>
+            )}
+            <li>
+              <button
+                type="button"
+                className="legend-item"
+                aria-pressed={highlighted.has(it.key)}
+                onClick={() => onToggle(it.key)}
+                title={heat ? 'Cliquer pour isoler les zones de ce niveau' : 'Cliquer pour mettre ses zones en évidence'}
+              >
+                <span className="swatch" style={{ background: it.color }} />
+                <span style={{ minWidth: 0 }}>
+                  <span className="l-name">{it.shortLabel ?? it.label}</span>
+                  {it.detail && <span className="l-detail">{it.detail}</span>}
+                  {it.perf?.hasData && <PerfBar perf={it.perf} />}
+                </span>
+                <span className="l-count">
+                  {plural(it.zoneCount, 'zone')}
+                </span>
+              </button>
+            </li>
+          </Fragment>
         ))}
       </ul>
       {heat && <p className="muted small">Comptes sur les départements, les DROM et Monaco{perfMode ? ' couverts' : ''}.</p>}

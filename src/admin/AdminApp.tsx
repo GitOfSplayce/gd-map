@@ -81,6 +81,22 @@ function useAdminData() {
   return { data, error, reload }
 }
 
+/** Admin connecté : ce qui précède le @ (« mb »), ou ses initiales quand la place manque. */
+function UserBadge({ email }: { email: string }) {
+  const local = email.split('@')[0]
+  const parts = local.split(/[._-]+/).filter(Boolean)
+  const initials = (parts.length > 1 ? parts[0][0] + parts[1][0] : local.slice(0, 2)).toUpperCase()
+  return (
+    <span className="user-badge" aria-label={`Connecté : ${email}`}>
+      <Icon name="user" size={14} className="user-badge-icon" />
+      <span className="user-badge-name">{local}</span>
+      <span className="user-badge-initials" aria-hidden="true">
+        {initials}
+      </span>
+    </span>
+  )
+}
+
 function AdminLayout({ email }: { email: string }) {
   const { data, error, reload } = useAdminData()
 
@@ -103,14 +119,14 @@ function AdminLayout({ email }: { email: string }) {
         }
         actions={
           <>
-            <span className="small muted header-email">{email}</span>
+            <UserBadge email={email} />
             <Link className="btn small" to="/" aria-label="Voir la carte">
               <Icon name="map" size={16} />
-              <span className="hide-below-1100">Voir la carte</span>
+              <span className="hide-below-1600">Voir la carte</span>
             </Link>
             <button type="button" className="btn small ghost" onClick={() => void signOut()} title="Déconnexion">
               <Icon name="logout" size={16} />
-              <span className="hide-below-1440">Déconnexion</span>
+              <span className="hide-below-1600">Déconnexion</span>
             </button>
           </>
         }
