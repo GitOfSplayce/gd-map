@@ -1,0 +1,150 @@
+import { Link } from 'react-router-dom'
+import { CoverageKey } from '../components/Legend'
+
+export default function HelpPage() {
+  return (
+    <div className="admin-shell">
+      <header className="topbar">
+        <Link to="/" className="brand">
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" />
+          <span>Carte commerciale – Aide</span>
+        </Link>
+        <div className="actions">
+          <Link className="btn small" to="/">
+            Retour à la carte
+          </Link>
+        </div>
+      </header>
+
+      <main className="help">
+        <section>
+          <h1>Utiliser la carte</h1>
+          <p>
+            La carte montre les secteurs des commerciaux du groupe : <strong>MD</strong> (Maison Davoise), <strong>SP</strong>{' '}
+            (Splayce), <strong>MC</strong> (MaucoCartex) et <strong>BK</strong> (BK Event). L'onglet <em>Globale</em> réunit
+            toutes les structures.
+          </p>
+          <ul>
+            <li>
+              <strong>Vues</strong> : France (avec la Corse, les DROM et Monaco en encarts), Île-de-France, et Paris par
+              arrondissement. Molette, pincement ou boutons + / − pour zoomer.
+            </li>
+            <li>
+              <strong>Couleur</strong> : par commercial (par défaut), par Manager 1 ou par Manager 2.
+            </li>
+            <li>
+              <strong>Survol</strong> d'une zone : nom, code et commerciaux présents. <strong>Clic</strong> : détail dans le
+              panneau de droite.
+            </li>
+            <li>
+              <strong>Légende</strong> : un clic sur un nom met ses zones en évidence. Plusieurs noms peuvent être
+              sélectionnés.
+            </li>
+            <li>
+              <strong>Filtres</strong> : manager, commercial, couverture, statut (dont « masquer les À recruter »).
+            </li>
+            <li>
+              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende.
+            </li>
+            <li>
+              L'adresse de la page garde l'onglet, la vue et le mode de couleur : on peut la copier pour partager une vue
+              précise (le code reste demandé).
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Lire les couleurs</h2>
+          <CoverageKey />
+          <ul>
+            <li>
+              <strong>Propre</strong> : remplissage plein.
+            </li>
+            <li>
+              <strong>Partiel</strong> : remplissage atténué.
+            </li>
+            <li>
+              <strong>Gestion</strong> : remplissage clair et contour en pointillés.
+            </li>
+            <li>
+              <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers) : rayures aux couleurs de chacun.
+            </li>
+            <li>
+              À Paris, « 75 » saisi seul couvre les 20 arrondissements ; un arrondissement se saisit <code>75-7</code>.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Saisir les zones (admin et fichier Excel)</h2>
+          <table>
+            <tbody>
+              <tr>
+                <th>Saisie</th>
+                <th>Signification</th>
+              </tr>
+              <tr>
+                <td><code>22, 35P, 52G</code></td>
+                <td>22 propre, 35 partiel, 52 gestion</td>
+              </tr>
+              <tr>
+                <td><code>9</code></td>
+                <td>09 (un code à un chiffre est complété par un 0)</td>
+              </tr>
+              <tr>
+                <td><code>20</code> ou <code>2AB</code></td>
+                <td>2A et 2B</td>
+              </tr>
+              <tr>
+                <td><code>75</code></td>
+                <td>tout Paris</td>
+              </tr>
+              <tr>
+                <td><code>75-7</code></td>
+                <td>Paris 7e (<code>75007</code> est aussi accepté)</td>
+              </tr>
+              <tr>
+                <td><code>971 … 976</code>, <code>98</code></td>
+                <td>DROM, Monaco</td>
+              </tr>
+              <tr>
+                <td><code>?</code></td>
+                <td>ignoré</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            Séparateurs acceptés : virgule, point, barre oblique, point-virgule et espace. Toute valeur inconnue est signalée
+            avant l'enregistrement.
+          </p>
+        </section>
+
+        <section>
+          <h2>Import Excel</h2>
+          <p>
+            Onglet <code>V3</code> par défaut, en-têtes en ligne 3. Les colonnes sont reconnues par leur nom :{' '}
+            <code>Nom</code>, <code>MD</code> <code>SP</code> <code>MC</code> <code>BK</code> (« X » = appartient à la
+            structure), <code>Statut</code>, <code>Manager 1</code>, <code>Manager 2</code>, <code>DPT MD</code>…
+            <code>DPT BK</code>, et en option <code>Nb de jour / an</code>, <code>Date 1</code>, <code>Date 2</code>,{' '}
+            <code>Actions</code>, <code>Région</code>, <code>CA MD</code>, <code>Objectif MD</code>… Une ligne sans nom est
+            ignorée.
+          </p>
+          <ul>
+            <li>
+              <strong>Fusionner</strong> : ajoute les nouveaux commerciaux et met à jour ceux du fichier ; les autres ne
+              bougent pas.
+            </li>
+            <li>
+              <strong>Remplacer tout</strong> : le fichier devient la référence ; les commerciaux absents du fichier sont
+              supprimés.
+            </li>
+          </ul>
+          <p>
+            Les commerciaux sont reconnus par leur nom (sans tenir compte des majuscules ni des accents). Leur couleur et
+            leurs notes sont conservées.
+          </p>
+        </section>
+      </main>
+    </div>
+  )
+}

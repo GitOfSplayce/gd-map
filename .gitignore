@@ -1,0 +1,33 @@
+# Dépendances et build
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Variables d'environnement locales (.env.example reste versionné)
+.env
+.env.*
+!.env.example
+
+# Données réelles : jamais dans le dépôt (seul le fichier d'exemple fictif est versionné)
+*.xlsx
+*.xls
+*.xlsm
+~$*
+!exemples/exemple-import.xlsx
+
+# Supabase CLI
+supabase/.temp
+supabase/.branches
+
+# Logs et éditeurs
+logs
+*.log
+npm-debug.log*
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.sw?
