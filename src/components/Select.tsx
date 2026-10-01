@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { usePopoverPosition } from '../hooks/usePopoverPosition'
 import { nameKey } from '../lib/text'
 import Icon from './Icon'
 
@@ -47,7 +48,7 @@ export default function Select({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
-  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null)
+  const [width, setWidth] = useState(200)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const withSearch = searchable ?? (creatable || options.length > 8)
@@ -64,16 +65,10 @@ export default function Select({
   const selected = options.find((o) => o.value === value)
   const shown = selected ?? (value ? { value, label: value } : null)
 
-  const place = () => {
-    const r = buttonRef.current!.getBoundingClientRect()
-    const below = window.innerHeight - r.bottom
-    const width = Math.max(r.width, 200)
-    const left = Math.min(r.left, window.innerWidth - width - 8)
-    setPos(below < 300 && r.top > below ? { left, width, bottom: window.innerHeight - r.top + 4 } : { left, width, top: r.bottom + 4 })
-  }
+  const popStyle = usePopoverPosition(open, buttonRef, popRef, { gap: 4, width })
 
   const openMenu = () => {
-    place()
+    setWidth(Math.max(buttonRef.current!.getBoundingClientRect().width, 200))
     setQuery('')
     setActive(Math.max(0, [...(emptyLabel !== undefined ? [''] : []), ...options.map((o) => o.value)].indexOf(value)))
     setOpen(true)
@@ -163,9 +158,8 @@ export default function Select({
       </button>
 
       {open &&
-        pos &&
         createPortal(
-          <div ref={popRef} className="select-pop" style={pos} onKeyDown={onKeyDown}>
+          <div ref={popRef} className="select-pop" style={popStyle} onKeyDown={onKeyDown}>
             {withSearch && (
               <div className="input-icon select-search">
                 <Icon name="search" size={15} />

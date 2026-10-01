@@ -11,6 +11,7 @@ import {
   nextDistinctColor,
   rankedFreeColors,
 } from '../lib/colors'
+import { usePopoverPosition } from '../hooks/usePopoverPosition'
 import Icon from './Icon'
 
 interface Props {
@@ -24,7 +25,6 @@ interface Props {
 /** Sélecteur de couleur aux couleurs de l'application : suggestions libres, palette, zone de teinte, hexadécimal. */
 export default function ColorPicker({ value, onChange, used, ariaLabel }: Props) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const [hue, setHue] = useState(() => hexToHsv(value)[0])
   const [hexText, setHexText] = useState(value)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -45,11 +45,9 @@ export default function ColorPicker({ value, onChange, used, ariaLabel }: Props)
     if (!keepHue) setHue(hexToHsv(hex)[0])
   }
 
+  const popStyle = usePopoverPosition(open, buttonRef, popRef)
+
   const openPicker = () => {
-    const r = buttonRef.current!.getBoundingClientRect()
-    const below = window.innerHeight - r.bottom
-    const left = Math.min(r.left, window.innerWidth - 300)
-    setPos(below < 420 && r.top > below ? { left, bottom: window.innerHeight - r.top + 6 } : { left, top: r.bottom + 6 })
     setHexText(value)
     setHue(hexToHsv(value)[0])
     setOpen(true)
@@ -160,9 +158,8 @@ export default function ColorPicker({ value, onChange, used, ariaLabel }: Props)
       )}
 
       {open &&
-        pos &&
         createPortal(
-          <div ref={popRef} className="cp-pop" style={pos} role="dialog" aria-label="Choisir une couleur">
+          <div ref={popRef} className="cp-pop" style={popStyle} role="dialog" aria-label="Choisir une couleur">
             <div className="cp-section">
               <span>Couleurs libres conseillées</span>
               <div className="cp-grid">
