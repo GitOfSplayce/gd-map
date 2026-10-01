@@ -153,7 +153,7 @@ Les autres admins s'ajoutent ensuite depuis `/admin` (*Paramètres → Admins*).
 
 - *Table Editor* : aucune table ne doit afficher le badge « RLS disabled ».
 - *Advisors → Security Advisor* : aucune alerte de niveau *Error*.
-- **Mise en pause (plan Free)** : un projet Free sans activité pendant 7 jours est mis en pause. La carte ne répond plus jusqu'à ce que tu le relances depuis le dashboard. J'ajoute un petit workflow GitHub Actions qui interroge la base deux fois par semaine. Si l'outil devient critique, le plan Pro supprime ce risque.
+- **Mise en pause (plan Free)** : un projet Free sans activité pendant 7 jours est mis en pause. La carte ne répond plus jusqu'à ce que tu le relances depuis le dashboard. Le workflow GitHub Actions `keepalive.yml` interroge la base deux fois par jour et se réactive lui-même, pour que GitHub ne le coupe pas après 60 jours sans commit. Si l'outil devient critique, le plan Pro supprime ce risque.
 - **Sauvegardes** : le plan Free n'a pas de sauvegardes restaurables en un clic. L'export Excel depuis `/admin` sert de sauvegarde simple : pense à en faire un après les grosses modifications.
 
 ---

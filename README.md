@@ -55,7 +55,7 @@ Enfin, sur `/admin` : définir le code d'accès (*Paramètres*), puis importer l
 
 Le dépôt peut être public : il ne contient **aucune donnée**. Les fichiers Excel sont exclus par `.gitignore`, sauf l'exemple fictif `exemples/exemple-import.xlsx`. Les deux variables ci-dessus sont publiques par nature : elles finissent dans le site, et la sécurité repose sur RLS et les fonctions SQL.
 
-Le workflow `keepalive.yml` appelle la base deux fois par semaine pour éviter la mise en pause des projets Free (7 jours sans activité). GitHub désactive les workflows planifiés d'un dépôt sans commit depuis 60 jours : le relancer depuis l'onglet *Actions* si besoin, ou passer Supabase en plan Pro.
+Le workflow `keepalive.yml` appelle la base deux fois par jour pour éviter la mise en pause des projets Free (Supabase demande quelques requêtes par jour sur la semaine). GitHub désactive les workflows planifiés d'un dépôt public sans commit depuis 60 jours : le workflow se réactive lui-même à chaque passage pour l'éviter. Avec le plan Pro de Supabase, il devient inutile.
 
 ## Utilisation
 
