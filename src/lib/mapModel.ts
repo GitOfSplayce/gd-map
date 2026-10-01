@@ -1,5 +1,5 @@
 // Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, rayures et légende.
-import { managerColors } from './colors'
+import { managerColors, shade } from './colors'
 import { nameKey } from './text'
 import type { Affectation, Commercial, Couverture, MapData, Objectif, Structure } from './types'
 import { PARIS_ARR_CODES, isParisArr } from './zones'
@@ -53,17 +53,20 @@ export interface Stripe {
   opacity: number
 }
 
+/** Motif à définir dans <defs> : rayures (zone partagée) ou trame de points (gestion, élément de la charte). */
+export type ZonePattern = { id: string; kind: 'stripes'; stripes: Stripe[] } | { id: string; kind: 'dots'; color: string }
+
 export interface ZoneStyle {
   fill: string
   fillOpacity: number
   stroke: string
   strokeWidth: number
-  dash: string | null
-  /** Rayures à définir dans <defs> quand plusieurs couleurs se partagent la zone. */
-  pattern: { id: string; stripes: Stripe[] } | null
+  pattern: ZonePattern | null
+  /** Contour pointillé « gestion », dessiné au-dessus des zones voisines pour rester entier. */
+  outline: { color: string } | null
 }
 
-export const COUVERTURE_OPACITY: Record<Couverture, number> = { propre: 0.88, partiel: 0.5, gestion: 0.2 }
+export const COUVERTURE_OPACITY: Record<Couverture, number> = { propre: 0.88, partiel: 0.5, gestion: 0.3 }
 const COUVERTURE_RANK: Record<Couverture, number> = { propre: 3, partiel: 2, gestion: 1 }
 const EMPTY_FILL = '#e9ecf1'
 const BORDER = '#ffffff'
@@ -179,7 +182,7 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
 
     let style: ZoneStyle
     if (!list.length) {
-      style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, dash: null, pattern: null }
+      style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, outline: null }
     } else {
       // Une couleur par clé (commercial ou manager), avec sa couverture la plus forte dans la zone
       const perKey = new Map<string, Couverture[]>()
@@ -188,24 +191,29 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
       const stripes = keys.map((k) => ({ color: colorOf(k), opacity: COUVERTURE_OPACITY[strongest(perKey.get(k)!)] }))
       const allGestion = list.every((e) => e.affectation.couverture === 'gestion')
 
-      if (stripes.length === 1) {
+      if (stripes.length === 1 && allGestion) {
+        // Gestion : trame de points sur fond teinté + contour pointillé appuyé
+        const color = stripes[0].color
+        const id = 'dots-' + color.slice(1)
         style = {
-          fill: stripes[0].color,
-          fillOpacity: stripes[0].opacity,
-          stroke: allGestion ? stripes[0].color : BORDER,
-          strokeWidth: allGestion ? 1.6 : 0.8,
-          dash: allGestion ? '4 3' : null,
-          pattern: null,
+          fill: `url(#${id})`,
+          fillOpacity: 1,
+          stroke: BORDER,
+          strokeWidth: 0.8,
+          pattern: { id, kind: 'dots', color },
+          outline: { color: shade(color, 0.25) },
         }
+      } else if (stripes.length === 1) {
+        style = { fill: stripes[0].color, fillOpacity: stripes[0].opacity, stroke: BORDER, strokeWidth: 0.8, pattern: null, outline: null }
       } else {
         const id = 'stripes-' + stripes.map((s) => s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
         style = {
           fill: `url(#${id})`,
           fillOpacity: 1,
-          stroke: allGestion ? '#555' : BORDER,
-          strokeWidth: allGestion ? 1.6 : 0.8,
-          dash: allGestion ? '4 3' : null,
-          pattern: { id, stripes },
+          stroke: BORDER,
+          strokeWidth: 0.8,
+          pattern: { id, kind: 'stripes', stripes },
+          outline: allGestion ? { color: '#3C3C3B' } : null,
         }
       }
     }
@@ -213,8 +221,8 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     if (highlighted.size) {
       const hit = list.some((e) => highlighted.has(e.key))
       style = hit
-        ? { ...style, stroke: '#111', strokeWidth: 1.8 }
-        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER, dash: null }
+        ? { ...style, stroke: '#1b2232', strokeWidth: 1.8 }
+        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER, outline: null }
     }
 
     styleCache.set(cacheKey, style)

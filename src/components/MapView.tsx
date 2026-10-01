@@ -13,6 +13,7 @@ import { zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import polylabel from 'polylabel'
+import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
 import { blendWithWhite, readableTextColor } from '../lib/colors'
 import type { MapModel, ZoneStyle } from '../lib/mapModel'
@@ -194,10 +195,12 @@ export interface MapViewProps {
   /** Position du curseur et taille de la carte, pour placer l'infobulle. */
   onHover: (code: string | null, pos?: { x: number; y: number; w: number; h: number }) => void
   onSelect: (code: string) => void
+  /** Clic à côté des zones (fond de carte, cadre d'un encart) : sert à tout désélectionner. */
+  onBackground: () => void
   onSvg: (el: SVGSVGElement | null) => void
 }
 
-export default function MapView({ view, geo, model, highlighted, selected, showLabels, onHover, onSelect, onSvg }: MapViewProps) {
+export default function MapView({ view, geo, model, highlighted, selected, showLabels, onHover, onSelect, onBackground, onSvg }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const innerSvg = useRef<SVGSVGElement | null>(null)
   const layerRef = useRef<SVGGElement>(null)
@@ -291,6 +294,24 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
     onClick: () => onSelect(code),
   })
 
+  const outlinePath = (code: string, d: string, key: string) => {
+    const outline = styles.get(code)?.outline
+    if (!outline) return null
+    return (
+      <path
+        key={key}
+        d={d}
+        fill="none"
+        stroke={outline.color}
+        strokeWidth={2.4}
+        strokeDasharray="7 4"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
+      />
+    )
+  }
+
   const isSelected = (code: string) => selected === code || (selected === '75' && isParisArr(code))
 
   const zonePath = (code: string, d: string, key?: string) => {
@@ -305,7 +326,6 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
         fillOpacity={st.fillOpacity}
         stroke={st.stroke}
         strokeWidth={st.strokeWidth}
-        strokeDasharray={st.dash ?? undefined}
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
         {...pointer(code)}
@@ -323,6 +343,15 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
         <svg ref={setSvg} width={size.w} height={size.h} viewBox={`0 0 ${size.w} ${size.h}`} role="img" aria-label="Carte des secteurs commerciaux">
           <defs>
             {patterns.map((p) => {
+              if (p.kind === 'dots') {
+                return (
+                  <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={6} height={6}>
+                    <rect width={6} height={6} fill="#ffffff" />
+                    <rect width={6} height={6} fill={p.color} fillOpacity={0.16} />
+                    <circle cx={3} cy={3} r={1.35} fill={p.color} />
+                  </pattern>
+                )
+              }
               const sw = 6
               const total = sw * p.stripes.length
               return (
@@ -339,14 +368,15 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
             </clipPath>
           </defs>
 
-          <rect width={size.w} height={size.h} fill="#f7f9fc" />
+          <rect width={size.w} height={size.h} fill="#f4f8fb" onClick={onBackground} />
 
           <g clipPath="url(#main-clip)">
-            <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} fill="transparent" />
+            <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} fill="transparent" onClick={onBackground} />
             <g ref={layerRef}>
               {layout.shapes.map((s) => zonePath(s.code, s.d))}
 
-              {/* Contour de la zone sélectionnée, dessiné au-dessus des voisines */}
+              {/* Contours « gestion » puis zone sélectionnée, dessinés au-dessus des voisines */}
+              {layout.shapes.map((s) => outlinePath(s.code, s.d, 'out-' + s.code))}
               {layout.shapes.filter((s) => isSelected(s.code)).map((s) => (
                 <path key={'sel-' + s.code} d={s.d} fill="none" stroke="#111" strokeWidth={2.4} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               ))}
@@ -381,7 +411,7 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
                         fill={c.text}
                         stroke={c.halo}
                         strokeWidth={2.5}
-                        style={{ paintOrder: 'stroke', fontFamily: 'system-ui, sans-serif', fontWeight: 600 }}
+                        style={{ paintOrder: 'stroke', fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 600 }}
                         vectorEffect="non-scaling-stroke"
                       >
                         {s.label}
@@ -395,21 +425,28 @@ export default function MapView({ view, geo, model, highlighted, selected, showL
 
           {layout.insets.map((inset) => (
             <g key={inset.code} className="inset">
-              <rect x={inset.x} y={inset.y} width={inset.w} height={inset.h} rx={6} fill="#ffffff" stroke="#d5dbe5" />
-              <text x={inset.x + 7} y={inset.y + 12} fontSize={10} fill="#5b6475" style={{ fontFamily: 'system-ui, sans-serif', fontWeight: 600 }}>
+              <rect x={inset.x} y={inset.y} width={inset.w} height={inset.h} rx={8} fill="#ffffff" stroke="#dce6ef" onClick={onBackground} />
+              <text x={inset.x + 7} y={inset.y + 12} fontSize={10} fill="#5b6475" style={{ fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 600 }}>
                 {inset.title}
               </text>
               {zonePath(inset.code, inset.shape.d, `inset-${inset.code}`)}
+              {outlinePath(inset.code, inset.shape.d, `inset-out-${inset.code}`)}
               {isSelected(inset.code) && <path d={inset.shape.d} fill="none" stroke="#111" strokeWidth={2.4} pointerEvents="none" />}
             </g>
           ))}
         </svg>
       )}
 
-      <div className="map-controls" data-export="ignore">
-        <button type="button" className="btn" onClick={() => zoomBy(1.6)} aria-label="Zoomer" title="Zoomer">+</button>
-        <button type="button" className="btn" onClick={() => zoomBy(1 / 1.6)} aria-label="Dézoomer" title="Dézoomer">−</button>
-        <button type="button" className="btn" onClick={resetZoom} aria-label="Recentrer" title="Recentrer">⟲</button>
+      <div className="map-controls" role="group" aria-label="Zoom">
+        <button type="button" onClick={() => zoomBy(1.6)} aria-label="Zoomer" title="Zoomer">
+          <Icon name="plus" size={18} />
+        </button>
+        <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label="Dézoomer" title="Dézoomer">
+          <Icon name="minus" size={18} />
+        </button>
+        <button type="button" onClick={resetZoom} aria-label="Recentrer la carte" title="Recentrer">
+          <Icon name="recenter" size={18} />
+        </button>
       </div>
     </div>
   )

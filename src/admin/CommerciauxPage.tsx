@@ -3,6 +3,8 @@ import { deleteCommercial, saveCommercial } from '../lib/api'
 import { isHexColor, pickDistinctColor } from '../lib/colors'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
 import { STRUCTURES, type Commercial, type CommercialPayload, type MapData, type Structure } from '../lib/types'
+import Icon from '../components/Icon'
+import Switch from '../components/Switch'
 import type { AdminDataProps } from './AdminApp'
 import ZoneInput from './ZoneInput'
 
@@ -216,9 +218,13 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
 
       <div className="toolbar-row">
         <button type="button" className="btn primary" onClick={add}>
-          + Ajouter
+          <Icon name="plus" size={16} />
+          Ajouter
         </button>
-        <input className="input" type="search" placeholder="Rechercher (nom, manager, zone…)" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="input-icon">
+          <Icon name="search" size={16} />
+          <input className="input" type="search" placeholder="Rechercher (nom, manager, zone…)" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
         <div className="seg">
           {(['ALL', ...STRUCTURES] as const).map((s) => (
             <button key={s} type="button" aria-pressed={structureFilter === s} onClick={() => setStructureFilter(s)}>
@@ -226,13 +232,11 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
             </button>
           ))}
         </div>
-        <label className="check">
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-          Afficher les inactifs
-        </label>
+        <Switch checked={showInactive} onChange={setShowInactive} label="Afficher les inactifs" />
         <span className="grow" />
         {dirtyCount > 0 && (
-          <button type="button" className="btn primary" onClick={() => void saveAll()}>
+          <button type="button" className="btn accent" onClick={() => void saveAll()}>
+            <Icon name="save" size={16} />
             Enregistrer les modifications ({dirtyCount})
           </button>
         )}
@@ -240,6 +244,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
 
       {notice && (
         <div className="alert success" style={{ marginBottom: 12 }} onClick={() => setNotice(null)}>
+          <Icon name="check" size={16} />
           {notice}
         </div>
       )}
@@ -295,9 +300,10 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                         type="button"
                         className="btn ghost small icon"
                         title="Nouvelle couleur automatique"
+                        aria-label="Nouvelle couleur automatique"
                         onClick={() => update(r.rowKey, { couleur: pickDistinctColor(rows.filter((x) => x !== r).map((x) => x.couleur)) })}
                       >
-                        ↻
+                        <Icon name="shuffle" size={15} />
                       </button>
                     </div>
                   </td>
@@ -341,17 +347,19 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                         }
                         aria-expanded={expanded.has(r.rowKey)}
                       >
+                        <Icon name={expanded.has(r.rowKey) ? 'chevronDown' : 'chevronRight'} size={15} />
                         Détails
                       </button>
                       {r.dirty && (
                         <button type="button" className="btn small primary" disabled={r.saving} onClick={async () => {
                           if (await save(r)) await reload()
                         }}>
-                          {r.saving ? '…' : 'Enregistrer'}
+                          <Icon name={r.saving ? 'refresh' : 'save'} size={15} className={r.saving ? 'spin' : undefined} />
+                          Enregistrer
                         </button>
                       )}
                       <button type="button" className="btn small danger icon" onClick={() => void remove(r)} title="Supprimer" aria-label={`Supprimer ${r.nom}`}>
-                        ✕
+                        <Icon name="trash" size={15} />
                       </button>
                     </div>
                   </td>

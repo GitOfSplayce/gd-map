@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import Icon from './Icon'
+import Switch from './Switch'
 import type { Filters, MapModel } from '../lib/mapModel'
 import { COUVERTURE_LABELS, COUVERTURES, type Commercial } from '../lib/types'
 
@@ -28,8 +30,8 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
         <button type="button" className="btn small ghost" onClick={() => onChange({ ...filters, managers: [], commerciaux: [], couvertures: [], statuts: [], hideARecruter: false })}>
           Réinitialiser
         </button>
-        <button type="button" className="btn small" onClick={onClose}>
-          Fermer
+        <button type="button" className="btn small ghost icon" onClick={onClose} aria-label="Fermer les filtres" title="Fermer">
+          <Icon name="x" size={18} />
         </button>
       </div>
 
@@ -51,7 +53,10 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
       </div>
 
       <h3>Commercial</h3>
-      <input className="input" type="search" placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 6 }} />
+      <div className="input-icon" style={{ marginBottom: 6 }}>
+        <Icon name="search" size={16} />
+        <input className="input" type="search" placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
       <div className="pick-list">
         {people.map((c) => (
           <label key={c.id}>
@@ -74,10 +79,9 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
       </div>
 
       <h3>Statut</h3>
-      <label className="check" style={{ marginBottom: 6 }}>
-        <input type="checkbox" checked={filters.hideARecruter} onChange={() => set({ hideARecruter: !filters.hideARecruter })} />
-        Masquer les « À recruter »
-      </label>
+      <div style={{ marginBottom: 8 }}>
+        <Switch checked={filters.hideARecruter} onChange={(on) => set({ hideARecruter: on })} label="Masquer les « À recruter »" />
+      </div>
       <div className="pick-list">
         {model.statuts.map((s) => (
           <label key={s}>

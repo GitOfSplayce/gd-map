@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
+import AppHeader from '../components/AppHeader'
+import GateLayout from '../components/GateLayout'
+import Icon from '../components/Icon'
 import { useAdminSession } from '../hooks/useAdminSession'
 import { fetchMapData, MAP_DATA_ERRORS } from '../lib/api'
 import { isDemo, requireSupabase } from '../lib/supabase'
@@ -29,38 +32,31 @@ function LoginForm() {
   }
 
   return (
-    <div className="gate">
-      <div className="card">
-        <div className="gate-logo">
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" />
-          <div>
-            <h1 style={{ margin: 0, fontSize: 19 }}>Espace admin</h1>
-            <div className="muted small">Carte commerciale</div>
+    <GateLayout title="Espace admin" subtitle="Carte commerciale">
+      <form onSubmit={submit}>
+        <label className="field">
+          <span>E-mail</span>
+          <input className="input" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Mot de passe</span>
+          <input className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        {error && (
+          <div className="alert error" role="alert">
+            <Icon name="alert" size={16} />
+            {error}
           </div>
-        </div>
-        <form onSubmit={submit}>
-          <label className="field">
-            <span>E-mail</span>
-            <input className="input" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Mot de passe</span>
-            <input className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          {error && (
-            <div className="alert error" role="alert">
-              {error}
-            </div>
-          )}
-          <button type="submit" className="btn primary" disabled={busy}>
-            {busy ? 'Connexion…' : 'Se connecter'}
-          </button>
-        </form>
-        <div className="gate-footer">
-          <Link to="/">Retour à la carte</Link>
-        </div>
+        )}
+        <button type="submit" className="btn primary" disabled={busy}>
+          <Icon name={busy ? 'refresh' : 'lock'} className={busy ? 'spin' : undefined} />
+          {busy ? 'Connexion…' : 'Se connecter'}
+        </button>
+      </form>
+      <div className="gate-footer">
+        <Link to="/">Retour à la carte</Link>
       </div>
-    </div>
+    </GateLayout>
   )
 }
 
@@ -87,30 +83,32 @@ function AdminLayout({ email }: { email: string }) {
 
   return (
     <div className="admin-shell">
-      <header className="topbar">
-        <Link to="/admin" className="brand">
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" />
-          <span>Admin</span>
-        </Link>
-        <nav className="tabs">
-          <NavLink to="/admin" end>
-            Commerciaux
-          </NavLink>
-          <NavLink to="/admin/import">Import / export Excel</NavLink>
-          <NavLink to="/admin/parametres">Paramètres</NavLink>
-        </nav>
-        <div className="actions">
-          <span className="small hide-mobile" style={{ color: '#b9c4dc' }}>
-            {email}
-          </span>
-          <Link className="btn small" to="/">
-            Voir la carte
-          </Link>
-          <button type="button" className="btn small" onClick={() => void signOut()}>
-            Déconnexion
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        subtitle="Administration"
+        home="/admin"
+        nav={
+          <nav className="tabs">
+            <NavLink to="/admin" end>
+              Commerciaux
+            </NavLink>
+            <NavLink to="/admin/import">Import / export Excel</NavLink>
+            <NavLink to="/admin/parametres">Paramètres</NavLink>
+          </nav>
+        }
+        actions={
+          <>
+            <span className="small muted hide-mobile">{email}</span>
+            <Link className="btn small" to="/">
+              <Icon name="map" size={16} />
+              Voir la carte
+            </Link>
+            <button type="button" className="btn small ghost" onClick={() => void signOut()} title="Déconnexion">
+              <Icon name="logout" size={16} />
+              <span className="hide-mobile">Déconnexion</span>
+            </button>
+          </>
+        }
+      />
       <main className="admin-main">
         {error && <div className="alert error">{error}</div>}
         {!data && !error && <p className="muted">Chargement…</p>}
@@ -129,26 +127,24 @@ function AdminLayout({ email }: { email: string }) {
 export default function AdminApp() {
   const session = useAdminSession()
 
-  if (session.loading) return <div className="gate muted">Chargement…</div>
+  if (session.loading) return <div className="map-empty">Chargement…</div>
   if (!session.session) return <LoginForm />
   if (!session.isAdmin) {
     return (
-      <div className="gate">
-        <div className="card stack">
-          <h1 style={{ fontSize: 19 }}>Accès refusé</h1>
-          <p>
+      <GateLayout title="Accès refusé">
+        <div className="stack">
+          <p style={{ margin: 0, textAlign: 'center' }}>
             Le compte <strong>{session.session.user.email}</strong> n'est pas administrateur de la carte.
           </p>
-          <div className="row">
-            <button type="button" className="btn" onClick={() => void signOut()}>
-              Se déconnecter
-            </button>
-            <Link to="/" className="btn ghost">
-              Retour à la carte
-            </Link>
-          </div>
+          <button type="button" className="btn" onClick={() => void signOut()}>
+            <Icon name="logout" size={16} />
+            Se déconnecter
+          </button>
         </div>
-      </div>
+        <div className="gate-footer">
+          <Link to="/">Retour à la carte</Link>
+        </div>
+      </GateLayout>
     )
   }
   return <AdminLayout email={session.session.user.email ?? ''} />

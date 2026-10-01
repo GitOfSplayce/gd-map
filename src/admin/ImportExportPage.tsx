@@ -10,6 +10,7 @@ import {
 } from '../lib/excel'
 import { planImport, type DiffItem, type ImportMode } from '../lib/importDiff'
 import { STRUCTURES } from '../lib/types'
+import Icon from '../components/Icon'
 import type { AdminDataProps } from './AdminApp'
 
 const KIND_LABELS: Record<DiffItem['kind'], string> = {
@@ -80,6 +81,41 @@ function DiffEntry({ item }: { item: DiffItem }) {
 
 const THIS_YEAR = new Date().getFullYear()
 
+/** Zone de dépôt du fichier Excel (glisser-déposer ou clic), à la place du bouton natif. */
+function Dropzone({ onFile }: { onFile: (file: File | undefined) => void }) {
+  const [dragging, setDragging] = useState(false)
+  return (
+    <label
+      className={'dropzone' + (dragging ? ' dragging' : '')}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragging(false)
+        onFile(e.dataTransfer.files[0])
+      }}
+    >
+      <input
+        type="file"
+        accept=".xlsx,.xlsm,.xls"
+        aria-label="Choisir le fichier Excel"
+        onChange={(e) => {
+          onFile(e.target.files?.[0])
+          e.target.value = ''
+        }}
+      />
+      <span className="dz-icon">
+        <Icon name="upload" size={22} />
+      </span>
+      <strong>{dragging ? 'Déposez le fichier ici' : 'Glissez le fichier Excel ici'}</strong>
+      <span className="dz-hint">ou cliquez pour le choisir · .xlsx, onglet « V3 » par défaut</span>
+    </label>
+  )
+}
+
 export default function ImportExportPage({ data, reload }: AdminDataProps) {
   const [fileName, setFileName] = useState<string | null>(null)
   const [workbook, setWorkbook] = useState<WorkBook | null>(null)
@@ -138,6 +174,12 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
     }
   }
 
+  const reset = () => {
+    setWorkbook(null)
+    setFileName(null)
+    setError(null)
+  }
+
   const exportExcel = () => {
     const wb = buildExportWorkbook(data.commerciaux, data.affectations, data.objectifs, exportYear)
     downloadWorkbook(wb, `carte-commerciale-${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -163,7 +205,8 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
             CA et objectifs de
             <input className="input" type="number" style={{ width: 100 }} value={exportYear} onChange={(e) => setExportYear(Number(e.target.value))} />
           </label>
-          <button type="button" className="btn" onClick={exportExcel}>
+          <button type="button" className="btn primary" onClick={exportExcel}>
+            <Icon name="download" size={16} />
             Télécharger l'Excel
           </button>
         </div>
@@ -179,21 +222,46 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
           ))}
         </div>
 
-        {done && <div className="alert success">{done}</div>}
-        {error && <div className="alert error">{error}</div>}
+        {done && (
+          <div className="alert success">
+            <Icon name="check" size={16} />
+            {done}
+          </div>
+        )}
+        {error && (
+          <div className="alert error">
+            <Icon name="alert" size={16} />
+            {error}
+          </div>
+        )}
 
-        <label className="field">
-          <span>Fichier Excel</span>
-          <input
-            type="file"
-            accept=".xlsx,.xlsm,.xls"
-            onChange={(e) => {
-              void onFile(e.target.files?.[0])
-              e.target.value = ''
-            }}
-          />
-        </label>
-        {fileName && <div className="small muted">Fichier : {fileName}</div>}
+        {workbook && fileName ? (
+          <div className="file-chip">
+            <span className="fc-icon">
+              <Icon name="sheet" size={20} />
+            </span>
+            <div className="grow">
+              <div className="fc-name">{fileName}</div>
+              <div className="small muted">
+                {workbook.SheetNames.length} onglet{workbook.SheetNames.length > 1 ? 's' : ''}
+                {parsed && !parsed.errors.length && ` · ${parsed.rows.length} commerciaux lus dans « ${sheet} »`}
+              </div>
+            </div>
+            <label className="btn small">
+              <Icon name="upload" size={16} />
+              Changer
+              <input type="file" accept=".xlsx,.xlsm,.xls" hidden onChange={(e) => {
+                void onFile(e.target.files?.[0])
+                e.target.value = ''
+              }} />
+            </label>
+            <button type="button" className="btn small ghost icon" onClick={reset} aria-label="Retirer le fichier" title="Retirer">
+              <Icon name="x" size={18} />
+            </button>
+          </div>
+        ) : (
+          <Dropzone onFile={(f) => void onFile(f)} />
+        )}
 
         {workbook && (
           <div className="row" style={{ alignItems: 'flex-end', gap: 16 }}>
@@ -309,16 +377,10 @@ export default function ImportExportPage({ data, reload }: AdminDataProps) {
 
             <div className="row">
               <button type="button" className="btn primary" disabled={busy || !plan.payload.length} onClick={() => void apply()}>
+                <Icon name={busy ? 'refresh' : 'check'} size={16} className={busy ? 'spin' : undefined} />
                 {busy ? 'Import en cours…' : `Valider l'import (${plan.counts.add + plan.counts.update} à enregistrer, ${plan.counts.delete} à supprimer)`}
               </button>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => {
-                  setWorkbook(null)
-                  setFileName(null)
-                }}
-              >
+              <button type="button" className="btn ghost" onClick={reset}>
                 Annuler
               </button>
             </div>

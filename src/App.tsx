@@ -24,7 +24,7 @@ function ConfigMissing() {
 
 export default function App() {
   return (
-    <Suspense fallback={<div className="gate muted">Chargement…</div>}>
+    <Suspense fallback={<div className="map-empty">Chargement…</div>}>
       <Routes>
         <Route path="/aide" element={<HelpPage />} />
         <Route path="/" element={isConfigured ? <MapPage /> : <ConfigMissing />} />

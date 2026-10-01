@@ -1,20 +1,20 @@
 import { Link } from 'react-router-dom'
+import AppHeader from '../components/AppHeader'
+import Icon from '../components/Icon'
 import { CoverageKey } from '../components/Legend'
 
 export default function HelpPage() {
   return (
     <div className="admin-shell">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" />
-          <span>Carte commerciale – Aide</span>
-        </Link>
-        <div className="actions">
+      <AppHeader
+        subtitle="Aide"
+        actions={
           <Link className="btn small" to="/">
+            <Icon name="arrowLeft" size={16} />
             Retour à la carte
           </Link>
-        </div>
-      </header>
+        }
+      />
 
       <main className="help">
         <section>
@@ -64,7 +64,7 @@ export default function HelpPage() {
               <strong>Partiel</strong> : remplissage atténué.
             </li>
             <li>
-              <strong>Gestion</strong> : remplissage clair et contour en pointillés.
+              <strong>Gestion</strong> : trame de points et contour en pointillés.
             </li>
             <li>
               <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers) : rayures aux couleurs de chacun.

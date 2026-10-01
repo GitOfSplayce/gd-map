@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { BRAND } from './Logo'
+import Icon from './Icon'
 import { COUVERTURE_OPACITY, type ColorMode, type LegendItem } from '../lib/mapModel'
 
 interface Props {
@@ -9,7 +11,7 @@ interface Props {
   onClear: () => void
 }
 
-const SAMPLE = '#4363d8'
+const SAMPLE = BRAND.saphir
 
 export function CoverageKey() {
   return (
@@ -23,12 +25,16 @@ export function CoverageKey() {
       <div>
         <span
           className="swatch"
-          style={{ background: `rgba(67, 99, 216, ${COUVERTURE_OPACITY.gestion})`, border: `1.5px dashed ${SAMPLE}` }}
-        />{' '}
+          style={{
+            background: `radial-gradient(${SAMPLE} 1.1px, transparent 1.4px) 0 0 / 4px 4px, #e3e9f3`,
+            border: `1.5px dashed ${SAMPLE}`,
+          }}
+        />
         Gestion
       </div>
       <div>
-        <span className="swatch" style={{ background: 'repeating-linear-gradient(45deg, #e6194b 0 4px, #3cb44b 4px 8px)' }} /> Partagée
+        <span className="swatch" style={{ background: `repeating-linear-gradient(45deg, ${BRAND.saphir} 0 4px, ${BRAND.jaune} 4px 8px)` }} />
+        Partagée
       </div>
     </div>
   )
@@ -45,13 +51,10 @@ export default function Legend({ items, colorMode, highlighted, onToggle, onClea
       <CoverageKey />
       <div className="row" style={{ marginBottom: 8 }}>
         {items.length > 8 && (
-          <input
-            className="input grow"
-            type="search"
-            placeholder={`Rechercher un ${what}…`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="input-icon grow">
+            <Icon name="search" size={16} />
+            <input className="input" type="search" placeholder={`Rechercher un ${what}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
         )}
         {highlighted.size > 0 && (
           <button type="button" className="btn small" onClick={onClear}>

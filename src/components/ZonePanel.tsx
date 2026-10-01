@@ -1,4 +1,5 @@
 import type { MapModel } from '../lib/mapModel'
+import Icon from './Icon'
 import { COUVERTURE_LABELS, STRUCTURE_LABELS, STRUCTURES } from '../lib/types'
 import { formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
 import { IDF_CODES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
@@ -25,11 +26,13 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
 
       {view === 'france' && (code === '75' || isParisArr(code)) && (
         <button type="button" className="btn small" onClick={() => onChangeView('paris')}>
+          <Icon name="map" size={16} />
           Voir Paris par arrondissement
         </button>
       )}
       {view === 'france' && zone && IDF_CODES.includes(code) && code !== '75' && (
         <button type="button" className="btn small" onClick={() => onChangeView('idf')}>
+          <Icon name="map" size={16} />
           Zoomer sur l'Île-de-France
         </button>
       )}

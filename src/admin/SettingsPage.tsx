@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { adminUsers, getAccessStatus, setAccessCode, type AccessStatus, type AdminUser } from '../lib/api'
+import Icon from '../components/Icon'
+import Switch from '../components/Switch'
 import { requireSupabase } from '../lib/supabase'
 
 const MIN_CODE = 6
@@ -66,13 +68,16 @@ function AccessCodeCard() {
           <span>Confirmer le code</span>
           <input className="input" type={show ? 'text' : 'password'} autoComplete="new-password" value={confirmCode} onChange={(e) => setConfirmCode(e.target.value)} />
         </label>
-        <label className="check small">
-          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
-          Afficher
-        </label>
-        {message && <div className={`alert ${message.kind}`}>{message.text}</div>}
+        <Switch checked={show} onChange={setShow} label="Afficher le code" />
+        {message && (
+          <div className={`alert ${message.kind}`}>
+            <Icon name={message.kind === 'success' ? 'check' : 'alert'} size={16} />
+            {message.text}
+          </div>
+        )}
         <div>
           <button type="submit" className="btn primary" disabled={busy || !code}>
+            <Icon name="key" size={16} />
             {status?.configured ? 'Changer le code' : 'Définir le code'}
           </button>
         </div>
@@ -139,8 +144,18 @@ function AdminsCard({ email }: { email: string }) {
   return (
     <div className="card stack">
       <h2>Administrateurs</h2>
-      {error && <div className="alert error">{error}</div>}
-      {notice && <div className="alert success">{notice}</div>}
+      {error && (
+        <div className="alert error">
+          <Icon name="alert" size={16} />
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div className="alert success">
+          <Icon name="check" size={16} />
+          {notice}
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="grid">
@@ -193,6 +208,7 @@ function AdminsCard({ email }: { email: string }) {
                             setResetPassword(randomPassword())
                           }}
                         >
+                          <Icon name="key" size={15} />
                           Nouveau mot de passe
                         </button>
                       )}
@@ -206,6 +222,7 @@ function AdminsCard({ email }: { email: string }) {
                           }
                         }}
                       >
+                        <Icon name="trash" size={15} />
                         Retirer
                       </button>
                     </div>
@@ -228,12 +245,14 @@ function AdminsCard({ email }: { email: string }) {
           <div className="row" style={{ flexWrap: 'nowrap' }}>
             <input className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             <button type="button" className="btn" onClick={() => setNewPassword(randomPassword())}>
+              <Icon name="shuffle" size={16} />
               Générer
             </button>
           </div>
         </label>
         <div>
           <button type="submit" className="btn primary" disabled={busy}>
+            <Icon name="plus" size={16} />
             Ajouter
           </button>
         </div>
@@ -263,7 +282,12 @@ function MyPasswordCard() {
           Modifier
         </button>
       </form>
-      {message && <div className={`alert ${message.kind}`}>{message.text}</div>}
+      {message && (
+          <div className={`alert ${message.kind}`}>
+            <Icon name={message.kind === 'success' ? 'check' : 'alert'} size={16} />
+            {message.text}
+          </div>
+        )}
     </div>
   )
 }

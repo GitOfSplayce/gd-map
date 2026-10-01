@@ -7,7 +7,7 @@ interface ExportOptions {
   filename: string
 }
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
+const FONT = 'Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
 
 export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend, filename }: ExportOptions) {
   const w = svg.width.baseVal.value

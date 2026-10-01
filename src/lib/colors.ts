@@ -83,6 +83,12 @@ export function managerColors(names: string[]): Map<string, string> {
   )
 }
 
+/** Assombrit une couleur (mélange avec du noir, `amount` entre 0 et 1). */
+export function shade(hex: string, amount: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount))
+}
+
 /** Couleur obtenue en posant `hex` avec l'opacité donnée sur un fond blanc. */
 export function blendWithWhite(hex: string, opacity: number): string {
   const [r, g, b] = hexToRgb(hex)

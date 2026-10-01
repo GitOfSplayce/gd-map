@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import AppHeader from '../components/AppHeader'
 import FiltersPanel from '../components/FiltersPanel'
+import Icon from '../components/Icon'
 import Legend from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import ZonePanel from '../components/ZonePanel'
+import Switch from '../components/Switch'
 import ZoneTooltip from '../components/ZoneTooltip'
 import { useAdminSession } from '../hooks/useAdminSession'
 import { useGeo } from '../hooks/useGeo'
@@ -36,7 +39,7 @@ export default function MapPage() {
     return <MapScreen data={access.data} isAdmin={admin.isAdmin} onLock={access.lock} onReload={access.reload} />
   }
   if (access.status === 'checking' || (access.status === 'loading' && admin.isAdmin)) {
-    return <div className="gate muted">Chargement…</div>
+    return <div className="map-empty">Chargement…</div>
   }
   return <CodeGate error={access.error} busy={access.status === 'loading'} onSubmit={access.submit} />
 }
@@ -45,7 +48,7 @@ interface ScreenProps {
   data: MapData
   isAdmin: boolean
   onLock: () => void
-  onReload: () => void
+  onReload: () => Promise<unknown>
 }
 
 function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
@@ -76,6 +79,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [hover, setHover] = useState<{ code: string; x: number; y: number; w: number; h: number } | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [reloading, setReloading] = useState(false)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const { geo, error: geoError } = useGeo()
 
@@ -108,6 +112,15 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const tabInfo = TABS.find((t) => t.key === tab)!
   const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString('fr-FR') : null
 
+  const reload = async () => {
+    setReloading(true)
+    try {
+      await onReload()
+    } finally {
+      setReloading(false)
+    }
+  }
+
   const exportPng = async () => {
     if (!svgRef.current) return
     setExporting(true)
@@ -132,44 +145,47 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" />
-          <span>Carte commerciale</span>
-        </Link>
-        <nav className="tabs" role="tablist" aria-label="Structure">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => {
-                setParam('onglet', t.key, 'ALL')
-                setSelected(null)
-              }}
-              title={t.sub}
-            >
-              {t.label}
-              <span className="tab-sub hide-mobile">{t.sub}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="actions">
-          <Link className="btn small" to="/aide">
-            Aide
-          </Link>
-          {isAdmin ? (
-            <Link className="btn small" to="/admin">
-              Admin
+      <AppHeader
+        nav={
+          <nav className="tabs" role="tablist" aria-label="Structure">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => {
+                  setParam('onglet', t.key, 'ALL')
+                  setSelected(null)
+                }}
+                title={t.sub}
+              >
+                {t.label}
+                <span className="tab-sub hide-mobile">{t.sub}</span>
+              </button>
+            ))}
+          </nav>
+        }
+        actions={
+          <>
+            <Link className="btn small ghost" to="/aide">
+              <Icon name="help" size={16} />
+              <span className="hide-mobile">Aide</span>
             </Link>
-          ) : (
-            <button type="button" className="btn small" onClick={onLock} title="Oublier le code sur cet appareil">
-              Quitter
-            </button>
-          )}
-        </div>
-      </header>
+            {isAdmin ? (
+              <Link className="btn small" to="/admin">
+                <Icon name="settings" size={16} />
+                Admin
+              </Link>
+            ) : (
+              <button type="button" className="btn small" onClick={onLock} title="Oublier le code sur cet appareil">
+                <Icon name="logout" size={16} />
+                Quitter
+              </button>
+            )}
+          </>
+        }
+      />
 
       <div className="toolbar">
         <div className="group">
@@ -202,20 +218,27 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
         </div>
         <div className="group">
           <button type="button" className="btn small" aria-expanded={showFilters} onClick={() => setShowFilters((s) => !s)}>
-            Filtres {filterCount > 0 && <span className="count-dot">{filterCount}</span>}
+            <Icon name="filter" size={16} />
+            Filtres
+            {filterCount > 0 && <span className="count-dot">{filterCount}</span>}
           </button>
-          <label className="check small">
-            <input type="checkbox" checked={showLabels} onChange={(e) => setParam('codes', e.target.checked ? '1' : '0', '1')} />
-            Codes
-          </label>
           <button type="button" className="btn small" onClick={exportPng} disabled={exporting || !geo}>
+            <Icon name="image" size={16} className={exporting ? 'spin' : undefined} />
             {exporting ? 'Export…' : 'Export PNG'}
           </button>
+          <Switch checked={showLabels} onChange={(on) => setParam('codes', on ? '1' : '0', '1')} label="Codes" />
         </div>
-        <div className="group muted small hide-mobile" style={{ marginLeft: 'auto' }}>
+        <div className="updated hide-mobile">
           {updated && <span>Données du {updated}</span>}
-          <button type="button" className="btn small ghost" onClick={onReload} title="Recharger les données">
-            ⟳
+          <button
+            type="button"
+            className="btn small ghost icon"
+            onClick={reload}
+            disabled={reloading}
+            title="Recharger les données"
+            aria-label="Recharger les données"
+          >
+            <Icon name="refresh" size={16} className={reloading ? 'spin' : undefined} />
           </button>
         </div>
       </div>
@@ -233,6 +256,11 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
               onHover={(code, pos) => setHover(code && pos ? { code, ...pos } : null)}
               onSelect={(code) => {
                 setSelected(code)
+                setShowFilters(false)
+              }}
+              onBackground={() => {
+                setSelected(null)
+                setHighlighted(new Set())
                 setShowFilters(false)
               }}
               onSvg={(el) => {
@@ -272,8 +300,8 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
             <>
               <div className="sidebar-head">
                 <h2 className="grow">Détail de la zone</h2>
-                <button type="button" className="btn small" onClick={() => setSelected(null)} aria-label="Fermer le détail">
-                  ✕
+                <button type="button" className="btn small ghost icon" onClick={() => setSelected(null)} aria-label="Fermer le détail" title="Fermer">
+                  <Icon name="x" size={18} />
                 </button>
               </div>
               <div className="sidebar-body">
