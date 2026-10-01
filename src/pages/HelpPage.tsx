@@ -93,6 +93,28 @@ export default function HelpPage() {
         </section>
 
         <section>
+          <h2>CA et objectifs (admins)</h2>
+          <p>
+            Le CA et l'objectif de chaque commercial se saisissent par structure et par année, dans son panneau (onglet{' '}
+            <em>Commerciaux</em> de l'admin), ou par l'import Excel (colonnes <code>CA MD</code>, <code>Objectif MD</code>…).
+            Ils ne sont <strong>jamais visibles avec le seul code d'accès</strong> : il faut être connecté en admin.
+          </p>
+          <ul>
+            <li>
+              Sur la carte, un sélecteur <strong>CA</strong> choisit l'année ; la légende montre le CA, l'objectif et le taux
+              atteint de chaque commercial (ou de l'équipe d'un manager).
+            </li>
+            <li>
+              <strong>Couleur → Performance</strong> colore chaque zone selon le taux d'atteinte cumulé de ses commerciaux,
+              du rouge (moins de 50 %) au vert (120 % et plus), avec un classement des commerciaux.
+            </li>
+            <li>
+              L'onglet <strong>Synthèse</strong> de l'admin totalise par commercial, manager ou structure, avec export Excel.
+            </li>
+          </ul>
+        </section>
+
+        <section>
           <h2>Saisir les zones (admin et fichier Excel)</h2>
           <table>
             <tbody>

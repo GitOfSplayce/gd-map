@@ -6,6 +6,7 @@ import Icon from '../components/Icon'
 import Legend from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import ZonePanel from '../components/ZonePanel'
+import Select from '../components/Select'
 import Switch from '../components/Switch'
 import ZoneTooltip from '../components/ZoneTooltip'
 import { useAdminSession } from '../hooks/useAdminSession'
@@ -21,6 +22,7 @@ import {
   type SharedMode,
   type Tab,
 } from '../lib/mapModel'
+import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
 import { STRUCTURE_LABELS, STRUCTURES, type MapData } from '../lib/types'
 import CodeGate from './CodeGate'
@@ -39,6 +41,7 @@ const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'manager1', label: 'Manager 1' },
   { key: 'manager2', label: 'Manager 2' },
   { key: 'couverture', label: 'Couverture' },
+  { key: 'performance', label: 'Performance' },
 ]
 const SHARED_MODES: SharedMode[] = ['rayures', 'camemberts']
 
@@ -70,7 +73,11 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   }
   const tab = pick<Tab>('onglet', TABS.map((t) => t.key), 'ALL')
   const view = pick<MapViewMode>('vue', VIEWS.map((v) => v.key), 'france')
-  const colorMode = pick<ColorMode>('couleur', COLOR_MODES.map((c) => c.key), 'commercial')
+  // CA et objectifs : réservés aux admins (vue Performance, année, chiffres de la légende)
+  const colorModes = COLOR_MODES.filter((c) => c.key !== 'performance' || data.admin)
+  const colorMode = pick<ColorMode>('couleur', colorModes.map((c) => c.key), 'commercial')
+  const years = useMemo(() => availableYears(data.objectifs), [data.objectifs])
+  const year = Number(params.get('annee')) || defaultYear(data.objectifs)
   const showLabels = params.get('codes') !== '0'
   const sharedMode = pick<SharedMode>('partage', SHARED_MODES, 'rayures')
 
@@ -96,7 +103,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const { geo, error: geoError } = useGeo()
 
-  const model = useMemo(() => buildMapModel(data, tab, filters, colorMode), [data, tab, filters, colorMode])
+  const model = useMemo(() => buildMapModel(data, tab, filters, colorMode, year), [data, tab, filters, colorMode, year])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -223,13 +230,26 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
         <div className="group">
           <span className="label">Couleur</span>
           <div className="seg">
-            {COLOR_MODES.map((c) => (
+            {colorModes.map((c) => (
               <button key={c.key} type="button" aria-pressed={colorMode === c.key} onClick={() => setColorMode(c.key)}>
                 {c.label}
               </button>
             ))}
           </div>
         </div>
+        {data.admin && (
+          <div className="group">
+            <span className="label">CA</span>
+            <Select
+              className="auto year-select"
+              ariaLabel="Année des CA et objectifs"
+              value={String(year)}
+              options={years.map((y) => ({ value: String(y), label: String(y) }))}
+              onChange={(v) => setParam('annee', v, String(defaultYear(data.objectifs)))}
+              searchable={false}
+            />
+          </div>
+        )}
         <div className="group">
           <button type="button" className="btn small" aria-expanded={showFilters} onClick={() => setShowFilters((s) => !s)}>
             <Icon name="filter" size={16} />
@@ -341,8 +361,10 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
               </>
             ) : (
               <>
-                <h2 className="grow">{colorMode === 'couverture' ? 'Couverture' : 'Légende'}</h2>
-                {colorMode !== 'couverture' && (
+                <h2 className="grow">
+                  {colorMode === 'couverture' ? 'Couverture' : colorMode === 'performance' ? `Performance ${year}` : 'Légende'}
+                </h2>
+                {colorMode !== 'couverture' && colorMode !== 'performance' && (
                   <span className="muted small">
                     {colorMode === 'commercial'
                       ? plural(model.legend.length, 'commercial', 'commerciaux')
@@ -368,6 +390,8 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
             ) : (
               <Legend
                 items={model.legend}
+                ranking={model.ranking}
+                year={year}
                 colorMode={colorMode}
                 highlighted={highlighted}
                 onToggle={toggleHighlight}

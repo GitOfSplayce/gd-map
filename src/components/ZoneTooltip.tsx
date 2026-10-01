@@ -1,4 +1,5 @@
 import type { MapModel } from '../lib/mapModel'
+import { formatPct, perfBucketOf, perfText } from '../lib/performance'
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS } from '../lib/types'
 import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
@@ -25,6 +26,12 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
     <div className="tooltip" style={{ left, top }} role="tooltip">
       <div className="t-title">{title}</div>
       <div className="t-sub">{subtitle}</div>
+      {model.colorMode === 'performance' && people.length > 0 && (
+        <div className="t-cov">
+          <span className="swatch" style={{ background: perfBucketOf(model.perfOf(code).pct).color }} />
+          Performance {model.year} : {perfText(model.perfOf(code))}
+        </div>
+      )}
       {model.colorMode === 'couverture' && (
         <div className="t-cov">
           <span className="swatch" style={{ background: model.coverageOf(code).bucket.color }} />
@@ -46,6 +53,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
             {p.objectif && (p.objectif.ca !== null || p.objectif.objectif !== null) && (
               <div className="t-meta">
                 CA {model.year} : {formatEuros(p.objectif.ca)} · Objectif : {formatEuros(p.objectif.objectif)}
+                {p.objectif.ca !== null && p.objectif.objectif ? ` · ${formatPct(p.objectif.ca / p.objectif.objectif)}` : ''}
               </div>
             )}
           </div>

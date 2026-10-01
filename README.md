@@ -64,6 +64,7 @@ Le workflow `keepalive.yml` appelle la base deux fois par semaine pour éviter l
 - Onglets **Globale / MD / SP / MC / BK** ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
 - Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
 - **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée : rayures aux couleurs de chacun, ou camemberts (choix dans la légende).
+- **CA et objectifs** (admins connectés uniquement) : saisie par structure et par année dans le panneau d'un commercial ou par l'Excel ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
 - Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail.
@@ -100,7 +101,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 | Qui | Peut |
 |---|---|
 | Anonyme | rien, sauf appeler `get_map_data(code)` et `ping()` |
-| Avec le bon code | lire la carte : commerciaux **actifs**, zones, CA/objectifs. Les notes, actions, dates et jours/an restent réservés aux admins. |
+| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones. Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
 | Connecté, non admin | rien |
 | Admin (`public.admins`) | lire et modifier les données, changer le code, gérer les admins |
 

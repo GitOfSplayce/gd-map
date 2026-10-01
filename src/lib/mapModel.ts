@@ -1,11 +1,15 @@
 // Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, zones partagées, couverture et légende.
 import { managerColors } from './colors'
 import { nameKey } from './text'
-import type { Affectation, Commercial, Couverture, MapData, Objectif, Structure } from './types'
+import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
+import { STRUCTURES, type Affectation, type Commercial, type Couverture, type MapData, type Objectif, type Structure } from './types'
 import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
 
-/** `couverture` : carte de chaleur du niveau de couverture, à la place des couleurs des commerciaux. */
-export type ColorMode = 'commercial' | 'manager1' | 'manager2' | 'couverture'
+/**
+ * `couverture` : carte de chaleur du niveau de couverture ; `performance` : taux d'atteinte des objectifs
+ * (admins seulement), à la place des couleurs des commerciaux.
+ */
+export type ColorMode = 'commercial' | 'manager1' | 'manager2' | 'couverture' | 'performance'
 /** Affichage des zones partagées par plusieurs commerciaux (ou managers). */
 export type SharedMode = 'rayures' | 'camemberts'
 export type Tab = 'ALL' | Structure
@@ -49,6 +53,8 @@ export interface LegendItem {
   color: string
   detail: string
   zoneCount: number
+  /** CA et objectif de l'année (admins), pour un commercial ou l'équipe d'un manager. */
+  perf?: Perf
 }
 
 export interface Stripe {
@@ -113,6 +119,13 @@ export const strongest = (list: Couverture[]): Couverture =>
 
 export interface MapModel {
   colorMode: ColorMode
+  /** Année des CA et objectifs affichés. */
+  year: number
+  /** Performance des commerciaux présents sur une zone (vue Performance). */
+  perfOf: (code: string) => Perf
+  perfOfCommercial: (id: string) => Perf
+  /** Vue Performance : commerciaux classés par taux d'atteinte. */
+  ranking: LegendItem[]
   /** Entrées par code de zone affichée (départements, arrondissements, DROM, Monaco). */
   entries: Map<string, ZoneEntry[]>
   coverageOf: (code: string) => ZoneCoverage
@@ -123,10 +136,18 @@ export interface MapModel {
   managers: { manager1: string[]; manager2: string[] }
   statuts: string[]
   visibleCommerciaux: Commercial[]
-  year: number
 }
 
-export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMode: ColorMode): MapModel {
+export function buildMapModel(
+  data: MapData,
+  tab: Tab,
+  filters: Filters,
+  colorMode: ColorMode,
+  year: number = defaultYear(data.objectifs),
+): MapModel {
+  const structs: readonly Structure[] = tab === 'ALL' ? STRUCTURES : [tab]
+  const perfOfPeople = (ids: Iterable<string>) => sumPerf(data.objectifs, ids, year, structs)
+  const hasFigures = data.objectifs.length > 0
   const byId = new Map(data.commerciaux.map((c) => [c.id, c]))
   const active = data.commerciaux.filter((c) => c.actif)
 
@@ -136,7 +157,7 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
   const mgrColors = managerColors([...m1, ...m2], data.managers ?? [])
 
   const keyOf = (c: Commercial) =>
-    colorMode === 'commercial' || colorMode === 'couverture'
+    colorMode === 'commercial' || colorMode === 'couverture' || colorMode === 'performance'
       ? c.id
       : `m:${(colorMode === 'manager1' ? c.manager1 : c.manager2) || NO_MANAGER}`
   const colorOf = (key: string) =>
@@ -213,6 +234,26 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
       legendPeople.get(e.key)!.set(e.commercial.id, e.commercial)
     }
   }
+  // Performance d'une zone : CA et objectifs cumulés des commerciaux qui y sont présents
+  const perfCache = new Map<string, Perf>()
+  const perfOf = (code: string) => {
+    let p = perfCache.get(code)
+    if (!p) {
+      p = perfOfPeople(new Set((entries.get(code) ?? []).map((e) => e.commercial.id)))
+      perfCache.set(code, p)
+    }
+    return p
+  }
+
+  const franceZones = ZONES.filter((z) => z.type !== 'arrondissement')
+  const perfLegend: LegendItem[] = PERF_BUCKETS.map((b) => ({
+    key: b.key,
+    label: b.label,
+    color: b.color,
+    detail: b.detail,
+    zoneCount: franceZones.filter((z) => (entries.get(z.code)?.length ?? 0) > 0 && perfBucketOf(perfOf(z.code).pct).key === b.key).length,
+  }))
+
   // En mode couverture : un niveau par ligne, compté sur les départements, DROM et Monaco
   const heatLegend: LegendItem[] = HEAT_BUCKETS.map((b) => ({
     key: b.key,
@@ -222,7 +263,7 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     zoneCount: ZONES.filter((z) => z.type !== 'arrondissement' && coverageOf(z.code).bucket.key === b.key).length,
   }))
 
-  const legend: LegendItem[] = colorMode === 'couverture' ? heatLegend : [...legendZones]
+  const legend: LegendItem[] = colorMode === 'couverture' ? heatLegend : colorMode === 'performance' ? perfLegend : [...legendZones]
     .map(([key, zones]) => {
       const people = [...legendPeople.get(key)!.values()]
       const isManager = key.startsWith('m:')
@@ -234,6 +275,7 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
           ? `${people.length} commercia${people.length > 1 ? 'ux' : 'l'}`
           : [people[0].statut, people[0].structures.join(' · ')].filter(Boolean).join(' – '),
         zoneCount: zones.size,
+        perf: hasFigures ? perfOfPeople(people.map((p) => p.id)) : undefined,
       }
     })
     .sort((a, b) => {
@@ -252,7 +294,10 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     if (cached) return cached
 
     let style: ZoneStyle
-    if (colorMode === 'couverture') {
+    if (colorMode === 'performance') {
+      const color = list.length ? perfBucketOf(perfOf(code).pct).color : EMPTY_FILL
+      style = { fill: color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
+    } else if (colorMode === 'couverture') {
       style = { fill: coverageOf(code).bucket.color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else if (!list.length) {
       style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
@@ -286,7 +331,10 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
 
     if (highlighted.size) {
       const hit =
-        colorMode === 'couverture' ? highlighted.has(coverageOf(code).bucket.key) : list.some((e) => highlighted.has(e.key))
+        colorMode === 'couverture'
+          ? highlighted.has(coverageOf(code).bucket.key)
+          : (colorMode === 'performance' && list.length > 0 && highlighted.has(perfBucketOf(perfOf(code).pct).key)) ||
+            list.some((e) => highlighted.has(e.key))
       style = hit
         ? { ...style, stroke: '#1b2232', strokeWidth: 1.8 }
         : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER }
@@ -296,10 +344,24 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     return style
   }
 
-  const years = data.objectifs.map((o) => o.annee)
-  const year = years.includes(new Date().getFullYear()) || !years.length ? new Date().getFullYear() : Math.max(...years)
   const objectifOf = (commercialId: string, structure: Structure) =>
     data.objectifs.find((o) => o.commercial_id === commercialId && o.structure === structure && o.annee === year)
+
+  const visibleCommerciaux = active.filter(keepCommercial)
+
+  // Classement de la vue Performance : commerciaux visibles ayant des chiffres, du meilleur taux au plus faible
+  const ranking: LegendItem[] = visibleCommerciaux
+    .map((c) => ({ c, perf: perfOfPeople([c.id]) }))
+    .filter((x) => x.perf.hasData)
+    .sort((a, b) => (b.perf.pct ?? -1) - (a.perf.pct ?? -1) || a.c.nom.localeCompare(b.c.nom, 'fr'))
+    .map(({ c, perf }) => ({
+      key: c.id,
+      label: c.nom,
+      color: perfBucketOf(perf.pct).color,
+      detail: [c.statut, c.structures.join(' · ')].filter(Boolean).join(' – '),
+      zoneCount: new Set(data.affectations.filter((a) => a.commercial_id === c.id).map((a) => a.zone_code)).size,
+      perf,
+    }))
 
   return {
     colorMode,
@@ -311,7 +373,10 @@ export function buildMapModel(data: MapData, tab: Tab, filters: Filters, colorMo
     objectifOf,
     managers: { manager1: m1, manager2: m2 },
     statuts,
-    visibleCommerciaux: active.filter(keepCommercial),
+    visibleCommerciaux,
     year,
+    perfOf,
+    perfOfCommercial: (id: string) => perfOfPeople([id]),
+    ranking,
   }
 }

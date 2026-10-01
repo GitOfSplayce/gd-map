@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import ColorPicker from '../components/ColorPicker'
+import { PerfBar } from '../components/Legend'
 import Icon from '../components/Icon'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
@@ -8,6 +9,7 @@ import { deleteCommercial, saveCommercial } from '../lib/api'
 import { isHexColor, managerColors, pickDistinctColor } from '../lib/colors'
 import { isARecruter } from '../lib/mapModel'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
+import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
 import { STRUCTURE_LABELS, STRUCTURES, type Commercial, type CommercialPayload, type MapData, type Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
@@ -32,6 +34,23 @@ interface Draft {
   secteur: string
   ordre: number
   zones: Record<Structure, string>
+  /** CA et objectifs saisis, par année puis par structure (texte tel que tapé). */
+  objectifs: Record<number, Partial<Record<Structure, { ca: string; objectif: string }>>>
+}
+
+/** « 120 000 », « 120000,5 », « 120 000 € » → nombre ; '' → null ; illisible → NaN. */
+const parseAmount = (t: string): number | null => {
+  const clean = t.replace(/[\s\u00a0\u202f€]/g, '').replace(',', '.')
+  return clean === '' ? null : Number(clean)
+}
+
+const objectifsDraft = (c: Commercial, data: MapData): Draft['objectifs'] => {
+  const out: Draft['objectifs'] = {}
+  for (const o of data.objectifs.filter((x) => x.commercial_id === c.id)) {
+    out[o.annee] ??= {}
+    out[o.annee][o.structure] = { ca: o.ca === null ? '' : String(o.ca), objectif: o.objectif === null ? '' : String(o.objectif) }
+  }
+  return out
 }
 
 const zoneTexts = (c: Commercial, data: MapData) => {
@@ -57,6 +76,7 @@ function toDraft(c: Commercial, data: MapData): Draft {
     secteur: c.secteur ?? '',
     ordre: c.ordre,
     zones: zoneTexts(c, data),
+    objectifs: objectifsDraft(c, data),
   }
 }
 
@@ -82,6 +102,15 @@ function toPayload(d: Draft): CommercialPayload {
     secteur: d.secteur,
     ordre: d.ordre,
     affectations,
+    // Toutes les lignes connues : une ligne vidée (CA et objectif vides) est supprimée côté serveur
+    objectifs: Object.entries(d.objectifs).flatMap(([annee, byStructure]) =>
+      Object.entries(byStructure).map(([structure, v]) => ({
+        structure: structure as Structure,
+        annee: Number(annee),
+        ca: parseAmount(v!.ca),
+        objectif: parseAmount(v!.objectif),
+      })),
+    ),
   }
 }
 
@@ -94,6 +123,12 @@ function validate(d: Draft): string | null {
     if (bad.length > 1) return `Zones ${s} : ${bad.map((i) => `« ${i.raw} »`).join(', ')} ne sont pas des zones connues.`
   }
   if (d.jours_an.trim() && !Number.isFinite(Number(d.jours_an.replace(',', '.')))) return '« Nb de jour / an » doit être un nombre.'
+  for (const [annee, byStructure] of Object.entries(d.objectifs)) {
+    for (const [s, v] of Object.entries(byStructure)) {
+      if (Number.isNaN(parseAmount(v!.ca))) return `CA ${s} ${annee} : un montant est attendu.`
+      if (Number.isNaN(parseAmount(v!.objectif))) return `Objectif ${s} ${annee} : un montant est attendu.`
+    }
+  }
   return null
 }
 
@@ -151,6 +186,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
       secteur: '',
       ordre: Math.max(0, ...data.commerciaux.map((c) => c.ordre)) + 1,
       zones: { MD: '', SP: '', MC: '', BK: '' },
+      objectifs: {},
     })
 
   const confirm = useConfirm()
@@ -347,6 +383,12 @@ function fingerprint(d: Draft): string {
     date_manager2: t(d.date_manager2),
     actions: t(d.actions),
     secteur: t(d.secteur),
+    objectifs: Object.entries(d.objectifs)
+      .flatMap(([annee, byStructure]) =>
+        Object.entries(byStructure).map(([st, v]) => [Number(annee), st, parseAmount(v!.ca), parseAmount(v!.objectif)]),
+      )
+      .filter(([, , ca, obj]) => ca !== null || obj !== null)
+      .sort((a, b) => String(a).localeCompare(String(b))),
     zones: STRUCTURES.map((s) =>
       formatZoneList(parseZoneList(d.zones[s]).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))),
     ),
@@ -530,6 +572,11 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
             </section>
 
             <section>
+              <h3>CA et objectifs</h3>
+              <ObjectifsEditor d={d} data={data} structures={structures} onChange={(objectifs) => set({ objectifs })} />
+            </section>
+
+            <section>
               <h3>Suivi</h3>
               <div className="form-grid">
                 <label className="field">
@@ -593,5 +640,81 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
         />
       )}
     </>
+  )
+}
+
+/** Saisie du CA et de l'objectif par structure, pour l'année choisie. */
+function ObjectifsEditor({
+  d,
+  data,
+  structures,
+  onChange,
+}: {
+  d: Draft
+  data: MapData
+  structures: Structure[]
+  onChange: (objectifs: Draft['objectifs']) => void
+}) {
+  const now = new Date().getFullYear()
+  const [year, setYear] = useState(() => defaultYear(data.objectifs))
+  const years = [...new Set([now - 1, now, now + 1, ...availableYears(data.objectifs), ...Object.keys(d.objectifs).map(Number)])].sort((a, b) => b - a)
+  const rows = structures.length ? structures : []
+
+  const setValue = (s: Structure, field: 'ca' | 'objectif', value: string) => {
+    const current = d.objectifs[year]?.[s] ?? { ca: '', objectif: '' }
+    onChange({ ...d.objectifs, [year]: { ...d.objectifs[year], [s]: { ...current, [field]: value } } })
+  }
+
+  return (
+    <div className="objectifs-editor">
+      <div className="row" style={{ marginBottom: 10 }}>
+        <span className="muted small">Année</span>
+        <Select
+          className="auto year-select"
+          ariaLabel="Année des CA et objectifs"
+          value={String(year)}
+          options={years.map((y) => ({ value: String(y), label: String(y) }))}
+          onChange={(v) => setYear(Number(v))}
+          searchable={false}
+        />
+        <span className="muted small">Réservé aux admins, jamais visible avec le seul code d'accès.</span>
+      </div>
+      {!rows.length ? (
+        <p className="muted small">Cochez une structure (ou saisissez des zones) pour renseigner son CA.</p>
+      ) : (
+        <table className="obj-table">
+          <thead>
+            <tr>
+              <th>Structure</th>
+              <th>CA {year}</th>
+              <th>Objectif {year}</th>
+              <th>Atteint</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s) => {
+              const v = d.objectifs[year]?.[s] ?? { ca: '', objectif: '' }
+              const ca = parseAmount(v.ca)
+              const obj = parseAmount(v.objectif)
+              const valid = ca !== null && obj !== null && !Number.isNaN(ca) && !Number.isNaN(obj) && obj > 0
+              return (
+                <tr key={s}>
+                  <td>
+                    <span className="struct-tag">{s}</span>
+                  </td>
+                  <td>
+                    <input className="input amount" inputMode="decimal" placeholder="—" value={v.ca} onChange={(e) => setValue(s, 'ca', e.target.value)} aria-label={`CA ${s} ${year}`} />
+                  </td>
+                  <td>
+                    <input className="input amount" inputMode="decimal" placeholder="—" value={v.objectif} onChange={(e) => setValue(s, 'objectif', e.target.value)} aria-label={`Objectif ${s} ${year}`} />
+                  </td>
+                  <td>{valid ? <PerfBar perf={{ ca: ca!, objectif: obj!, pct: ca! / obj!, hasData: true }} /> : <span className="muted">—</span>}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }

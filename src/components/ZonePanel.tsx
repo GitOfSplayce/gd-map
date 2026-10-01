@@ -1,5 +1,7 @@
 import type { MapModel } from '../lib/mapModel'
 import Icon from './Icon'
+import { PerfBar } from './Legend'
+import { perfBucketOf, perfText } from '../lib/performance'
 import { COUVERTURE_LABELS, STRUCTURE_LABELS, STRUCTURES } from '../lib/types'
 import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
 import { IDF_CODES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
@@ -24,6 +26,14 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
       <p className="zp-title">{title}</p>
       <div className="zp-meta">{subtitle}</div>
 
+      {model.colorMode === 'performance' && people.length > 0 && (
+        <div className="zp-cov">
+          <span className="swatch" style={{ background: perfBucketOf(model.perfOf(code).pct).color }} />
+          <span>
+            <strong>Performance {model.year}</strong> : {perfText(model.perfOf(code))}
+          </span>
+        </div>
+      )}
       {model.colorMode === 'couverture' && (
         <div className="zp-cov">
           <span className="swatch" style={{ background: model.coverageOf(code).bucket.color }} />
@@ -98,6 +108,14 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
                         <dd>{formatEuros(p.objectif.ca)}</dd>
                         <dt>Objectif</dt>
                         <dd>{formatEuros(p.objectif.objectif)}</dd>
+                        {p.objectif.ca !== null && p.objectif.objectif ? (
+                          <>
+                            <dt>Atteint</dt>
+                            <dd>
+                              <PerfBar perf={{ ca: Number(p.objectif.ca), objectif: Number(p.objectif.objectif), pct: Number(p.objectif.ca) / Number(p.objectif.objectif), hasData: true }} />
+                            </dd>
+                          </>
+                        ) : null}
                       </>
                     )}
                     {c.actions && (

@@ -38,6 +38,30 @@ const ROWS = [
   ['QUILLET Lou', '', '', '', 'X', '', '', 'Bastien', '', 'Bastien'],
 ]
 
+// CA et objectifs fictifs (colonnes « CA MD », « Objectif MD »…), pour illustrer la vue Performance
+const FIGURES = {
+  'Basile Fournier': { MD: [210000, 200000] },
+  'Dorian Marchal': { MD: [95000, 180000] },
+  'Élodie Vasseur': { MD: [260000, 200000] },
+  'Fabien Carré': { MD: [60000, 140000] },
+  'Gaspard Lenoir': { MD: [150000, 160000] },
+  'HAMON Léonie': { SP: [70000, 60000] },
+  'IZARD Théo': { SP: [30000, 65000] },
+  'JOUBERT Maëlle': { SP: [55000, 70000] },
+  'KERVELLA Simon': { SP: [98000, 80000] },
+  'NAUDIN Margaux': { MC: [45000, 50000] },
+  'PRADEL Jade': { BK: [20000, 25000] },
+}
+const FIRST_FIGURE_COLUMN = HEADERS.indexOf('CA MD')
+for (const row of ROWS) {
+  for (const [structure, [ca, objectif]] of Object.entries(FIGURES[row[0]] ?? {})) {
+    while (row.length < HEADERS.length) row.push('')
+    const i = FIRST_FIGURE_COLUMN + ['MD', 'SP', 'MC', 'BK'].indexOf(structure) * 2
+    row[i] = ca
+    row[i + 1] = objectif
+  }
+}
+
 // Colonnes calculées à droite (comme dans le fichier réel) : en-têtes en double, à ignorer
 const RIGHT_HEADERS = ['', 'Commercial', 'Structure', 'Dépt', 'Arr.', 'Couverture', 'Manager 1', 'Manager 2', 'Statut']
 

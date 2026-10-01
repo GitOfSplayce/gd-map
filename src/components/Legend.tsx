@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BRAND } from '../lib/colors'
 import Icon from './Icon'
 import { COUVERTURE_OPACITY, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
+import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
 
 type SwatchKind = 'propre' | 'partiel' | 'gestion' | 'rayures' | 'camemberts'
@@ -83,6 +84,31 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
   )
 }
 
+/** Barre de progression vers l'objectif (pleine à 100 %, couleur du niveau atteint). */
+export function PerfBar({ perf }: { perf: Perf }) {
+  const pct = perf.pct ?? 0
+  return (
+    <span className="perf-line">
+      <span className="perf-bar" aria-hidden="true">
+        <span style={{ width: `${Math.min(100, pct * 100)}%`, background: perfBucketOf(perf.pct).color }} />
+      </span>
+      <span className="perf-text">{perfText(perf)}</span>
+    </span>
+  )
+}
+
+function PerfKey({ year }: { year: number }) {
+  return (
+    <div className="heat-key">
+      <p>
+        Couleur d'une zone : taux d'atteinte de l'objectif {year} des commerciaux présents (CA cumulés ÷ objectifs
+        cumulés). L'onglet et les filtres s'appliquent.
+      </p>
+      <p className="muted small">Cliquez sur un niveau pour isoler ses zones, ou sur un commercial du classement.</p>
+    </div>
+  )
+}
+
 function HeatKey() {
   return (
     <div className="heat-key">
@@ -97,6 +123,9 @@ function HeatKey() {
 
 interface Props {
   items: LegendItem[]
+  /** Vue Performance : commerciaux classés par taux d'atteinte. */
+  ranking: LegendItem[]
+  year: number
   colorMode: ColorMode
   highlighted: Set<string>
   onToggle: (key: string) => void
@@ -105,16 +134,17 @@ interface Props {
   onSharedMode: (mode: SharedMode) => void
 }
 
-export default function Legend({ items, colorMode, highlighted, onToggle, onClear, sharedMode, onSharedMode }: Props) {
+export default function Legend({ items, ranking, year, colorMode, highlighted, onToggle, onClear, sharedMode, onSharedMode }: Props) {
   const [search, setSearch] = useState('')
-  const heat = colorMode === 'couverture'
+  const perfMode = colorMode === 'performance'
+  const heat = colorMode === 'couverture' || perfMode
   const q = search.trim().toLowerCase()
   const visible = q && !heat ? items.filter((it) => it.label.toLowerCase().includes(q) || it.detail.toLowerCase().includes(q)) : items
   const what = colorMode === 'commercial' ? 'commercial' : colorMode === 'manager1' ? 'Manager 1' : 'Manager 2'
 
   return (
     <>
-      {heat ? <HeatKey /> : <CoverageKey sharedMode={sharedMode} onSharedMode={onSharedMode} />}
+      {perfMode ? <PerfKey year={year} /> : heat ? <HeatKey /> : <CoverageKey sharedMode={sharedMode} onSharedMode={onSharedMode} />}
       <div className="row" style={{ marginBottom: 8 }}>
         {!heat && items.length > 8 && (
           <div className="input-icon grow">
@@ -143,6 +173,7 @@ export default function Legend({ items, colorMode, highlighted, onToggle, onClea
               <span style={{ minWidth: 0 }}>
                 <span className="l-name">{it.label}</span>
                 {it.detail && <span className="l-detail">{it.detail}</span>}
+                {it.perf?.hasData && <PerfBar perf={it.perf} />}
               </span>
               <span className="l-count">
                 {plural(it.zoneCount, 'zone')}
@@ -151,7 +182,35 @@ export default function Legend({ items, colorMode, highlighted, onToggle, onClea
           </li>
         ))}
       </ul>
-      {heat && <p className="muted small">Comptes sur les départements, les DROM et Monaco.</p>}
+      {heat && <p className="muted small">Comptes sur les départements, les DROM et Monaco{perfMode ? ' couverts' : ''}.</p>}
+      {perfMode && (
+        <div className="ranking">
+          <h3>Classement {year}</h3>
+          {!ranking.length && <p className="muted small">Aucun CA ni objectif saisi pour {year} avec ces filtres.</p>}
+          <ol className="legend-list">
+            {ranking.map((it, i) => (
+              <li key={it.key}>
+                <button
+                  type="button"
+                  className="legend-item rank-item"
+                  aria-pressed={highlighted.has(it.key)}
+                  onClick={() => onToggle(it.key)}
+                  title="Cliquer pour mettre ses zones en évidence"
+                >
+                  <span className="rank">{i + 1}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="l-name">{it.label}</span>
+                    {it.perf && <PerfBar perf={it.perf} />}
+                  </span>
+                  <span className="l-count rank-pct" style={{ color: perfBucketOf(it.perf?.pct ?? null).color }}>
+                    {formatPct(it.perf?.pct ?? null)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </>
   )
 }

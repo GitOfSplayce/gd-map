@@ -225,6 +225,15 @@ describe.each([
       expect((res.affectations as unknown[]).length).toBe(2)
     })
 
+    it('ne donne jamais le CA ni les objectifs aux visiteurs, seulement aux admins', async () => {
+      const [{ id }] = await as<{ id: string }>('postgres', `select id from public.commerciaux where nom = 'Basile Fournier'`)
+      await as('postgres', `insert into public.objectifs (commercial_id, structure, annee, ca, objectif) values ('${id}', 'SP', 2026, 1000, 2000)`)
+      const visitor = await rpc('anon', 'get_map_data', `'Carte-2026!'`)
+      expect(visitor.objectifs).toEqual([])
+      const admin = await rpc('admin', 'get_map_data', 'null')
+      expect(admin.objectifs).toEqual([expect.objectContaining({ structure: 'SP', annee: 2026, ca: 1000, objectif: 2000 })])
+    })
+
     it('masque les commerciaux inactifs aux visiteurs, pas aux admins', async () => {
       await as('postgres', `update public.commerciaux set actif = false where nom = 'Capucine Delorme'`)
       const visitor = await rpc('anon', 'get_map_data', `'Carte-2026!'`)
