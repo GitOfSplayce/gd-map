@@ -1102,12 +1102,38 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   .brand .brand-name { padding-left: 0; border-left: 0; }
 }
 
+/* Panneau du bas (mobile) : éléments masqués sur grand écran */
+.sheet-handle,
+.sheet-toggle { display: none; }
+
 @media (max-width: 900px) {
-  .app-shell { height: auto; min-height: 100dvh; grid-template-rows: auto auto auto; }
-  .map-layout { grid-template-columns: 1fr; }
-  .map-area { height: 68dvh; min-height: 360px; }
-  .sidebar { border-left: 0; border-top: 1px solid var(--border); }
-  .sidebar-body { overflow: visible; }
+  /* La carte occupe tout l'écran visible (dvh : tient compte des barres du navigateur) */
+  .app-shell { height: 100dvh; grid-template-rows: auto auto minmax(0, 1fr); }
+  .map-layout { grid-template-columns: 1fr; padding-bottom: calc(54px + env(safe-area-inset-bottom)); }
+  .map-area { min-height: 0; }
+
+  /* Légende et détail : panneau ancré en bas, replié en simple barre */
+  .sidebar.sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    max-height: 62dvh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -10px 30px rgb(26 66 138 / 16%);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sidebar.sheet:not(.open) .sidebar-body { display: none; }
+  .sidebar.sheet .sidebar-head { position: relative; min-height: 54px; padding: 16px 16px 10px; cursor: pointer; user-select: none; }
+  .sidebar.sheet.open .sidebar-head { border-bottom: 1px solid var(--border); }
+  .sidebar.sheet:not(.open) .sidebar-head { border-bottom: 0; }
+  .sheet-handle { display: block; position: absolute; top: 6px; left: 50%; width: 40px; height: 4px; border-radius: 2px; background: var(--border-strong); transform: translateX(-50%); }
+  .sheet-toggle { display: grid; place-items: center; color: var(--saphir); transform: rotate(180deg); transition: transform 0.2s; }
+  .sidebar.sheet.open .sheet-toggle { transform: none; }
+  .sidebar.sheet .sidebar-body { overflow: auto; overscroll-behavior: contain; animation: fade-in 0.15s ease-out; }
   .topbar { gap: 10px; padding: 8px 12px 0; flex-wrap: wrap; }
   .topbar .tabs button,
   .topbar .tabs a { padding: 8px 12px 10px; }

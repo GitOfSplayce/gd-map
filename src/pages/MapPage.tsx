@@ -89,6 +89,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [highlighted, setHighlighted] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [hover, setHover] = useState<{ code: string; x: number; y: number; w: number; h: number } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [reloading, setReloading] = useState(false)
@@ -102,6 +103,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
       if (e.key !== 'Escape') return
       setShowFilters(false)
       setSelected(null)
+      setSheetOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -268,6 +270,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
               onHover={(code, pos) => setHover(code && pos ? { code, ...pos } : null)}
               onSelect={(code) => {
                 setSelected(code)
+                setSheetOpen(true)
                 setShowFilters(false)
               }}
               sharedMode={sharedMode}
@@ -275,6 +278,7 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
                 setSelected(null)
                 setHighlighted(new Set())
                 setShowFilters(false)
+                setSheetOpen(false)
               }}
               onSvg={(el) => {
                 svgRef.current = el
@@ -308,29 +312,35 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
           {!showFilters && <div className="map-hint hide-mobile">Molette ou boutons pour zoomer · clic sur une zone pour le détail</div>}
         </section>
 
-        <aside className="sidebar">
-          {selected ? (
-            <>
-              <div className="sidebar-head">
+        {/* Sur mobile : panneau du bas, replié en simple barre tant qu'on ne l'ouvre pas */}
+        <aside className={'sidebar sheet' + (sheetOpen ? ' open' : '')}>
+          <div
+            className="sidebar-head"
+            onClick={() => setSheetOpen((o) => !o)}
+            role="button"
+            tabIndex={-1}
+            aria-expanded={sheetOpen}
+          >
+            <span className="sheet-handle" aria-hidden="true" />
+            {selected ? (
+              <>
                 <h2 className="grow">Détail de la zone</h2>
-                <button type="button" className="btn small ghost icon" onClick={() => setSelected(null)} aria-label="Fermer le détail" title="Fermer">
+                <button
+                  type="button"
+                  className="btn small ghost icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelected(null)
+                    setSheetOpen(false)
+                  }}
+                  aria-label="Fermer le détail"
+                  title="Fermer"
+                >
                   <Icon name="x" size={18} />
                 </button>
-              </div>
-              <div className="sidebar-body">
-                <ZonePanel
-                  code={selected}
-                  model={model}
-                  view={view}
-                  highlighted={highlighted}
-                  onToggleHighlight={toggleHighlight}
-                  onChangeView={(v) => setParam('vue', v, 'france')}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="sidebar-head">
+              </>
+            ) : (
+              <>
                 <h2 className="grow">{colorMode === 'couverture' ? 'Couverture' : 'Légende'}</h2>
                 {colorMode !== 'couverture' && (
                   <span className="muted small">
@@ -339,20 +349,34 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
                       : plural(model.legend.length, 'manager')}
                   </span>
                 )}
-              </div>
-              <div className="sidebar-body">
-                <Legend
-                  items={model.legend}
-                  colorMode={colorMode}
-                  highlighted={highlighted}
-                  onToggle={toggleHighlight}
-                  onClear={() => setHighlighted(new Set())}
-                  sharedMode={sharedMode}
-                  onSharedMode={(m) => setParam('partage', m, 'rayures')}
-                />
-              </div>
-            </>
-          )}
+                <span className="sheet-toggle" aria-hidden="true">
+                  <Icon name="chevronDown" size={18} />
+                </span>
+              </>
+            )}
+          </div>
+          <div className="sidebar-body">
+            {selected ? (
+              <ZonePanel
+                code={selected}
+                model={model}
+                view={view}
+                highlighted={highlighted}
+                onToggleHighlight={toggleHighlight}
+                onChangeView={(v) => setParam('vue', v, 'france')}
+              />
+            ) : (
+              <Legend
+                items={model.legend}
+                colorMode={colorMode}
+                highlighted={highlighted}
+                onToggle={toggleHighlight}
+                onClear={() => setHighlighted(new Set())}
+                sharedMode={sharedMode}
+                onSharedMode={(m) => setParam('partage', m, 'rayures')}
+              />
+            )}
+          </div>
         </aside>
       </div>
     </div>
