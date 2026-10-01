@@ -212,6 +212,8 @@ textarea {
 
 .input::placeholder,
 .textarea::placeholder { color: #98a4b5; }
+/* Saisie des zones et pastilles d'aperçu, bien séparées du champ */
+.zone-cell { display: flex; flex-direction: column; gap: 8px; }
 .zone-cell .input::placeholder { color: #c3cdd9; }
 
 
@@ -913,7 +915,9 @@ th.num .sort-btn { justify-content: flex-end; width: 100%; }
 .struct-block.on { border-color: var(--saphir-100); background: var(--azurin-50); }
 .struct-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .struct-block .check { font-weight: 600; }
-.struct-block .zone-cell { gap: 8px; }
+.struct-block .zone-cell { gap: 10px; }
+.struct-block .chips { gap: 5px; }
+.struct-block .chip.propre { background: var(--surface); border-color: var(--saphir-100); }
 .struct-block .input { background: var(--surface); }
 input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 
