@@ -16,7 +16,7 @@ function StructureFields({ form, onChange, issue }: { form: Form; onChange: (f: 
   return (
     <>
       <input
-        className="input code-input"
+        className="input structure-code-input"
         autoFocus
         placeholder="Code"
         aria-label="Code de la structure"

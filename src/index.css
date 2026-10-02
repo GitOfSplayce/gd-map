@@ -453,7 +453,7 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 .gate-title h1 { margin: 0 0 4px; font-size: 21px; }
 .gate-title p { margin: 0; color: var(--muted); font-size: 13px; }
 .gate form { display: flex; flex-direction: column; gap: 14px; }
-.gate .code-input { font-size: 18px; letter-spacing: 0.12em; text-align: center; min-height: 48px; }
+.gate .code-input { width: 100%; font-size: 18px; letter-spacing: 0.12em; text-align: center; min-height: 48px; }
 .gate .btn.primary { min-height: 46px; font-size: 15px; }
 .gate-footer { margin-top: 18px; display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
 .gate-footer a { text-decoration: none; }
@@ -862,8 +862,9 @@ td.managers .muted { display: inline-block; width: 12px; font-size: 11px; font-w
 .zone-summary { display: flex; flex-direction: column; gap: 3px; }
 .zone-summary > div { display: flex; align-items: baseline; gap: 8px; }
 .struct-tag { flex: none; padding: 1px 6px; border-radius: 5px; background: var(--saphir-50); color: var(--saphir); font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
-.code-input { width: 92px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-.code-input[aria-invalid='true'] { border-color: var(--warning); }
+/* Code d'une structure (onglet Structures) ; à ne pas confondre avec le champ du code d'accès (.gate .code-input) */
+.structure-code-input { width: 92px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.structure-code-input[aria-invalid='true'] { border-color: var(--warning); }
 .field-issue { margin-top: 4px; color: var(--warning); }
 .col-order { width: 76px; }
 .order-btns { display: flex; gap: 2px; }

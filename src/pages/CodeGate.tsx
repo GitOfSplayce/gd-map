@@ -24,7 +24,7 @@ export default function CodeGate({ error, busy, onSubmit }: Props) {
   }
 
   return (
-    <GateLayout title="Carte commerciale" subtitle="Secteurs MD · SP · MC · BK">
+    <GateLayout title="Carte commerciale" subtitle="Secteurs commerciaux du groupe">
       <form onSubmit={submit}>
         <label className="field">
           <span>Code d'accès</span>
