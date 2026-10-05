@@ -63,9 +63,9 @@ Le workflow `keepalive.yml` appelle la base deux fois par jour pour éviter la m
 
 - Onglets **Globale** puis un par structure (MD, SP, MC, BK…, dans l'ordre choisi dans l'admin) ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
 - Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
-- **Propre** = plein, **Partiel** = atténué, **Gestion** = trame de points. Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
+- **Propre** = plein, **Gestion** (G) = trame de points, **Partiel** (P) = rayé comme une zone partagée, avec du **blanc** s'il est seul sur la zone, **Gestion-partiel** (GP) = traits pointillés (avec du blanc s'il est seul). Une zone partagée montre chaque part avec son motif (bande en points pour une gestion…). Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
 - **CA et objectifs** (admins connectés uniquement) : saisie par structure et par année dans le panneau d'un commercial (raccourcis `120k`, `1,2M`) ou par l'Excel ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
-- Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
+- Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, gestion-partiel = ⅛, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
 - Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail, avec le téléphone et l'e-mail du commercial et de ses managers (liens d'appel et d'envoi).
 - Filtres (manager, commercial, couverture, statut, « masquer les À recruter »), légende cliquable, export PNG.
@@ -92,7 +92,7 @@ Les colonnes d'une structure sont celles de son code (onglet *Structures* de l'a
 Lecture des listes de zones (`src/lib/parseZones.ts`) :
 
 - séparateurs `,` `.` `/` `;` et espace ;
-- suffixe `P` = partiel, `G` = gestion, sans suffixe = propre ;
+- suffixe `P` = partiel, `G` = gestion, `GP` = gestion-partiel (`PG` accepté), sans suffixe = propre ;
 - `9` → `09` ; `20` ou `2AB` → `2A` + `2B` ;
 - `75-7` = Paris 7e (`75007` accepté), `75` = tout Paris ;
 - `?` est ignoré ; toute valeur inconnue est signalée dans l'aperçu.

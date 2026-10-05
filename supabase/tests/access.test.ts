@@ -450,6 +450,29 @@ describe.each([
     })
   })
 
+  describe('couvertures', () => {
+    it('acceptent propre, partiel, gestion et gestion-partiel, et rien d\'autre', async () => {
+      const id = (await rpc('admin', 'save_commercial', '$1::jsonb', [
+        JSON.stringify({
+          nom: 'Couverture Test',
+          structures: ['MD'],
+          affectations: [
+            { structure: 'MD', zone_code: '22', couverture: 'propre' },
+            { structure: 'MD', zone_code: '29', couverture: 'partiel' },
+            { structure: 'MD', zone_code: '35', couverture: 'gestion' },
+            { structure: 'MD', zone_code: '56', couverture: 'gestion_partiel' },
+          ],
+        }),
+      ])) as unknown as string
+      const rows = await as<{ couverture: string }>('admin', `select couverture from public.affectations where commercial_id = $1 order by zone_code`, [id])
+      expect(rows.map((r) => r.couverture)).toEqual(['propre', 'partiel', 'gestion', 'gestion_partiel'])
+      await expect(
+        rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, affectations: [{ structure: 'MD', zone_code: '22', couverture: 'moitie' }] })]),
+      ).rejects.toThrow(/check constraint/)
+      await as('admin', `delete from public.commerciaux where id = $1`, [id])
+    })
+  })
+
   describe('mode des zones partagées par défaut', () => {
     it('vaut « rayures » et part avec la carte', async () => {
       const res = await rpc('admin', 'get_map_data', 'null')

@@ -3,13 +3,14 @@ import type { StructureDef } from './structures'
 /** Code d'une structure (MD, SP…) ; la liste est gérée dans l'admin (voir structures.ts). */
 export type Structure = string
 
-export const COUVERTURES = ['propre', 'partiel', 'gestion'] as const
+export const COUVERTURES = ['propre', 'partiel', 'gestion', 'gestion_partiel'] as const
 export type Couverture = (typeof COUVERTURES)[number]
 
 export const COUVERTURE_LABELS: Record<Couverture, string> = {
   propre: 'Propre',
   partiel: 'Partiel',
   gestion: 'Gestion',
+  gestion_partiel: 'Gestion-partiel',
 }
 
 export interface Commercial {

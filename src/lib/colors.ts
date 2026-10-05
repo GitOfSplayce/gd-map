@@ -159,6 +159,14 @@ export function blendWithWhite(hex: string, opacity: number): string {
   return rgbToHex(mix(r), mix(g), mix(b))
 }
 
+/** Couleur proche du blanc : interdite aux commerciaux et managers, le blanc marque la part libre d'un partiel. */
+export function isTooLight(hex: string): boolean {
+  if (!isHexColor(hex)) return false
+  const [l, a, b] = toLab(hex)
+  // Très claire ET peu saturée : un jaune vif reste bien distinct du blanc
+  return l > 90 && Math.hypot(a, b) < 20
+}
+
 /** Noir ou blanc selon la luminosité du fond. */
 export function readableTextColor(bg: string): string {
   if (!isHexColor(bg)) return '#111'

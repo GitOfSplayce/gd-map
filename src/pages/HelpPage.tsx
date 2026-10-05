@@ -64,17 +64,23 @@ export default function HelpPage() {
               <strong>Propre</strong> : remplissage plein.
             </li>
             <li>
-              <strong>Partiel</strong> : remplissage atténué.
+              <strong>Partiel</strong> (P) : un partiel n'est jamais seul sur sa zone, il s'affiche donc comme une zone
+              partagée. Seul, sa deuxième couleur est le <strong>blanc</strong> (« personne d'autre ») ; avec un autre
+              commercial, ils se partagent la zone sans blanc.
             </li>
             <li>
-              <strong>Gestion</strong> : trame de points.
+              <strong>Gestion</strong> (G) : trame de points ; dans une zone partagée, sa part est en points.
+            </li>
+            <li>
+              <strong>Gestion-partiel</strong> (GP) : traits en pointillés, avec du blanc s'il est seul sur sa zone.
             </li>
             <li>
               <strong>Zone partagée</strong> par plusieurs commerciaux (ou managers), au choix dans la légende :{' '}
               <em>Rayures</em> aux couleurs de chacun ; <em>Découpage</em>, une bande verticale par commercial ;{' '}
               <em>Camemberts</em>, la zone garde une teinte légère et un petit camembert montre qui la partage ;{' '}
-              <em>Dominante</em>, la couleur du principal (propre avant partiel avant gestion) avec un badge « +2 » pour
-              les autres. Le mode proposé à l'ouverture se règle dans l'admin (Paramètres).
+              <em>Dominante</em>, la couleur du principal (propre, puis partiel, gestion, gestion-partiel) avec un badge
+              « +2 » pour les autres ; un partiel seul reste rayé avec le blanc. Le mode proposé à l'ouverture se règle
+              dans l'admin (Paramètres).
             </li>
             <li>
               À Paris, « 75 » saisi seul couvre les 20 arrondissements ; un arrondissement se saisit <code>75-7</code>.
@@ -86,8 +92,9 @@ export default function HelpPage() {
           <h2>Vue « Couverture »</h2>
           <p>
             Dans <strong>Couleur → Couverture</strong>, chaque zone est colorée selon un score : chaque commercial présent
-            compte <strong>1</strong> en propre, <strong>½</strong> en partiel et <strong>¼</strong> en gestion. Les
-            filtres et l'onglet s'appliquent (par exemple : la couverture MD seule).
+            compte <strong>1</strong> en propre, <strong>½</strong> en partiel, <strong>¼</strong> en gestion et{' '}
+            <strong>⅛</strong> en gestion-partiel. Les filtres et l'onglet s'appliquent (par exemple : la couverture MD
+            seule).
           </p>
           <ul>
             <li>Gris : non couverte · bleu très clair : faible (gestion ou partiel seulement)</li>
@@ -128,8 +135,8 @@ export default function HelpPage() {
                 <th>Signification</th>
               </tr>
               <tr>
-                <td><code>22, 35P, 52G</code></td>
-                <td>22 propre, 35 partiel, 52 gestion</td>
+                <td><code>22, 35P, 52G, 54GP</code></td>
+                <td>22 propre, 35 partiel, 52 gestion, 54 gestion-partiel (PG est aussi accepté)</td>
               </tr>
               <tr>
                 <td><code>9</code></td>

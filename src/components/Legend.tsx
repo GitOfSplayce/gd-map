@@ -4,8 +4,9 @@ import Icon from './Icon'
 import { COUVERTURE_OPACITY, LEGEND_GROUP_TITLES, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
+import type { Couverture } from '../lib/types'
 
-type SwatchKind = 'propre' | 'partiel' | 'gestion' | SharedMode
+type SwatchKind = Couverture | SharedMode
 
 /** Pastille de légende dessinée comme sur la carte (mêmes motifs). */
 export function KeySwatch({ kind }: { kind: SwatchKind }) {
@@ -23,7 +24,14 @@ export function KeySwatch({ kind }: { kind: SwatchKind }) {
       <g clipPath={`url(#ks-${kind})`}>
         <rect width="18" height="18" fill="#ffffff" />
         {kind === 'propre' && <rect width="18" height="18" fill={c} fillOpacity={COUVERTURE_OPACITY.propre} />}
-        {kind === 'partiel' && <rect width="18" height="18" fill={c} fillOpacity={COUVERTURE_OPACITY.partiel} />}
+        {kind === 'partiel' &&
+          [-18, -9, 0, 9, 18].map((o) => (
+            <path key={o} d={`M${o},18 L${o + 18},0 L${o + 22.5},0 L${o + 4.5},18 Z`} fill={c} fillOpacity={COUVERTURE_OPACITY.partiel} />
+          ))}
+        {kind === 'gestion_partiel' &&
+          [-13.5, -4.5, 4.5, 13.5].map((o) => (
+            <path key={o} d={`M${o},18 L${o + 18},0`} stroke={c} strokeWidth={1.6} strokeDasharray="2.6 1.9" fill="none" />
+          ))}
         {kind === 'gestion' && (
           <>
             <rect width="18" height="18" fill={c} fillOpacity={0.16} />
@@ -81,7 +89,7 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
         <KeySwatch kind="gestion" /> Gestion
       </div>
       <div>
-        <KeySwatch kind={sharedMode} /> Partagée
+        <KeySwatch kind="gestion_partiel" /> Gestion-partiel
       </div>
       {onSharedMode && (
         <div className="shared-mode">
@@ -129,8 +137,8 @@ function HeatKey() {
   return (
     <div className="heat-key">
       <p>
-        Score par zone : chaque commercial compte <strong>1</strong> en propre, <strong>½</strong> en partiel et{' '}
-        <strong>¼</strong> en gestion. Les filtres et l'onglet s'appliquent.
+        Score par zone : chaque commercial compte <strong>1</strong> en propre, <strong>½</strong> en partiel,{' '}
+        <strong>¼</strong> en gestion et <strong>⅛</strong> en gestion-partiel. Les filtres et l'onglet s'appliquent.
       </p>
       <p className="muted small">Cliquez sur un niveau pour isoler ses zones.</p>
     </div>

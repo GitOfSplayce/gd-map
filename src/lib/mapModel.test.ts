@@ -1,3 +1,4 @@
+import { isTooLight } from './colors'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FILTERS, HEAT_BUCKETS, buildMapModel, heatBucketOf } from './mapModel'
 import { agree, plural } from './text'
@@ -84,19 +85,62 @@ describe('carte de chaleur de la couverture', () => {
   })
 })
 
-describe('zones partagées et gestion', () => {
-  it('une part par commercial pour les camemberts, avec l\'opacité de sa couverture', () => {
-    const m = buildMapModel(data([aff('A', '22'), aff('B', '22', 'partiel')]), 'ALL', DEFAULT_FILTERS, 'commercial')
-    const st = m.styleOf('22', new Set())
-    expect(st.slices).toHaveLength(2)
-    expect(st.pattern?.kind).toBe('stripes')
-    expect(st.slices!.map((s) => s.opacity)).toEqual([0.88, 0.5])
+describe('zones partagées, partiels et gestion', () => {
+  const style = (affs: Affectation[], code: string) => buildMapModel(data(affs), 'ALL', DEFAULT_FILTERS, 'commercial').styleOf(code, new Set())
+  const kinds = (affs: Affectation[], code: string) => style(affs, code).slices?.map((s) => s.kind)
+
+  it('propre seul : couleur pleine, pas de parts', () => {
+    const st = style([aff('A', '22')], '22')
+    expect(st.slices).toBeNull()
+    expect(st.pattern).toBeNull()
+    expect(st.fillOpacity).toBe(0.88)
   })
 
-  it('une zone seule n\'a pas de parts ; la gestion seule est une trame de points', () => {
-    const m = buildMapModel(data([aff('A', '22'), aff('B', '29', 'gestion')]), 'ALL', DEFAULT_FILTERS, 'commercial')
-    expect(m.styleOf('22', new Set()).slices).toBeNull()
-    expect(m.styleOf('29', new Set()).pattern?.kind).toBe('dots')
+  it('partiel seul : rayé avec du blanc, dans sa couleur pleine', () => {
+    const st = style([aff('A', '22', 'partiel')], '22')
+    expect(st.pattern?.kind).toBe('stripes')
+    expect(st.slices!.map((s) => [s.kind, s.opacity])).toEqual([['plein', 0.88], ['blanc', 1]])
+    expect(st.slices![1].color).toBe('#ffffff')
+  })
+
+  it('partiel avec un autre commercial : ils se complètent, pas de blanc', () => {
+    expect(kinds([aff('A', '22'), aff('B', '22', 'partiel')], '22')).toEqual(['plein', 'plein'])
+    expect(kinds([aff('A', '22', 'partiel'), aff('B', '22', 'partiel')], '22')).toEqual(['plein', 'plein'])
+  })
+
+  it('gestion seule : trame de points ; partagée : sa part en points', () => {
+    expect(style([aff('A', '29', 'gestion')], '29').pattern?.kind).toBe('dots')
+    expect(kinds([aff('A', '29', 'gestion'), aff('B', '29')], '29')).toEqual(['points', 'plein'])
+  })
+
+  it('gestion-partiel : traits pointillés avec du blanc, seul ; sans blanc, partagé', () => {
+    expect(kinds([aff('A', '56', 'gestion_partiel')], '56')).toEqual(['tirets', 'blanc'])
+    expect(kinds([aff('A', '56', 'gestion_partiel'), aff('B', '56')], '56')).toEqual(['tirets', 'plein'])
+  })
+
+  it('le principal d\'une zone partagée est la couverture la plus forte : propre, partiel, gestion, gestion-partiel', () => {
+    const slices = style([aff('A', '35', 'gestion_partiel'), aff('B', '35', 'gestion'), aff('C', '35', 'partiel')], '35').slices!
+    expect(slices.map((s) => s.kind)).toEqual(['tirets', 'points', 'plein'])
+    expect([...slices].sort((a, b) => b.rank - a.rank)[0].kind).toBe('plein')
+  })
+
+  it('un commercial à la fois en gestion et en gestion-partiel sur une zone garde la gestion', () => {
+    // 75 en gestion-partiel et 75-7 en gestion : sur le 7e, la gestion l'emporte
+    expect(style([aff('A', '75', 'gestion_partiel'), aff('A', '75-7', 'gestion')], '75-7').pattern?.kind).toBe('dots')
+    expect(kinds([aff('A', '75', 'gestion_partiel')], '75-8')).toEqual(['tirets', 'blanc'])
+  })
+
+  it('carte de chaleur : le gestion-partiel compte ⅛', () => {
+    const m = buildMapModel(data([aff('A', '22', 'gestion_partiel'), aff('B', '22', 'gestion')]), 'ALL', DEFAULT_FILTERS, 'couverture')
+    expect(m.coverageOf('22').score).toBe(0.375)
+  })
+})
+
+describe('couleurs réservées', () => {
+  it('le blanc et les couleurs presque blanches sont refusées, pas les teintes claires de la palette', () => {
+    expect(['#ffffff', '#fafafa', '#f2f4f7', '#fff8e1'].map(isTooLight)).toEqual([true, true, true, true])
+    // Jaunes vifs (dont une couleur réelle) et teintes claires de la palette : acceptés
+    expect(['#f5f20b', '#ffff00', '#a3e635', '#95d4e9', '#fbbf24', '#e6194b'].map(isTooLight)).toEqual([false, false, false, false, false, false])
   })
 })
 

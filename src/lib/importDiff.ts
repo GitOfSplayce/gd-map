@@ -2,14 +2,13 @@
 import { pickDistinctColor } from './colors'
 import type { ImportRow } from './excel'
 import { nameKey } from './text'
-import { formatZoneList } from './parseZones'
+import { SUFFIX_OF, formatZoneList } from './parseZones'
 import { statutNormalizer } from './statuts'
 import { structureCodes, type StructureDef } from './structures'
 import {
   type Affectation,
   type Commercial,
   type CommercialPayload,
-  type Couverture,
   type Objectif,
   type Structure,
   type ZoneAssignment,
@@ -47,7 +46,6 @@ export interface ImportPlan {
   counts: Record<DiffItem['kind'], number>
 }
 
-const SUFFIX: Record<Couverture, string> = { propre: '', partiel: 'P', gestion: 'G' }
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))
 const same = (a: unknown, b: unknown) => show(a).trim() === show(b).trim()
 
@@ -60,11 +58,11 @@ function compareZones(before: ZoneAssignment[], after: ZoneAssignment[], structu
   for (const s of structures) {
     const b = new Map(before.filter((a) => a.structure === s).map((a) => [a.zone_code, a.couverture]))
     const a = new Map(after.filter((x) => x.structure === s).map((x) => [x.zone_code, x.couverture]))
-    const added = [...a].filter(([code]) => !b.has(code)).map(([code, c]) => code + SUFFIX[c])
-    const removed = [...b].filter(([code]) => !a.has(code)).map(([code, c]) => code + SUFFIX[c])
+    const added = [...a].filter(([code]) => !b.has(code)).map(([code, c]) => code + SUFFIX_OF[c])
+    const removed = [...b].filter(([code]) => !a.has(code)).map(([code, c]) => code + SUFFIX_OF[c])
     const changed = [...a]
       .filter(([code, c]) => b.has(code) && b.get(code) !== c)
-      .map(([code, c]) => `${code}${SUFFIX[b.get(code)!]} → ${code}${SUFFIX[c]}`)
+      .map(([code, c]) => `${code}${SUFFIX_OF[b.get(code)!]} → ${code}${SUFFIX_OF[c]}`)
     if (added.length || removed.length || changed.length) changes.push({ structure: s, added, removed, changed })
   }
   return changes

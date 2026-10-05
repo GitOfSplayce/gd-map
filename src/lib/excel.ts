@@ -2,6 +2,7 @@
 // Les colonnes sont repérées par le nom de l'en-tête, jamais par leur position.
 import * as XLSX from 'xlsx'
 import { parseAmountInput } from './amounts'
+import { isTooLight } from './colors'
 import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from './contacts'
 import { formatZoneList, parseZoneList, type ParsedZone, type ZoneParseIssue } from './parseZones'
 import { BASE_ALIASES, type BaseField } from './excelHeaders'
@@ -212,7 +213,9 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string, structures: rea
 
     if (col.couleur !== undefined) {
       const c = text(get(r, 'couleur'))
-      if (c && /^#?[0-9a-f]{6}$/i.test(c)) row.couleur = (c.startsWith('#') ? c : '#' + c).toLowerCase()
+      const hex = c && /^#?[0-9a-f]{6}$/i.test(c) ? (c.startsWith('#') ? c : '#' + c).toLowerCase() : null
+      if (hex && isTooLight(hex)) warnings.push(`Couleur « ${c} » trop claire (le blanc est réservé aux partiels) : ignorée`)
+      else if (hex) row.couleur = hex
       else if (c) warnings.push(`Couleur « ${c} » ignorée (format attendu : #RRGGBB)`)
     }
     if (col.actif !== undefined) {

@@ -10,7 +10,7 @@ import { useConfirm } from '../hooks/useConfirm'
 import { formatAmountInput, parseAmountInput } from '../lib/amounts'
 import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from '../lib/contacts'
 import { deleteCommercial, saveCommercial } from '../lib/api'
-import { isHexColor, managerColors, pickDistinctColor } from '../lib/colors'
+import { isHexColor, isTooLight, managerColors, pickDistinctColor } from '../lib/colors'
 import { isARecruter } from '../lib/mapModel'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
 import { availableYears, defaultYear } from '../lib/performance'
@@ -133,6 +133,7 @@ function toPayload(d: Draft, codes: readonly Structure[]): CommercialPayload {
 function validate(d: Draft, codes: readonly Structure[]): string | null {
   if (!d.nom.trim()) return 'Le nom est obligatoire.'
   if (!isHexColor(d.couleur)) return 'Couleur invalide.'
+  if (isTooLight(d.couleur)) return 'Couleur trop claire : le blanc est réservé à la part libre des zones en partiel.'
   for (const s of codes) {
     const bad = parseZoneList(zonesText(d, s)).issues.filter((i) => i.level === 'error')
     if (bad.length === 1) return `Zones ${s} : « ${bad[0].raw} » n'est pas une zone connue.`
@@ -582,7 +583,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
             <section>
               <h3>Zones par structure</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
-                Saisie au format Excel (<code>22, 35P, 52G, 75-7</code> : P = partiel, G = gestion, 75 = tout Paris) ou avec
+                Saisie au format Excel (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
                 l'assistant.
               </p>
               <div className="stack" style={{ gap: 12 }}>

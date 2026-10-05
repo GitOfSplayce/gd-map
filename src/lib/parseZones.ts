@@ -1,6 +1,6 @@
 // Lecture des listes de zones au format du fichier Excel : "22, 35P, 52G, 75-7".
 //  - séparateurs : , . / ; et espace
-//  - suffixe P = partiel, G = gestion, sans suffixe = propre
+//  - suffixe P = partiel, G = gestion, GP = gestion-partiel (PG accepté), sans suffixe = propre
 //  - un code à un chiffre est complété par un 0 (9 → 09)
 //  - 20 ou 2AB → 2A + 2B
 //  - 75-7 = arrondissement, 75 seul = tout Paris (75007 est aussi accepté)
@@ -25,7 +25,7 @@ export interface ZoneParseResult {
   issues: ZoneParseIssue[]
 }
 
-const SUFFIXES: Record<string, Couverture> = { P: 'partiel', G: 'gestion' }
+const SUFFIXES: Record<string, Couverture> = { P: 'partiel', G: 'gestion', GP: 'gestion_partiel', PG: 'gestion_partiel' }
 
 function resolveCodes(base: string): string[] | null {
   if (/^\d$/.test(base)) return ['0' + base]
@@ -50,7 +50,7 @@ export function parseZoneList(input: unknown): ZoneParseResult {
     const raw = token.replace(/\?/g, '')
     if (!raw) continue
 
-    const m = raw.match(/^(.+?)([PG])?$/)!
+    const m = raw.match(/^(.+?)(GP|PG|P|G)?$/)!
     const base = m[1]
     const couverture = m[2] ? SUFFIXES[m[2]] : 'propre'
     const codes = resolveCodes(base)
@@ -85,9 +85,9 @@ export function parseZoneList(input: unknown): ZoneParseResult {
   return { zones, issues }
 }
 
-const SUFFIX_OF: Record<Couverture, string> = { propre: '', partiel: 'P', gestion: 'G' }
+export const SUFFIX_OF: Record<Couverture, string> = { propre: '', partiel: 'P', gestion: 'G', gestion_partiel: 'GP' }
 
-/** Format inverse, utilisé pour l'export Excel et l'édition : "22, 35P, 52G, 75-7". */
+/** Format inverse, utilisé pour l'export Excel et l'édition : "22, 35P, 52G, 54GP, 75-7". */
 export function formatZoneList(zones: { zone_code: string; couverture: Couverture }[]): string {
   return [...zones]
     .sort((a, b) => compareZoneCodes(a.zone_code, b.zone_code))

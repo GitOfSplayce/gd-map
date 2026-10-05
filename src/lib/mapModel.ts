@@ -77,13 +77,29 @@ export function aRecruterShortLabel(nom: string): string {
   return rest || nom
 }
 
+/** Rendu d'une part de zone : couleur pleine (propre, partiel), trame de points (gestion), traits pointillés (gestion-partiel) ou blanc. */
+export type SliceKind = 'plein' | 'points' | 'tirets' | 'blanc'
+
 export interface Stripe {
   color: string
   opacity: number
+  kind: SliceKind
+  /** Force de la couverture : désigne le commercial principal (affichage « Dominante »). */
+  rank: number
 }
 
-/** Motif à définir dans <defs> : rayures (zone partagée) ou trame de points (gestion, élément de la charte). */
-export type ZonePattern = { id: string; kind: 'stripes'; stripes: Stripe[] } | { id: string; kind: 'dots'; color: string }
+/** Part blanche d'un partiel seul sur sa zone : « personne d'autre » (le blanc n'est la couleur de personne). */
+export const NEUTRAL_SLICE: Stripe = { color: '#ffffff', opacity: 1, kind: 'blanc', rank: 0 }
+
+/** Motif à définir dans <defs> : rayures (zone partagée ou partielle), trame de points (gestion), traits pointillés (gestion-partiel). */
+export type ZonePattern =
+  | { id: string; kind: 'stripes'; stripes: Stripe[] }
+  | { id: string; kind: 'dots'; color: string }
+  | { id: string; kind: 'dashes'; color: string }
+
+export const dotsId = (color: string) => 'dots-' + color.slice(1)
+export const dashesId = (color: string) => 'dashes-' + color.slice(1)
+export const stripesId = (slices: Stripe[]) => 'stripes-' + slices.map((s) => s.kind[0] + s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
 
 export interface ZoneStyle {
   fill: string
@@ -95,12 +111,18 @@ export interface ZoneStyle {
   slices: Stripe[] | null
 }
 
-export const COUVERTURE_OPACITY: Record<Couverture, number> = { propre: 0.88, partiel: 0.5, gestion: 0.3 }
+/** Teinte selon la couverture : le partiel garde sa couleur pleine, ce sont ses rayures qui le distinguent. */
+export const COUVERTURE_OPACITY: Record<Couverture, number> = { propre: 0.88, partiel: 0.88, gestion: 0.3, gestion_partiel: 0.88 }
+
+const SLICE_KIND: Record<Couverture, SliceKind> = { propre: 'plein', partiel: 'plein', gestion: 'points', gestion_partiel: 'tirets' }
+
+/** Partiel et gestion-partiel : jamais seuls sur une zone, ils s'affichent comme une zone partagée. */
+export const isPartial = (c: Couverture) => c === 'partiel' || c === 'gestion_partiel'
 
 // ---------- Carte de chaleur de la couverture ----------
 
 /** Poids d'un commercial dans une zone selon sa couverture (on additionne les commerciaux distincts). */
-export const COVERAGE_WEIGHT: Record<Couverture, number> = { propre: 1, partiel: 0.5, gestion: 0.25 }
+export const COVERAGE_WEIGHT: Record<Couverture, number> = { propre: 1, partiel: 0.5, gestion: 0.25, gestion_partiel: 0.125 }
 
 export interface HeatBucket {
   key: string
@@ -127,7 +149,15 @@ export interface ZoneCoverage {
   people: number
   bucket: HeatBucket
 }
-const COUVERTURE_RANK: Record<Couverture, number> = { propre: 3, partiel: 2, gestion: 1 }
+const COUVERTURE_RANK: Record<Couverture, number> = { propre: 4, partiel: 3, gestion: 2, gestion_partiel: 1 }
+
+/** Part d'une zone pour un commercial (ou un manager) selon sa couverture. */
+export const sliceOf = (color: string, c: Couverture): Stripe => ({
+  color,
+  opacity: COUVERTURE_OPACITY[c],
+  kind: SLICE_KIND[c],
+  rank: COUVERTURE_RANK[c],
+})
 const EMPTY_FILL = '#e9ecf1'
 const BORDER = '#ffffff'
 
@@ -135,7 +165,7 @@ export const isARecruter = (c: Commercial) =>
   nameKey(c.statut).startsWith('a recruter') || nameKey(c.nom).startsWith('a recruter')
 
 export const strongest = (list: Couverture[]): Couverture =>
-  list.reduce<Couverture>((best, c) => (COUVERTURE_RANK[c] > COUVERTURE_RANK[best] ? c : best), 'gestion')
+  list.reduce<Couverture>((best, c) => (COUVERTURE_RANK[c] > COUVERTURE_RANK[best] ? c : best), list[0] ?? 'propre')
 
 export interface MapModel {
   colorMode: ColorMode
@@ -336,25 +366,27 @@ export function buildMapModel(
       const perKey = new Map<string, Couverture[]>()
       for (const e of list) perKey.set(e.key, [...(perKey.get(e.key) ?? []), e.affectation.couverture])
       const keys = [...perKey.keys()].sort((a, b) => a.localeCompare(b))
-      const stripes = keys.map((k) => ({ color: colorOf(k), opacity: COUVERTURE_OPACITY[strongest(perKey.get(k)!)] }))
-      const allGestion = list.every((e) => e.affectation.couverture === 'gestion')
+      const coverages = keys.map((k) => strongest(perKey.get(k)!))
+      const slices = keys.map((k, i) => sliceOf(colorOf(k), coverages[i]))
+      // Partiel seul sur sa zone : rayé avec du blanc, la part de « personne d'autre »
+      if (keys.length === 1 && isPartial(coverages[0])) slices.push(NEUTRAL_SLICE)
 
-      if (stripes.length === 1 && allGestion) {
-        // Gestion : trame de points sur fond teinté (élément graphique de la charte)
-        const color = stripes[0].color
-        const id = 'dots-' + color.slice(1)
+      if (slices.length === 1 && slices[0].kind === 'points') {
+        // Gestion seule : trame de points sur fond teinté (élément graphique de la charte)
+        const { color } = slices[0]
+        const id = dotsId(color)
         style = { fill: `url(#${id})`, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: { id, kind: 'dots', color }, slices: null }
-      } else if (stripes.length === 1) {
-        style = { fill: stripes[0].color, fillOpacity: stripes[0].opacity, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
+      } else if (slices.length === 1) {
+        style = { fill: slices[0].color, fillOpacity: slices[0].opacity, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
       } else {
-        const id = 'stripes-' + stripes.map((s) => s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
+        const id = stripesId(slices)
         style = {
           fill: `url(#${id})`,
           fillOpacity: 1,
           stroke: BORDER,
           strokeWidth: 0.8,
-          pattern: { id, kind: 'stripes', stripes },
-          slices: stripes,
+          pattern: { id, kind: 'stripes', stripes: slices },
+          slices,
         }
       }
     }

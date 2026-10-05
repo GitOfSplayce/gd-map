@@ -4,7 +4,7 @@ import Icon from '../components/Icon'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import { useConfirm } from '../hooks/useConfirm'
 import { createManager, deleteManager, renameManager, setManagerColor, setManagerContact } from '../lib/api'
-import { managerColors, rankedFreeColors } from '../lib/colors'
+import { isTooLight, managerColors, rankedFreeColors } from '../lib/colors'
 import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from '../lib/contacts'
 import { nameKey, plural } from '../lib/text'
 import type { Manager } from '../lib/types'
@@ -229,7 +229,11 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
                     value={m.color}
                     ariaLabel={`Couleur de ${m.nom}`}
                     used={rows.filter((x) => x.nom !== m.nom).map((x) => ({ color: x.color, owner: x.nom }))}
-                    onChange={(c) => void run(() => setManagerColor(m.nom, c), `Couleur de ${m.nom} enregistrée.`)}
+                    onChange={(c) =>
+                      isTooLight(c)
+                        ? setError('Couleur trop claire : le blanc est réservé à la part libre des zones en partiel.')
+                        : void run(() => setManagerColor(m.nom, c), `Couleur de ${m.nom} enregistrée.`)
+                    }
                   />
                 </td>
                 <td title={names(m.as1)}>{m.as1.length ? plural(m.as1.length, 'commercial', 'commerciaux') : <span className="muted">—</span>}</td>

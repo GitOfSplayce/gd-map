@@ -11,12 +11,12 @@ import {
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import polylabel from 'polylabel'
 import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
 import { blendWithWhite, mixColors, readableTextColor } from '../lib/colors'
-import type { MapModel, SharedMode, Stripe, ZoneStyle } from '../lib/mapModel'
+import { dashesId, dotsId, type MapModel, type SharedMode, type Stripe, type ZonePattern, type ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
 export type MapViewMode = 'france' | 'idf' | 'paris'
@@ -26,6 +26,8 @@ type ZoneFeature = Feature<Polygon | MultiPolygon, { code: string; nom: string }
 interface Shape {
   code: string
   d: string
+  /** Emprise projetée (découpage en bandes). */
+  bounds: { x0: number; y0: number; x1: number; y1: number }
   label: string
   /** Ancre de l'étiquette et place disponible autour (rayon en px), ou null si la zone n'est pas visible. */
   anchor: { x: number; y: number; room: number } | null
@@ -103,9 +105,11 @@ function labelAnchor(f: ZoneFeature, proj: GeoProjection, box: Box): Shape['anch
 }
 
 function toShape(f: ZoneFeature, path: ReturnType<typeof geoPath>, proj: GeoProjection, box: Box | null): Shape {
+  const [[x0, y0], [x1, y1]] = path.bounds(f as GeoPermissibleObjects)
   return {
     code: f.properties.code,
     d: path(f as GeoPermissibleObjects) ?? '',
+    bounds: { x0, y0, x1, y1 },
     label: shapeLabel(f.properties.code),
     anchor: box ? labelAnchor(f, proj, box) : null,
   }
@@ -183,6 +187,32 @@ function labelColors(st: ZoneStyle | undefined): { text: string; halo: string } 
   const dark = { text: '#1b2232', halo: 'rgba(255,255,255,0.85)' }
   if (!st || st.pattern || !st.fill.startsWith('#')) return dark
   return readableTextColor(blendWithWhite(st.fill, st.fillOpacity)) === '#fff' ? { text: '#ffffff', halo: 'rgba(0,0,0,0.35)' } : dark
+}
+
+/** Largeur d'une rayure et hauteur du motif (multiple de l'écart des points et du pas des pointillés). */
+const STRIPE = 6
+const STRIPE_H = 12
+
+/**
+ * Une rayure d'un motif : couleur pleine, points (gestion), trait pointillé (gestion-partiel) ou blanc.
+ * Points et pointillés sont dessinés directement dans la rayure (pas de motif imbriqué, donc pas de joints visibles).
+ */
+function Band({ slice, x }: { slice: Stripe; x: number }) {
+  const cx = x + STRIPE / 2
+  if (slice.kind === 'plein') return <rect x={x} width={STRIPE} height={STRIPE_H} fill={slice.color} fillOpacity={slice.opacity} />
+  if (slice.kind === 'points') {
+    return (
+      <>
+        <rect x={x} width={STRIPE} height={STRIPE_H} fill={slice.color} fillOpacity={0.16} />
+        <circle cx={cx} cy={STRIPE / 2} r={1.35} fill={slice.color} />
+        <circle cx={cx} cy={STRIPE * 1.5} r={1.35} fill={slice.color} />
+      </>
+    )
+  }
+  if (slice.kind === 'tirets') {
+    return <line x1={cx} y1={0} x2={cx} y2={STRIPE_H} stroke={slice.color} strokeWidth={1.8} strokeDasharray="3.5 2.5" />
+  }
+  return null
 }
 
 export interface MapViewProps {
@@ -286,20 +316,42 @@ export default function MapView({
     return map
   }, [layout, model, highlighted])
 
+  // Motifs à définir : ceux des zones, plus points et pointillés des parts utilisées en découpage, camemberts ou dominante
   const patterns = useMemo(() => {
-    const byId = new Map<string, NonNullable<ZoneStyle['pattern']>>()
-    for (const st of styles.values()) if (st.pattern) byId.set(st.pattern.id, st.pattern)
+    const byId = new Map<string, ZonePattern>()
+    for (const st of styles.values()) {
+      if (st.pattern) byId.set(st.pattern.id, st.pattern)
+      for (const sl of st.slices ?? []) {
+        if (sl.kind === 'points') byId.set(dotsId(sl.color), { id: dotsId(sl.color), kind: 'dots', color: sl.color })
+        if (sl.kind === 'tirets') byId.set(dashesId(sl.color), { id: dashesId(sl.color), kind: 'dashes', color: sl.color })
+      }
+    }
     return [...byId.values()]
   }, [styles])
 
-  // Mode découpage : une bande verticale par commercial, à la taille de chaque zone (dégradé à arrêts francs)
-  const splitId = (slices: Stripe[]) => 'split-' + slices.map((s) => s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
-  const splits = useMemo(() => {
-    if (sharedMode !== 'decoupage') return []
-    const byId = new Map<string, Stripe[]>()
-    for (const st of styles.values()) if (st.slices) byId.set(splitId(st.slices), st.slices)
-    return [...byId]
-  }, [styles, sharedMode])
+  /** Remplissage d'une part : couleur, trame de points (gestion), traits pointillés (gestion-partiel) ou blanc. */
+  const sliceFill = (sl: Stripe) =>
+    sl.kind === 'points' ? `url(#${dotsId(sl.color)})` : sl.kind === 'tirets' ? `url(#${dashesId(sl.color)})` : sl.color
+  const sliceOpacity = (sl: Stripe) => (sl.kind === 'plein' ? sl.opacity : 1)
+
+  /** Mode découpage : une bande verticale par part, découpée à la forme de la zone. */
+  const bandsFor = (s: Shape, key: string) => {
+    const st = styles.get(s.code)
+    if (sharedMode !== 'decoupage' || !st?.slices) return null
+    const { x0, y0, x1, y1 } = s.bounds
+    const w = (x1 - x0) / st.slices.length
+    const clipId = 'clip-' + key
+    return (
+      <g pointerEvents="none" opacity={st.fillOpacity}>
+        <clipPath id={clipId}>
+          <path d={s.d} />
+        </clipPath>
+        {st.slices.map((sl, i) => (
+          <rect key={i} x={x0 + i * w} y={y0} width={w + 0.01} height={y1 - y0} fill={sliceFill(sl)} fillOpacity={sliceOpacity(sl)} clipPath={`url(#${clipId})`} />
+        ))}
+      </g>
+    )
+  }
 
   const setSvg = (el: SVGSVGElement | null) => {
     innerSvg.current = el
@@ -340,8 +392,8 @@ export default function MapView({
             <path
               key={i}
               d={`M${x},${y}L${x0},${y0}A${r},${r} 0 ${large} 1 ${x1},${y1}Z`}
-              fill={sl.color}
-              fillOpacity={Math.max(sl.opacity, 0.35)}
+              fill={sliceFill(sl)}
+              fillOpacity={sl.kind === 'plein' ? Math.max(sl.opacity, 0.35) : 1}
               stroke="#ffffff"
               strokeWidth={0.8}
               vectorEffect="non-scaling-stroke"
@@ -355,17 +407,20 @@ export default function MapView({
   const isSelected = (code: string) => selected === code || (selected === '75' && isParisArr(code))
 
   /** Commercial (ou manager) principal d'une zone partagée : la couverture la plus forte. */
-  const dominant = (slices: Stripe[]) => slices.reduce((best, sl) => (sl.opacity > best.opacity ? sl : best), slices[0])
+  const dominant = (slices: Stripe[]) => slices.reduce((best, sl) => (sl.rank > best.rank ? sl : best), slices[0])
+  /** Un partiel seul (part blanche) n'a pas de « principal » : il reste rayé, quel que soit l'affichage. */
+  const hasBlank = (slices: Stripe[] | null | undefined) => Boolean(slices?.some((sl) => sl.kind === 'blanc'))
 
   /** Style effectif d'une zone selon l'affichage choisi pour les zones partagées. */
   const effectiveStyle = (code: string, shape?: Shape): ZoneStyle => {
     const base = styles.get(code)!
     if (!base.slices) return base
     const dim = base.fillOpacity // < 1 quand la zone est estompée (mise en évidence d'un autre commercial)
-    if (sharedMode === 'decoupage') return { ...base, fill: `url(#${splitId(base.slices)})`, fillOpacity: dim }
-    if (sharedMode === 'dominante') {
+    // Découpage : les bandes sont dessinées sous la zone (bandsFor), qui ne garde que son contour et ses événements
+    if (sharedMode === 'decoupage' && shape) return { ...base, fill: 'transparent', fillOpacity: 1 }
+    if (sharedMode === 'dominante' && !hasBlank(base.slices)) {
       const top = dominant(base.slices)
-      return { ...base, fill: top.color, fillOpacity: top.opacity * dim }
+      return { ...base, fill: sliceFill(top), fillOpacity: sliceOpacity(top) * dim }
     }
     // Camemberts : la zone reste claire, le camembert porte les couleurs
     if (shape && hasPie(shape)) return { ...base, fill: mixColors(base.slices.map((sl) => sl.color)), fillOpacity: dim * 0.3 }
@@ -374,7 +429,11 @@ export default function MapView({
 
   // Mode dominante : badge « +2 » (autres commerciaux de la zone)
   const hasBadge = (s: Shape) =>
-    sharedMode === 'dominante' && Boolean(styles.get(s.code)?.slices) && s.anchor !== null && s.anchor.room >= 6
+    sharedMode === 'dominante' &&
+    Boolean(styles.get(s.code)?.slices) &&
+    !hasBlank(styles.get(s.code)?.slices) &&
+    s.anchor !== null &&
+    s.anchor.room >= 6
   const badgeFor = (s: Shape, k: number) => {
     if (!hasBadge(s)) return null
     const others = styles.get(s.code)!.slices!.length - 1
@@ -429,25 +488,25 @@ export default function MapView({
                   </pattern>
                 )
               }
-              const sw = 6
-              const total = sw * p.stripes.length
+              if (p.kind === 'dashes') {
+                // Gestion-partiel : traits en pointillés sur fond blanc, inclinés comme les rayures
+                return (
+                  <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={STRIPE * 2} height={STRIPE_H / 2} patternTransform="rotate(45)">
+                    <rect width={STRIPE * 2} height={STRIPE_H / 2} fill="#ffffff" />
+                    <line x1={STRIPE / 2} y1={0} x2={STRIPE / 2} y2={STRIPE_H / 2} stroke={p.color} strokeWidth={1.8} strokeDasharray="3.5 2.5" />
+                  </pattern>
+                )
+              }
+              const total = STRIPE * p.stripes.length
               return (
-                <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={total} height={total} patternTransform="rotate(45)">
-                  <rect width={total} height={total} fill="#ffffff" />
-                  {p.stripes.map((s, i) => (
-                    <rect key={i} x={i * sw} y={0} width={sw} height={total} fill={s.color} fillOpacity={s.opacity} />
+                <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={total} height={STRIPE_H} patternTransform="rotate(45)">
+                  <rect width={total} height={STRIPE_H} fill="#ffffff" />
+                  {p.stripes.map((sl, i) => (
+                    <Band key={i} slice={sl} x={i * STRIPE} />
                   ))}
                 </pattern>
               )
             })}
-            {splits.map(([id, slices]) => (
-              <linearGradient key={id} id={id} x1="0" y1="0" x2="1" y2="0">
-                {slices.flatMap((sl, i) => [
-                  <stop key={i + 'a'} offset={i / slices.length} stopColor={sl.color} stopOpacity={sl.opacity} />,
-                  <stop key={i + 'b'} offset={(i + 1) / slices.length} stopColor={sl.color} stopOpacity={sl.opacity} />,
-                ])}
-              </linearGradient>
-            ))}
             <clipPath id="main-clip">
               <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} />
             </clipPath>
@@ -458,7 +517,12 @@ export default function MapView({
           <g clipPath="url(#main-clip)">
             <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} fill="transparent" onClick={onBackground} />
             <g ref={layerRef}>
-              {layout.shapes.map((s) => zonePath(s.code, s.d, undefined, s))}
+              {layout.shapes.map((s) => (
+                <Fragment key={s.code}>
+                  {bandsFor(s, s.code)}
+                  {zonePath(s.code, s.d, undefined, s)}
+                </Fragment>
+              ))}
 
               {/* Contour de la zone sélectionnée, dessiné au-dessus des voisines */}
               {layout.shapes.filter((s) => isSelected(s.code)).map((s) => (
@@ -516,6 +580,7 @@ export default function MapView({
               <text x={inset.x + 7} y={inset.y + 12} fontSize={10} fill="#5b6475" style={{ fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 600 }}>
                 {inset.title}
               </text>
+              {bandsFor(inset.shape, `inset-${inset.code}`)}
               {zonePath(inset.code, inset.shape.d, `inset-${inset.code}`, inset.shape)}
               {pieFor(inset.shape, 1)}
               {isSelected(inset.code) && <path d={inset.shape.d} fill="none" stroke="#111" strokeWidth={2.4} pointerEvents="none" />}

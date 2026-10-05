@@ -391,7 +391,13 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 }
 
 .chip.propre { background: var(--saphir-50); color: var(--saphir); }
-.chip.partiel { background: var(--jaune-50); color: #8a5a00; }
+/* Partiel : rayé avec du blanc ; gestion-partiel : traits pointillés (comme sur la carte) */
+.chip.partiel { background: repeating-linear-gradient(45deg, var(--jaune-50) 0 4px, #fff 4px 8px); color: #8a5a00; border-color: #f0d9a3; }
+.chip.gestion_partiel {
+  color: #44516a;
+  border: 1px dashed #8597ad;
+  background: #fff repeating-linear-gradient(45deg, transparent 0 3px, #b3c0d0 3px 4px, transparent 4px 7px);
+}
 .chip.gestion {
   color: #44516a;
   border: 1px dashed #8597ad;
@@ -1086,10 +1092,7 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .assistant-tools .group { display: flex; align-items: center; gap: 8px; }
 .assistant-tools .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .seg button { display: inline-flex; align-items: center; gap: 6px; }
-.brush-dot { width: 12px; height: 12px; border-radius: 4px; }
-.brush-dot.propre { background: rgb(26 66 138 / 88%); }
-.brush-dot.partiel { background: rgb(26 66 138 / 45%); }
-.brush-dot.gestion { background: #fff radial-gradient(var(--saphir) 1px, transparent 1.3px) 0 0 / 4px 4px; box-shadow: inset 0 0 0 1px rgb(26 66 138 / 40%); }
+.brush .key-swatch { width: 14px; height: 14px; }
 .assistant-body { position: relative; flex: 1; min-height: 0; }
 .assistant-map { position: absolute; inset: 0; }
 .assistant-list { height: 100%; overflow: auto; padding: 14px 20px 20px; }
@@ -1117,7 +1120,8 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .zone-tile.propre { background: var(--saphir); border-color: var(--saphir); }
 .zone-tile.propre b,
 .zone-tile.propre span { color: #fff; }
-.zone-tile.partiel { background: #a9bad8; border-color: #8ea4cb; }
+.zone-tile.partiel { background: repeating-linear-gradient(45deg, #a9bad8 0 5px, #fff 5px 10px); border-color: #8ea4cb; }
+.zone-tile.gestion_partiel { background: #fff repeating-linear-gradient(45deg, transparent 0 4px, rgb(26 66 138 / 55%) 4px 5.5px, transparent 5.5px 10px); border: 1.5px dashed var(--saphir); }
 .zone-tile.partiel b { color: var(--saphir-700); }
 .zone-tile.partiel span { color: #24406f; }
 .zone-tile.gestion { background: #fff radial-gradient(rgb(26 66 138 / 55%) 1.1px, transparent 1.4px) 0 0 / 6px 6px; border: 1.5px dashed var(--saphir); }

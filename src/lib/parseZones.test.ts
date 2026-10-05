@@ -15,6 +15,13 @@ describe('parseZoneList – cas réels du fichier V3', () => {
     expect(codes('02, 60, 76G, 80')).toEqual(['02:p', '60:p', '76:g', '80:p'])
   })
 
+  it('suffixe GP (gestion-partiel), PG accepté, y compris sur un arrondissement et en Corse', () => {
+    const cov = (input: string) => parseZoneList(input).zones.map((z) => `${z.code}:${z.couverture}`)
+    expect(cov('54GP, 57PG, 75-7GP, 2BGP, 88')).toEqual(['54:gestion_partiel', '57:gestion_partiel', '75-7:gestion_partiel', '2B:gestion_partiel', '88:propre'])
+    expect(cov('52g, 10gp, 35p')).toEqual(['52:gestion', '10:gestion_partiel', '35:partiel'])
+    expect(parseZoneList('54GPX').issues[0].message).toMatch(/n'est pas une zone connue/)
+  })
+
   it('arrondissements de Paris et départements de petite couronne', () => {
     expect(codes('75-1, 75-2, 75-3, 75-20, 93, 94')).toEqual(['75-1:p', '75-2:p', '75-3:p', '75-20:p', '93:p', '94:p'])
   })
@@ -107,15 +114,16 @@ describe('formatZoneList', () => {
         { zone_code: '75', couverture: 'propre' },
         { zone_code: '2A', couverture: 'propre' },
         { zone_code: '21', couverture: 'propre' },
+        { zone_code: '54', couverture: 'gestion_partiel' },
       ]),
-    ).toBe('09, 2A, 2BG, 21, 75, 75-7P, 75-10, 971, 98')
+    ).toBe('09, 2A, 2BG, 21, 54GP, 75, 75-7P, 75-10, 971, 98')
   })
 
   it('fait l\'aller-retour avec parseZoneList', () => {
-    const input = '98, 22, 35P, 52G, 75-7, 2A, 971'
+    const input = '98, 22, 35P, 52G, 54GP, 75-7, 2A, 971'
     const parsed = parseZoneList(input).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))
     const formatted = formatZoneList(parsed)
-    expect(formatted).toBe('2A, 22, 35P, 52G, 75-7, 971, 98')
+    expect(formatted).toBe('2A, 22, 35P, 52G, 54GP, 75-7, 971, 98')
     expect(parseZoneList(formatted).zones.map((z) => ({ zone_code: z.code, couverture: z.couverture }))).toEqual(
       [...parsed].sort((a, b) => formatted.indexOf(a.zone_code) - formatted.indexOf(b.zone_code)),
     )

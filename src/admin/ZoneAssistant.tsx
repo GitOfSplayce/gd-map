@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from '../components/Icon'
+import { KeySwatch } from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import { useGeo } from '../hooks/useGeo'
 import { BRAND } from '../lib/colors'
-import type { MapModel, ZoneStyle } from '../lib/mapModel'
+import { NEUTRAL_SLICE, dotsId, sliceOf, stripesId, type MapModel, type ZoneStyle } from '../lib/mapModel'
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS, COUVERTURES, type Couverture } from '../lib/types'
 import { coverageIn, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from '../lib/zoneEditing'
@@ -18,11 +19,16 @@ interface Props {
 
 const EMPTY = '#e4ebf2'
 
+/** Même rendu que sur la carte : partiel et gestion-partiel rayés avec du blanc, gestion en points. */
 function styleFor(c: Couverture | undefined, partial = false): ZoneStyle {
   const base = { stroke: '#ffffff', strokeWidth: 0.8, slices: null }
   if (c === 'propre') return { ...base, fill: BRAND.saphir, fillOpacity: 0.88, pattern: null }
-  if (c === 'partiel') return { ...base, fill: BRAND.saphir, fillOpacity: 0.45, pattern: null }
-  if (c === 'gestion') return { ...base, fill: 'url(#dots-1A428A)', fillOpacity: 1, pattern: { id: 'dots-1A428A', kind: 'dots', color: BRAND.saphir } }
+  if (c === 'partiel' || c === 'gestion_partiel') {
+    const stripes = [sliceOf(BRAND.saphir, c), NEUTRAL_SLICE]
+    const id = stripesId(stripes)
+    return { ...base, fill: `url(#${id})`, fillOpacity: 1, pattern: { id, kind: 'stripes', stripes } }
+  }
+  if (c === 'gestion') return { ...base, fill: `url(#${dotsId(BRAND.saphir)})`, fillOpacity: 1, pattern: { id: dotsId(BRAND.saphir), kind: 'dots', color: BRAND.saphir } }
   if (partial) return { ...base, fill: BRAND.saphir, fillOpacity: 0.2, pattern: null }
   return { ...base, fill: EMPTY, fillOpacity: 1, pattern: null }
 }
@@ -109,7 +115,7 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
             <div className="seg brush">
               {COUVERTURES.map((c) => (
                 <button key={c} type="button" aria-pressed={brush === c} onClick={() => setBrush(c)}>
-                  <span className={'brush-dot ' + c} />
+                  <KeySwatch kind={c} />
                   {COUVERTURE_LABELS[c]}
                 </button>
               ))}
