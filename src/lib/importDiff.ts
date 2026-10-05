@@ -88,6 +88,8 @@ function compareFields(row: ImportRow, c: Commercial, objectifs: Objectif[], ann
   if (row.couleur !== undefined) check('Couleur', c.couleur, row.couleur)
   if (row.actif !== undefined) check('Actif', c.actif ? 'Oui' : 'Non', row.actif ? 'Oui' : 'Non')
   if (row.notes !== undefined) check('Notes', c.notes, row.notes)
+  if (row.telephone !== undefined) check('Téléphone', c.telephone, row.telephone)
+  if (row.email !== undefined) check('E-mail', c.email, row.email)
   for (const s of structures) {
     const o = objectifs.find((x) => x.commercial_id === c.id && x.structure === s && x.annee === annee)
     const n = row.objectifs.find((x) => x.structure === s)
@@ -120,6 +122,8 @@ function rowPayload(row: ImportRow, ordre: number, annee: number, structures: re
   if (row.couleur !== undefined) p.couleur = row.couleur
   if (row.actif !== undefined) p.actif = row.actif
   if (row.notes !== undefined) p.notes = row.notes
+  if (row.telephone !== undefined) p.telephone = row.telephone
+  if (row.email !== undefined) p.email = row.email
   return p
 }
 

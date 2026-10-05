@@ -6,6 +6,12 @@ import { planImport, type ImportPlan } from './importDiff'
 import { DEFAULT_STRUCTURES, structureCodes, type StructureDef } from './structures'
 import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData } from './types'
 
+// Coordonnées fictives de quelques managers (numéros réservés à la fiction par l'ARCEP)
+const DEMO_MANAGER_CONTACTS: Record<string, Partial<Manager>> = {
+  Hélène: { telephone: '06 39 98 00 51', email: 'helene.martin@example.com' },
+  Inès: { telephone: '06 39 98 00 52', email: 'ines.garnier@example.com' },
+}
+
 /** Données telles qu'elles seraient en base après l'import du plan (identifiants fictifs). */
 export function planToMapData(plan: ImportPlan, structures: StructureDef[] = DEFAULT_STRUCTURES): MapData {
   const commerciaux = plan.payload.map((p, i) => ({
@@ -24,10 +30,12 @@ export function planToMapData(plan: ImportPlan, structures: StructureDef[] = DEF
     date_manager2: p.date_manager2 ?? null,
     actions: p.actions ?? null,
     ordre: p.ordre!,
+    telephone: p.telephone ?? null,
+    email: p.email ?? null,
   }))
   const managers: Manager[] = [...new Set(commerciaux.flatMap((c) => [c.manager1, c.manager2]).filter(Boolean) as string[])]
     .sort((a, b) => a.localeCompare(b, 'fr'))
-    .map((nom) => ({ nom, couleur: null }))
+    .map((nom) => ({ nom, couleur: null, ...DEMO_MANAGER_CONTACTS[nom] }))
   return {
     admin: false,
     structures,
@@ -111,6 +119,12 @@ export async function demoSetManagerColor(nom: string, couleur: string) {
   const s = await getStore()
   const m = s.managers.find((x) => x.nom === nom)
   if (m) m.couleur = couleur
+}
+
+export async function demoSetManagerContact(nom: string, contact: { telephone: string | null; email: string | null }) {
+  const s = await getStore()
+  const m = s.managers.find((x) => x.nom === nom)
+  if (m) Object.assign(m, contact)
 }
 
 export async function demoRenameManager(oldName: string, newName: string) {

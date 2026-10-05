@@ -1,4 +1,5 @@
 // Structures du groupe (MD, SP…) : gérées dans l'admin, lues avec les données de la carte.
+import { BASE_ALIASES } from './excelHeaders'
 import { headerKey } from './text'
 
 export interface StructureDef {
@@ -34,11 +35,7 @@ export function inStructureOrder(codes: readonly string[], order: readonly strin
 export const STRUCTURE_CODE_PATTERN = /^[A-Z][A-Z0-9]{1,5}$/
 
 /** En-têtes du fichier Excel qu'un code de structure ne doit pas imiter (colonne « MD », « DPT MD », « CA MD »…). */
-const RESERVED_HEADERS = [
-  'nom', 'nomducommercial', 'commercial', 'statut', 'nbdejouran', 'nbdejoursan', 'nbjoursan', 'joursan',
-  'manager1', 'manager2', 'date1', 'date2', 'actions', 'action', 'region', 'secteur', 'couleur', 'actif',
-  'notes', 'note', 'all',
-]
+const RESERVED_HEADERS = [...Object.values(BASE_ALIASES).flat(), 'all']
 
 /** En-têtes Excel propres à une structure (sans espaces ni accents, comme headerKey). */
 export function structureHeaderKeys(code: string): string[] {

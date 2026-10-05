@@ -23,6 +23,9 @@ export interface Commercial {
   structures: Structure[]
   secteur: string | null
   ordre: number
+  /** Coordonnées, visibles avec le code d'accès. */
+  telephone?: string | null
+  email?: string | null
   // Champs réservés aux admins (absents des données lues avec le code d'accès)
   notes?: string | null
   jours_an?: number | null
@@ -52,6 +55,9 @@ export interface Manager {
   nom: string
   /** null : couleur automatique. */
   couleur: string | null
+  /** Coordonnées, visibles avec le code d'accès. */
+  telephone?: string | null
+  email?: string | null
 }
 
 export interface DisplaySettings {
@@ -95,6 +101,8 @@ export interface CommercialPayload {
   actions?: string | null
   secteur?: string | null
   ordre?: number
+  telephone?: string | null
+  email?: string | null
   affectations?: ZoneAssignment[]
   objectifs?: Omit<Objectif, 'commercial_id'>[]
 }

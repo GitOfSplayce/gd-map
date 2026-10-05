@@ -411,6 +411,45 @@ describe.each([
     })
   })
 
+  describe('téléphone et e-mail', () => {
+    it('s\'enregistrent avec le commercial (e-mail en minuscules) et partent avec la carte, code compris', async () => {
+      await rpc('admin', 'save_commercial', '$1::jsonb', [
+        JSON.stringify({ nom: 'Contact Test', manager1: 'Hélène', telephone: '06 39 98 00 01', email: ' Contact.Test@Example.com ' }),
+      ])
+      await as('admin', `update public.managers set telephone = '06 39 98 00 02', email = 'helene@example.com' where nom = 'Hélène'`)
+      const visitor = await rpc('anon', 'get_map_data', `'Nouveau-code-2027'`)
+      const c = (visitor.commerciaux as Record<string, unknown>[]).find((x) => x.nom === 'Contact Test')
+      expect(c).toMatchObject({ telephone: '06 39 98 00 01', email: 'contact.test@example.com' })
+      const m = (visitor.managers as Record<string, unknown>[]).find((x) => x.nom === 'Hélène')
+      expect(m).toMatchObject({ telephone: '06 39 98 00 02', email: 'helene@example.com' })
+    })
+
+    it('une mise à jour sans ces champs ne les efface pas ; une valeur vide les efface', async () => {
+      const [{ id }] = await as<{ id: string }>('admin', `select id from public.commerciaux where nom = 'Contact Test'`)
+      await rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, statut: 'VRP' })])
+      const [a] = await as<{ telephone: string; email: string }>('admin', `select telephone, email from public.commerciaux where id = $1`, [id])
+      expect(a).toEqual({ telephone: '06 39 98 00 01', email: 'contact.test@example.com' })
+      await rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, telephone: '', email: '' })])
+      const [b] = await as<{ telephone: string | null; email: string | null }>('admin', `select telephone, email from public.commerciaux where id = $1`, [id])
+      expect(b).toEqual({ telephone: null, email: null })
+    })
+
+    it('refuse un e-mail ou un téléphone illisible', async () => {
+      const [{ id }] = await as<{ id: string }>('admin', `select id from public.commerciaux where nom = 'Contact Test'`)
+      await expect(rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, email: 'pas-un-mail' })])).rejects.toThrow(/check constraint/)
+      await expect(rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id, telephone: 'voir agence' })])).rejects.toThrow(/check constraint/)
+    })
+
+    it('fusionner deux managers garde les coordonnées de l\'un ou de l\'autre', async () => {
+      await as('admin', `insert into public.managers (nom, telephone, email) values ('Doublon Hélène', '06 39 98 00 03', 'doublon@example.com')`)
+      await as('admin', `update public.managers set telephone = null where nom = 'Hélène'`)
+      await rpc('admin', 'rename_manager', `'Doublon Hélène', 'Hélène'`)
+      const [m] = await as<{ telephone: string; email: string }>('admin', `select telephone, email from public.managers where nom = 'Hélène'`)
+      expect(m).toEqual({ telephone: '06 39 98 00 03', email: 'helene@example.com' })
+      await as('admin', `delete from public.commerciaux where nom = 'Contact Test'`)
+    })
+  })
+
   describe('mode des zones partagées par défaut', () => {
     it('vaut « rayures » et part avec la carte', async () => {
       const res = await rpc('admin', 'get_map_data', 'null')

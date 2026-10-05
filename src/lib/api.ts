@@ -40,6 +40,7 @@ export async function fetchMapData(code: string | null): Promise<{ data: MapData
 
 function fail(error: { message: string; code?: string } | null): never {
   if (error?.code === '23505') throw new Error('Un commercial porte déjà ce nom.')
+  if (error?.code === '23514' && /telephone|email/.test(error.message)) throw new Error('Téléphone ou e-mail illisible.')
   throw new Error(error?.message ?? 'Erreur inconnue')
 }
 
@@ -82,6 +83,14 @@ export async function createManager(m: Manager): Promise<void> {
 export async function setManagerColor(nom: string, couleur: string): Promise<void> {
   if (DEMO) return (await demo()).demoSetManagerColor(nom, couleur)
   const { error } = await requireSupabase().from('managers').update({ couleur }).eq('nom', nom)
+  if (error) fail(error)
+}
+
+/** Téléphone et e-mail d'un manager (null pour effacer). */
+export async function setManagerContact(nom: string, contact: { telephone: string | null; email: string | null }): Promise<void> {
+  if (DEMO) return (await demo()).demoSetManagerContact(nom, contact)
+  const { error } = await requireSupabase().from('managers').update(contact).eq('nom', nom)
+  if (error?.code === '23514') throw new Error('Téléphone ou e-mail illisible.')
   if (error) fail(error)
 }
 

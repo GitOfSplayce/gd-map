@@ -12,6 +12,7 @@ const HEADERS = [
   'Nom', 'MD', 'SP', 'MC', 'BK', 'Statut ', 'Nb de jour / an', 'Manager 1', 'Date 1', 'Manager 2', 'Date 2',
   'Actions ', 'Région', 'DPT MD', 'DPT SP', 'DPT MC', 'DPT BK',
   'CA MD', 'Objectif MD', 'CA SP', 'Objectif SP', 'CA MC', 'Objectif MC', 'CA BK', 'Objectif BK',
+  'Téléphone', 'E-mail',
 ]
 
 // [Nom, MD, SP, MC, BK, Statut, Jours, M1, Date1, M2, Date2, Actions, Région, DPT MD, DPT SP, DPT MC, DPT BK, CA/Obj…]
@@ -60,6 +61,27 @@ for (const row of ROWS) {
     row[i] = ca
     row[i + 1] = objectif
   }
+}
+
+// Coordonnées fictives : numéros réservés à la fiction par l'ARCEP (06 39 98 xx xx), adresses en example.com.
+// Écritures variées pour vérifier la mise en forme à l'import (points, +33, nombre sans le zéro, majuscules).
+const CONTACTS = {
+  'Agathe Rolland': ['0639980001', 'Agathe.Rolland@Example.com'],
+  'Basile Fournier': ['06.39.98.00.02', 'basile.fournier@example.com'],
+  'Capucine Delorme': ['+33 6 39 98 00 03', 'capucine.delorme@example.com'],
+  'Dorian Marchal': [639980004, 'dorian.marchal@example.com'],
+  'Élodie Vasseur': ['06 39 98 00 05', 'elodie.vasseur@example.com'],
+  'Fabien Carré': ['06 39 98 00 06', ''],
+  'HAMON Léonie': ['06 39 98 00 11', 'leonie.hamon@example.com'],
+  'KERVELLA Simon': ['', 'simon.kervella@example.com'],
+  'PRADEL Jade': ['06 39 98 00 21', 'jade.pradel@example.com'],
+}
+const PHONE_COLUMN = HEADERS.indexOf('Téléphone')
+for (const row of ROWS) {
+  const contact = CONTACTS[row[0]]
+  if (!contact) continue
+  while (row.length < HEADERS.length) row.push('')
+  ;[row[PHONE_COLUMN], row[PHONE_COLUMN + 1]] = contact
 }
 
 // Colonnes calculées à droite (comme dans le fichier réel) : en-têtes en double, à ignorer

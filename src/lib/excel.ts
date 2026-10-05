@@ -2,7 +2,9 @@
 // Les colonnes sont repérées par le nom de l'en-tête, jamais par leur position.
 import * as XLSX from 'xlsx'
 import { parseAmountInput } from './amounts'
+import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from './contacts'
 import { formatZoneList, parseZoneList, type ParsedZone, type ZoneParseIssue } from './parseZones'
+import { BASE_ALIASES, type BaseField } from './excelHeaders'
 import { structureHeaderKeys } from './structures'
 import { headerKey } from './text'
 import type { Affectation, Commercial, Objectif, Structure } from './types'
@@ -10,25 +12,7 @@ import type { Affectation, Commercial, Objectif, Structure } from './types'
 export const DEFAULT_SHEET = 'V3'
 export const DEFAULT_HEADER_ROW = 3
 
-type BaseField =
-  | 'nom' | 'statut' | 'jours_an' | 'manager1' | 'date_manager1' | 'manager2' | 'date_manager2'
-  | 'actions' | 'secteur' | 'couleur' | 'actif' | 'notes'
 type Field = BaseField | `x_${Structure}` | `dpt_${Structure}` | `ca_${Structure}` | `obj_${Structure}`
-
-const BASE_ALIASES: Record<BaseField, string[]> = {
-  nom: ['nom', 'nomducommercial', 'commercial'],
-  statut: ['statut'],
-  jours_an: ['nbdejouran', 'nbdejoursan', 'nbjoursan', 'joursan'],
-  manager1: ['manager1'],
-  date_manager1: ['date1'],
-  manager2: ['manager2'],
-  date_manager2: ['date2'],
-  actions: ['actions', 'action'],
-  secteur: ['region', 'secteur'],
-  couleur: ['couleur'],
-  actif: ['actif'],
-  notes: ['notes', 'note'],
-}
 
 /** En-têtes reconnus pour chaque champ, structures comprises (même ordre que structureHeaderKeys). */
 function aliasesFor(structures: readonly Structure[]): Record<Field, string[]> {
@@ -71,6 +55,9 @@ export interface ImportRow {
   couleur?: string
   actif?: boolean
   notes?: string | null
+  /** Coordonnées : présentes seulement si la colonne existe (un fichier sans ces colonnes ne les efface pas). */
+  telephone?: string | null
+  email?: string | null
   zones: Record<Structure, ParsedZone[]>
   zoneIssues: Record<Structure, ZoneParseIssue[]>
   objectifs: { structure: Structure; ca: number | null; objectif: number | null }[]
@@ -233,6 +220,16 @@ export function parseSheet(wb: XLSX.WorkBook, sheetName: string, structures: rea
       if (a !== null) row.actif = !['non', 'n', '0', 'false', 'inactif'].includes(a.toLowerCase())
     }
     if (col.notes !== undefined) row.notes = text(get(r, 'notes'))
+    if (col.telephone !== undefined) {
+      const raw = text(get(r, 'telephone'))
+      if (phoneIssue(raw)) warnings.push(`Téléphone « ${raw} » illisible : ignoré`)
+      else row.telephone = formatPhone(raw) || null
+    }
+    if (col.email !== undefined) {
+      const raw = text(get(r, 'email'))
+      if (emailIssue(raw)) warnings.push(`E-mail « ${raw} » illisible : ignoré`)
+      else row.email = normalizeEmail(raw) || null
+    }
 
     rows.push(row)
   })
@@ -248,7 +245,7 @@ export const exportHeaders = (structures: readonly Structure[]) => [
   'Nom', ...structures, 'Statut', 'Nb de jour / an', 'Manager 1', 'Date 1', 'Manager 2', 'Date 2',
   'Actions', 'Région', ...structures.map((s) => `DPT ${s}`),
   ...structures.flatMap((s) => [`CA ${s}`, `Objectif ${s}`]),
-  'Couleur', 'Actif', 'Notes',
+  'Téléphone', 'E-mail', 'Couleur', 'Actif', 'Notes',
 ]
 
 export function buildExportWorkbook(
@@ -282,6 +279,8 @@ export function buildExportWorkbook(
       c.secteur ?? '',
       ...structures.map((s) => formatZoneList(own.filter((a) => a.structure === s))),
       ...structures.flatMap((s) => [obj(s)?.ca ?? '', obj(s)?.objectif ?? '']),
+      c.telephone ?? '',
+      c.email ?? '',
       c.couleur,
       c.actif ? 'Oui' : 'Non',
       c.notes ?? '',
@@ -290,7 +289,13 @@ export function buildExportWorkbook(
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
   ws['!cols'] = headers.map((hdr) =>
-    hdr === 'Nom' ? { wch: 30 } : hdr.startsWith('DPT') ? { wch: 34 } : structures.includes(hdr) ? { wch: Math.max(4, hdr.length + 1) } : { wch: 14 },
+    hdr === 'Nom' || hdr === 'E-mail'
+      ? { wch: 30 }
+      : hdr.startsWith('DPT')
+        ? { wch: 34 }
+        : structures.includes(hdr)
+          ? { wch: Math.max(4, hdr.length + 1) }
+          : { wch: hdr === 'Téléphone' ? 16 : 14 },
   )
   ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: rows.length - 1, c: headers.length - 1 } }) }
 

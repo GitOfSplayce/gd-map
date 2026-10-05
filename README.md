@@ -67,7 +67,7 @@ Le workflow `keepalive.yml` appelle la base deux fois par jour pour éviter la m
 - **CA et objectifs** (admins connectés uniquement) : saisie par structure et par année dans le panneau d'un commercial (raccourcis `120k`, `1,2M`) ou par l'Excel ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
-- Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail.
+- Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail, avec le téléphone et l'e-mail du commercial et de ses managers (liens d'appel et d'envoi).
 - Filtres (manager, commercial, couverture, statut, « masquer les À recruter »), légende cliquable, export PNG.
 - L'adresse garde l'onglet, la vue, le mode de couleur et l'affichage des zones partagées (`?onglet=MD&vue=paris&couleur=couverture&partage=camemberts`).
 - Charte graphique GDCom 2023 : couleurs, Montserrat (auto-hébergée), logotype officiel.
@@ -84,6 +84,7 @@ Onglet `V3` par défaut, en-têtes en ligne 3. Les colonnes sont **repérées pa
 | `DPT MD`, `DPT SP`… (une par structure) | liste de zones |
 | `CA MD`, `Objectif MD`… (par structure) | nombres, facultatifs (année choisie à l'import) |
 | `Nb de jour / an`, `Date 1`, `Date 2`, `Actions`, `Région` | facultatifs, conservés pour l'export |
+| `Téléphone`, `E-mail` | facultatifs ; numéros français remis au format `06 12 34 56 78`, valeur illisible ignorée avec un avertissement ; sans ces colonnes, les coordonnées existantes ne bougent pas |
 | `Couleur`, `Actif`, `Notes` | facultatifs, ajoutés par l'export |
 
 Les colonnes d'une structure sont celles de son code (onglet *Structures* de l'admin) : une structure créée dans l'admin est lue à l'import et ajoutée à l'export. Une colonne `DPT XY` dont la structure n'existe pas est ignorée et signalée dans l'aperçu.
@@ -103,7 +104,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 | Qui | Peut |
 |---|---|
 | Anonyme | rien, sauf appeler `get_map_data(code)` et `ping()` |
-| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones. Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
+| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
 | Connecté, non admin | rien |
 | Admin (`public.admins`) | lire et modifier les données, changer le code, gérer les admins, régler l'affichage par défaut |
 

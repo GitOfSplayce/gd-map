@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import AmountInput from '../components/AmountInput'
 import ColorPicker from '../components/ColorPicker'
+import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import { PerfBar } from '../components/Legend'
 import Icon from '../components/Icon'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { useConfirm } from '../hooks/useConfirm'
 import { formatAmountInput, parseAmountInput } from '../lib/amounts'
+import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from '../lib/contacts'
 import { deleteCommercial, saveCommercial } from '../lib/api'
 import { isHexColor, managerColors, pickDistinctColor } from '../lib/colors'
 import { isARecruter } from '../lib/mapModel'
@@ -36,6 +38,8 @@ interface Draft {
   date_manager2: string
   actions: string
   secteur: string
+  telephone: string
+  email: string
   ordre: number
   zones: Record<Structure, string>
   /** CA et objectifs saisis, par année puis par structure (texte tel que tapé). */
@@ -82,6 +86,8 @@ function toDraft(c: Commercial, data: MapData): Draft {
     date_manager2: c.date_manager2 ?? '',
     actions: c.actions ?? '',
     secteur: c.secteur ?? '',
+    telephone: c.telephone ?? '',
+    email: c.email ?? '',
     ordre: c.ordre,
     zones: zoneTexts(c, data),
     objectifs: objectifsDraft(c, data),
@@ -108,6 +114,8 @@ function toPayload(d: Draft, codes: readonly Structure[]): CommercialPayload {
     date_manager2: d.date_manager2,
     actions: d.actions,
     secteur: d.secteur,
+    telephone: formatPhone(d.telephone) || null,
+    email: normalizeEmail(d.email) || null,
     ordre: d.ordre,
     affectations,
     // Toutes les lignes connues : une ligne vidée (CA et objectif vides) est supprimée côté serveur
@@ -130,6 +138,8 @@ function validate(d: Draft, codes: readonly Structure[]): string | null {
     if (bad.length === 1) return `Zones ${s} : « ${bad[0].raw} » n'est pas une zone connue.`
     if (bad.length > 1) return `Zones ${s} : ${bad.map((i) => `« ${i.raw} »`).join(', ')} ne sont pas des zones connues.`
   }
+  const contact = phoneIssue(d.telephone) ?? emailIssue(d.email)
+  if (contact) return contact
   if (d.jours_an.trim() && !Number.isFinite(Number(d.jours_an.replace(',', '.')))) return '« Nb de jour / an » doit être un nombre.'
   for (const [annee, byStructure] of Object.entries(d.objectifs)) {
     for (const [s, v] of Object.entries(byStructure)) {
@@ -166,7 +176,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
     .filter(
       (c) =>
         (!q ||
-          [c.nom, c.statut, c.manager1, c.manager2, c.secteur, ...Object.values(zones.get(c.id) ?? {})]
+          [c.nom, c.statut, c.manager1, c.manager2, c.secteur, c.telephone, c.email, ...Object.values(zones.get(c.id) ?? {})]
             .join(' ')
             .toLowerCase()
             .includes(q)) &&
@@ -193,6 +203,8 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
       date_manager2: '',
       actions: '',
       secteur: '',
+      telephone: '',
+      email: '',
       ordre: Math.max(0, ...data.commerciaux.map((c) => c.ordre)) + 1,
       zones: Object.fromEntries(codes.map((s) => [s, ''])),
       objectifs: {},
@@ -290,7 +302,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                       <div>
                         <div className="who-name">{c.nom}</div>
                         <div className="who-sub">
-                          {[c.secteur, !c.actif && 'inactif'].filter(Boolean).join(' · ') || ' '}
+                          {[c.secteur, c.telephone, !c.actif && 'inactif'].filter(Boolean).join(' · ') || ' '}
                         </div>
                       </div>
                     </div>
@@ -393,6 +405,8 @@ function fingerprint(d: Draft, codes: readonly Structure[]): string {
     date_manager2: t(d.date_manager2),
     actions: t(d.actions),
     secteur: t(d.secteur),
+    telephone: formatPhone(d.telephone),
+    email: normalizeEmail(d.email),
     objectifs: Object.entries(d.objectifs)
       .flatMap(([annee, byStructure]) =>
         Object.entries(byStructure).map(([st, v]) => [Number(annee), st, parseAmount(v!.ca), parseAmount(v!.objectif)]),
@@ -544,6 +558,23 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                 </div>
                 <div className="field span-2">
                   <Switch checked={d.actif} onChange={(on) => set({ actif: on })} label={d.actif ? 'Actif : visible sur la carte' : 'Inactif : masqué de la carte'} />
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>Coordonnées</h3>
+              <p className="muted small" style={{ marginTop: 0 }}>
+                Visibles sur la carte par tous ceux qui ont le code d'accès.
+              </p>
+              <div className="form-grid">
+                <div className="field">
+                  <span>Téléphone</span>
+                  <PhoneInput value={d.telephone} onChange={(v) => set({ telephone: v })} ariaLabel="Téléphone" />
+                </div>
+                <div className="field">
+                  <span>E-mail</span>
+                  <EmailInput value={d.email} onChange={(v) => set({ email: v })} ariaLabel="E-mail" />
                 </div>
               </div>
             </section>

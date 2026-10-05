@@ -197,6 +197,47 @@ describe('structure ajoutée dans l\'admin', () => {
   })
 })
 
+describe('téléphone et e-mail à l\'import', () => {
+  it('sont mis en forme, et une valeur illisible est ignorée avec un avertissement', () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      [],
+      [],
+      ['Nom', 'MD', 'DPT MD', 'Téléphone', 'E-mail'],
+      ['Un', 'X', '22', 639980001, ' Un.Test@Example.com '],
+      ['Deux', 'X', '29', 'voir agence', 'pas-un-mail'],
+      ['Trois', 'X', '35', '', ''],
+    ])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'V3')
+    const [un, deux, trois] = parseSheet(wb, 'V3', CODES).rows
+    expect(un).toMatchObject({ telephone: '06 39 98 00 01', email: 'un.test@example.com' })
+    expect(deux.telephone).toBeUndefined()
+    expect(deux.email).toBeUndefined()
+    expect(deux.warnings).toEqual(['Téléphone « voir agence » illisible : ignoré', 'E-mail « pas-un-mail » illisible : ignoré'])
+    expect(trois).toMatchObject({ telephone: null, email: null })
+  })
+
+  it('un fichier sans ces colonnes ne touche pas aux coordonnées existantes', () => {
+    const ws = XLSX.utils.aoa_to_sheet([[], [], ['Nom', 'MD', 'DPT MD'], ['Un', 'X', '22']])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'V3')
+    const [row] = parseSheet(wb, 'V3', CODES).rows
+    expect('telephone' in row).toBe(false)
+    const existing: Commercial = { id: 'u', nom: 'Un', statut: null, manager1: null, manager2: null, couleur: '#123456', actif: true, structures: ['MD'], secteur: null, ordre: 1, telephone: '06 39 98 00 01', email: 'un@example.com' }
+    const plan = planImport([row], { structures: DEFAULT_STRUCTURES, commerciaux: [existing], affectations: [{ id: 'a', commercial_id: 'u', structure: 'MD', zone_code: '22', couverture: 'propre' }], objectifs: [] }, 'merge', 2026)
+    expect(plan.counts.unchanged).toBe(1)
+    expect(plan.payload[0]).not.toHaveProperty('telephone')
+  })
+
+  it('le fichier d\'exemple les contient, au bon format', () => {
+    const rows = parseSheet(load(SAMPLE), 'V3', CODES).rows
+    const byName = (n: string) => rows.find((r) => r.nom === n)!
+    expect(byName('Agathe Rolland')).toMatchObject({ telephone: '06 39 98 00 01', email: 'agathe.rolland@example.com' })
+    expect(byName('Capucine Delorme').telephone).toBe('06 39 98 00 03')
+    expect(byName('Dorian Marchal').telephone).toBe('06 39 98 00 04')
+  })
+})
+
 describe('code d\'une nouvelle structure', () => {
   it('2 à 6 majuscules ou chiffres, commençant par une lettre', () => {
     expect(structureCodeIssue('NV', CODES)).toBeNull()

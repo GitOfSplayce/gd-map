@@ -36,7 +36,8 @@ export default function HelpPage() {
             </li>
             <li>
               <strong>Survol</strong> d'une zone : nom, code et commerciaux présents. <strong>Clic</strong> : détail dans le
-              panneau de droite.
+              panneau de droite, avec le téléphone et l'e-mail de chaque commercial et de ses managers (un clic pour appeler
+              ou écrire).
             </li>
             <li>
               <strong>Légende</strong> : un clic sur un nom met ses zones en évidence. Plusieurs noms peuvent être
@@ -169,8 +170,8 @@ export default function HelpPage() {
             <code>Nom</code>, une colonne par structure (<code>MD</code>, <code>SP</code>… : « X » = appartient à la
             structure), <code>Statut</code>, <code>Manager 1</code>, <code>Manager 2</code>, <code>DPT MD</code>,{' '}
             <code>DPT SP</code>…, et en option <code>Nb de jour / an</code>, <code>Date 1</code>, <code>Date 2</code>,{' '}
-            <code>Actions</code>, <code>Région</code>, <code>CA MD</code>, <code>Objectif MD</code>… Une ligne sans nom est
-            ignorée. Pour une nouvelle structure, créez-la d'abord dans l'admin (onglet <em>Structures</em>) : ses colonnes
+            <code>Actions</code>, <code>Région</code>, <code>CA MD</code>, <code>Objectif MD</code>…, <code>Téléphone</code>,{' '}
+            <code>E-mail</code>. Une ligne sans nom est ignorée. Pour une nouvelle structure, créez-la d'abord dans l'admin (onglet <em>Structures</em>) : ses colonnes
             sont ensuite lues à l'import et ajoutées à l'export.
           </p>
           <ul>

@@ -3,7 +3,7 @@ import { managerColors } from './colors'
 import { nameKey } from './text'
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
 import { inStructureOrder, structureCodes, type StructureDef } from './structures'
-import type { Affectation, Commercial, Couverture, MapData, Objectif, Structure } from './types'
+import type { Affectation, Commercial, Couverture, Manager, MapData, Objectif, Structure } from './types'
 import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
 
 /**
@@ -155,6 +155,8 @@ export interface MapModel {
   objectifOf: (commercialId: string, structure: Structure) => Objectif | undefined
   /** Structures dans l'ordre choisi par les admins. */
   structures: StructureDef[]
+  /** Fiche d'un manager (couleur, téléphone, e-mail) d'après son nom. */
+  managerOf: (nom: string | null | undefined) => Manager | undefined
   managers: { manager1: string[]; manager2: string[] }
   statuts: string[]
   visibleCommerciaux: Commercial[]
@@ -180,6 +182,7 @@ export function buildMapModel(
   const m2 = [...new Set(active.map((c) => c.manager2 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
   const statuts = [...new Set(active.map((c) => c.statut || '(sans statut)'))].sort((a, b) => a.localeCompare(b, 'fr'))
   const mgrColors = managerColors([...m1, ...m2], data.managers ?? [])
+  const managersByName = new Map((data.managers ?? []).map((m) => [m.nom, m]))
 
   const keyOf = (c: Commercial) =>
     colorMode === 'commercial' || colorMode === 'couverture' || colorMode === 'performance'
@@ -399,6 +402,7 @@ export function buildMapModel(
     styleOf,
     objectifOf,
     structures: data.structures,
+    managerOf: (nom) => (nom ? managersByName.get(nom) : undefined),
     managers: { manager1: m1, manager2: m2 },
     statuts,
     visibleCommerciaux,

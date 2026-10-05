@@ -1,4 +1,5 @@
 import type { MapModel } from '../lib/mapModel'
+import ContactLinks from './ContactLinks'
 import Icon from './Icon'
 import { PerfBar } from './Legend'
 import { perfBucketOf, perfText } from '../lib/performance'
@@ -81,6 +82,7 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
                     >
                       {c.nom}
                     </button>
+                    <ContactLinks telephone={c.telephone} email={c.email} />
                   </div>
                   <dl>
                     <dt>Couverture</dt>
@@ -94,9 +96,17 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
                     <dt>Statut</dt>
                     <dd>{c.statut || '—'}</dd>
                     <dt>Manager 1</dt>
-                    <dd>{c.manager1 || '—'}</dd>
+                    <dd>
+                      {c.manager1 || '—'}
+                      <ContactLinks telephone={model.managerOf(c.manager1)?.telephone} email={model.managerOf(c.manager1)?.email} />
+                    </dd>
                     <dt>Manager 2</dt>
-                    <dd>{c.manager2 || '—'}</dd>
+                    <dd>
+                      {c.manager2 || '—'}
+                      {c.manager2 !== c.manager1 && (
+                        <ContactLinks telephone={model.managerOf(c.manager2)?.telephone} email={model.managerOf(c.manager2)?.email} />
+                      )}
+                    </dd>
                     {c.secteur && (
                       <>
                         <dt>Secteur</dt>
