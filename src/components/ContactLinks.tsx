@@ -21,3 +21,16 @@ export default function ContactLinks({ telephone, email }: { telephone?: string 
     </span>
   )
 }
+
+/** Pastilles rouges « téléphone » et « e-mail » quand l'information manque (tableaux de l'admin). */
+export function MissingContact({ telephone, email }: { telephone?: string | null; email?: string | null }) {
+  const missing = [!telephone && 'téléphone', !email && 'e-mail'].filter(Boolean) as string[]
+  if (!missing.length) return null
+  const label = missing.join(' et ')
+  return (
+    <span className="contact-missing" role="img" aria-label={`${label[0].toUpperCase()}${label.slice(1)} à compléter`}>
+      {!telephone && <Icon name="phone" size={13} />}
+      {!email && <Icon name="mail" size={13} />}
+    </span>
+  )
+}

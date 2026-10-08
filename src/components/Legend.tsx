@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { BRAND } from '../lib/colors'
-import Icon from './Icon'
+import SearchInput from './SearchInput'
 import { COUVERTURE_OPACITY, LEGEND_GROUP_TITLES, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
@@ -171,10 +171,7 @@ export default function Legend({ items, ranking, year, colorMode, highlighted, o
       {perfMode ? <PerfKey year={year} /> : heat ? <HeatKey /> : <CoverageKey sharedMode={sharedMode} onSharedMode={onSharedMode} />}
       <div className="row" style={{ marginBottom: 8 }}>
         {!heat && items.length > 8 && (
-          <div className="input-icon grow">
-            <Icon name="search" size={16} />
-            <input className="input" type="search" placeholder={`Rechercher un ${what}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
+          <SearchInput className="grow" value={search} onChange={setSearch} placeholder={`Rechercher un ${what}…`} />
         )}
         {highlighted.size > 0 && (
           <button type="button" className="btn small" onClick={onClear}>

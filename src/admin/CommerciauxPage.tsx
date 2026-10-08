@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import AmountInput from '../components/AmountInput'
 import ColorPicker from '../components/ColorPicker'
+import { MissingContact } from '../components/ContactLinks'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import { PerfBar } from '../components/Legend'
 import Icon from '../components/Icon'
+import SearchInput from '../components/SearchInput'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { useConfirm } from '../hooks/useConfirm'
@@ -151,6 +153,9 @@ function validate(d: Draft, codes: readonly Structure[]): string | null {
   return null
 }
 
+/** Téléphone ou e-mail manquant (les postes « À recruter » n'ont personne à joindre). */
+const missingContact = (c: Commercial) => !isARecruter(c) && (!c.telephone || !c.email)
+
 type SortKey = 'ordre' | 'nom' | 'statut' | 'manager1' | 'manager2'
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -166,6 +171,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
   const [search, setSearch] = useState('')
   const [structureFilter, setStructureFilter] = useState<Structure | 'ALL'>('ALL')
   const [showInactive, setShowInactive] = useState(true)
+  const [onlyMissing, setOnlyMissing] = useState(false)
   const [sort, setSort] = useState<SortKey>('ordre')
   const [editing, setEditing] = useState<Draft | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -182,7 +188,8 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
             .toLowerCase()
             .includes(q)) &&
         (structureFilter === 'ALL' || c.structures.includes(structureFilter)) &&
-        (showInactive || c.actif),
+        (showInactive || c.actif) &&
+        (!onlyMissing || missingContact(c)),
     )
     .sort((a, b) => {
       if (sort === 'ordre') return a.ordre - b.ordre || a.nom.localeCompare(b.nom, 'fr')
@@ -240,10 +247,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
           <Icon name="plus" size={16} />
           Ajouter
         </button>
-        <div className="input-icon">
-          <Icon name="search" size={16} />
-          <input className="input" type="search" placeholder="Rechercher (nom, manager, zone…)" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
+        <SearchInput value={search} onChange={setSearch} placeholder="Nom, manager, zone…" ariaLabel="Rechercher un commercial" />
         <div className="seg">
           {['ALL', ...codes].map((s) => (
             <button key={s} type="button" aria-pressed={structureFilter === s} onClick={() => setStructureFilter(s)}>
@@ -252,6 +256,15 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
           ))}
         </div>
         <Switch checked={showInactive} onChange={setShowInactive} label="Afficher les inactifs" />
+        <Switch
+          checked={onlyMissing}
+          onChange={setOnlyMissing}
+          label={
+            <span className="missing-switch">
+              Coordonnées à compléter <span className="count-pill">{data.commerciaux.filter(missingContact).length}</span>
+            </span>
+          }
+        />
         <span className="grow" />
         <div className="row small muted">
           Trier par
@@ -301,7 +314,10 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                     <div className="who">
                       <span className="swatch" style={{ background: c.couleur }} />
                       <div>
-                        <div className="who-name">{c.nom}</div>
+                        <div className="who-name">
+                          {c.nom}
+                          {!isARecruter(c) && <MissingContact telephone={c.telephone} email={c.email} />}
+                        </div>
                         <div className="who-sub">
                           {[c.secteur, c.telephone, !c.actif && 'inactif'].filter(Boolean).join(' · ') || ' '}
                         </div>

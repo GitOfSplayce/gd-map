@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import ColorPicker from '../components/ColorPicker'
 import Icon from '../components/Icon'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
+import { MissingContact } from '../components/ContactLinks'
 import { useConfirm } from '../hooks/useConfirm'
 import { createManager, deleteManager, renameManager, setManagerColor, setManagerContact } from '../lib/api'
 import { isTooLight, managerColors, rankedFreeColors } from '../lib/colors'
@@ -146,7 +147,7 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
         )}
         <span className="muted small">
           La couleur sert sur la carte en mode « Manager 1 » ou « Manager 2 ». Renommer un manager met à jour ses commerciaux.
-          Téléphone et e-mail sont visibles sur la carte avec le code d'accès.
+          Téléphone et e-mail sont visibles sur la carte avec le code d'accès ; en rouge, ceux qui manquent.
         </span>
       </div>
 
@@ -218,7 +219,10 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
                     <div className="who">
                       <span className="swatch" style={{ background: m.color }} />
                       <div>
-                        <div className="who-name">{m.nom}</div>
+                        <div className="who-name">
+                          {m.nom}
+                          {!nameKey(m.nom).startsWith('a recruter') && <MissingContact telephone={m.telephone} email={m.email} />}
+                        </div>
                         {(m.telephone || m.email) && <div className="who-sub">{[m.telephone, m.email].filter(Boolean).join(' · ')}</div>}
                       </div>
                     </div>

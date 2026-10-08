@@ -220,8 +220,30 @@ textarea {
 .textarea { min-height: 72px; resize: vertical; }
 
 .input-icon { position: relative; }
-.input-icon .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.input-icon > .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .input-icon .input { padding-left: 36px; }
+/* Recherche : croix native du navigateur masquée, remplacée par le bouton « Effacer » de l'application */
+input[type='search']::-webkit-search-cancel-button,
+input[type='search']::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.search-input .input { padding-right: 36px; }
+.search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.search-clear:hover { background: var(--saphir-50); color: var(--saphir); }
+.search-clear:focus-visible { outline: 2px solid var(--saphir); outline-offset: 1px; }
 
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -765,6 +787,11 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 .person > div { min-width: 0; }
 .person .p-name { font-weight: 700; color: var(--saphir); background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
 .person .p-name:hover { text-decoration: underline; }
+/* Coordonnées manquantes (tableaux de l'admin) */
+.contact-missing { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: -2px; color: var(--danger); }
+.missing-switch { display: inline-flex; align-items: center; gap: 6px; }
+.count-pill { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); font-size: 11.5px; font-weight: 700; text-align: center; line-height: 18px; }
+
 /* Coordonnées cliquables (appel, e-mail) */
 .contact-links { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; font-size: 12.5px; }
 .contact-links a { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; color: var(--saphir); text-decoration: none; font-weight: 500; }

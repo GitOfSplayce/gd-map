@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Icon from './Icon'
+import SearchInput from './SearchInput'
 import Switch from './Switch'
 import type { Filters, MapModel } from '../lib/mapModel'
 import { COUVERTURE_LABELS, COUVERTURES, type Commercial } from '../lib/types'
@@ -53,10 +54,7 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
       </div>
 
       <h3>Commercial</h3>
-      <div className="input-icon" style={{ marginBottom: 6 }}>
-        <Icon name="search" size={16} />
-        <input className="input" type="search" placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
+      <SearchInput style={{ marginBottom: 6 }} value={search} onChange={setSearch} placeholder="Rechercher un commercial…" />
       <div className="pick-list">
         {people.map((c) => (
           <label key={c.id}>

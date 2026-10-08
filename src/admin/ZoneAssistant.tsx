@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from '../components/Icon'
 import { KeySwatch } from '../components/Legend'
+import SearchInput from '../components/SearchInput'
 import MapView, { type MapViewMode } from '../components/MapView'
 import { useGeo } from '../hooks/useGeo'
 import { BRAND } from '../lib/colors'
@@ -144,10 +145,7 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
               ))}
             </div>
           ) : (
-            <div className="input-icon" style={{ width: 240 }}>
-              <Icon name="search" size={15} />
-              <input className="input" placeholder="Code, département ou région…" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
+            <SearchInput style={{ width: 240 }} value={search} onChange={setSearch} placeholder="Code, département ou région…" />
           )}
         </div>
 
