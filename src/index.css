@@ -279,27 +279,29 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 .switch { position: relative; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .switch-track {
+  /* Bouton centré par la mise en page (tailles entières) : pas de demi-pixel qui le décale vers le bas */
   position: relative;
   flex: none;
-  width: 36px;
-  height: 21px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 38px;
+  height: 22px;
+  padding: 2px;
   border-radius: 999px;
   background: #c6d2df;
   transition: background 0.2s;
 }
 .switch-thumb {
-  position: absolute;
-  top: 2.5px;
-  left: 2.5px;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  box-shadow: 0 0 0 0.5px rgb(16 24 40 / 8%), 0 1px 2px rgb(16 24 40 / 16%);
   transition: transform 0.2s;
 }
 .switch input:checked + .switch-track { background: var(--saphir); }
-.switch input:checked + .switch-track .switch-thumb { transform: translateX(15px); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
 .switch input:focus-visible + .switch-track { box-shadow: 0 0 0 3px var(--saphir-100); }
 .switch:hover .switch-track { filter: brightness(0.97); }
 .switch-label { font-size: 13px; font-weight: 500; }
