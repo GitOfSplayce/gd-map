@@ -2,10 +2,10 @@
 
 Cartographie des secteurs commerciaux du groupe, par structure : **MD** (Maison Davoise), **SP** (Splayce), **MC** (MaucoCartex) et **BK** (BK Event) au départ ; les admins ajoutent les suivantes dans l'admin (onglet *Structures*).
 
-- **Consultation** : protégée par un code d'accès. On envoie le lien et le code séparément.
-- **Administration** (`/admin`, e-mail + mot de passe) : saisie des commerciaux et de leurs zones, managers, structures, import et export du fichier Excel, gestion du code, des admins et de l'affichage par défaut des zones partagées.
+- **Consultation** : par le portail du groupe (GD One), sans code, pour les personnes dont l'organisation a accès à la carte ; ou avec le **code d'accès** pour celles qui n'ont pas de compte sur le portail. On envoie le lien et le code séparément.
+- **Administration** (`/admin`, connexion par le portail) : saisie des commerciaux et de leurs zones, managers, structures, import et export du fichier Excel, code d'accès, admins et affichage par défaut des zones partagées.
 
-Stack : Vite + React + TypeScript, carte en D3 + SVG, Supabase (Postgres, Auth, RLS, Edge Function), SheetJS pour l'Excel dans le navigateur. Hébergement sur GitHub Pages, déployé par GitHub Actions.
+Stack : front Vite + React + TypeScript, carte en D3 + SVG, SheetJS pour l'Excel dans le navigateur ; serveur Node (Hono) avec Better Auth, client OIDC du portail GDCOM ; PostgreSQL 17. Une seule image Docker, déployée par Dokploy sur le serveur interne exposé (`https://carte.gdone.fr`). Les choix sont dans **[DECISIONS.md](DECISIONS.md)**, la mise en service dans **[MIGRATION.md](MIGRATION.md)**.
 
 ---
 
@@ -13,49 +13,33 @@ Stack : Vite + React + TypeScript, carte en D3 + SVG, Supabase (Postgres, Auth, 
 
 ```bash
 npm install
-npm run demo        # carte avec des données fictives, sans Supabase : http://localhost:5173 (n'importe quel code)
+npm run demo        # carte avec des données fictives, sans serveur ni base : http://localhost:5173 (n'importe quel code)
 ```
 
-Avec Supabase :
+Avec le serveur et une base locale :
 
 ```bash
-cp .env.example .env.local   # puis renseigner l'URL et la publishable key
-npm run dev
+docker run -d --name gd-map-db -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=gd_map -p 5432:5432 postgres:17-alpine
+cp .env.example .env.local   # GD_MAP_AUTH_SECRET, et GD_MAP_DEV_SESSION=ton.adresse pour travailler sans portail
+npm run dev:server           # serveur sur le port 3600 : migrations au démarrage, puis l'API
+npm run dev                  # le front sur http://localhost:5173, qui passe /api au serveur
 ```
 
-## Installer Supabase
+Avec `GD_MAP_DEV_SESSION`, le serveur fait comme si cette personne était connectée par le portail (refusé en production). Pour essayer la vraie connexion, déclarer sur un portail local un client `native` (retour `http://localhost:5173/api/auth/callback/gdcom`, `metadata.app = gd-map`) et renseigner `GD_MAP_OIDC_ISSUER` et `GD_MAP_OIDC_CLIENT_ID`.
 
-Toutes les étapes sont dans **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** : création du projet, réglages d'authentification, CLI, migrations, premier admin.
+## Déploiement
 
-En résumé, une fois la CLI liée :
+Dokploy construit le `Dockerfile` depuis `main`, comme pour Tikko. Au démarrage, le conteneur attend la base, applique les migrations (`db/migrations`), ajoute les premiers admins (`GD_MAP_ADMINS`) puis écoute sur le port 3600 (`/api/health` pour la sonde). Toutes les étapes, de la base Dokploy à la bascule depuis Supabase, sont dans **[MIGRATION.md](MIGRATION.md)**.
 
-```bash
-npm run db:push            # tables, RLS, fonctions, liste des zones
-npm run functions:deploy   # Edge Function admin-users (gestion des admins)
-```
+| Variable | Rôle |
+|---|---|
+| `GD_MAP_BASE_URL` | adresse publique : `https://carte.gdone.fr` |
+| `GD_MAP_DATABASE_URL` | base PostgreSQL (service Dokploy) |
+| `GD_MAP_AUTH_SECRET` | secret des sessions, 32 caractères au moins |
+| `GD_MAP_OIDC_ISSUER`, `GD_MAP_OIDC_CLIENT_ID`, `GD_MAP_OIDC_CLIENT_SECRET` | client OIDC déclaré sur le portail (`https://portail.gdone.fr`) |
+| `GD_MAP_ADMINS` | premiers admins, adresses séparées par des virgules |
 
-Puis, dans *SQL Editor*, déclarer le premier admin (compte créé au préalable dans *Authentication → Users*) :
-
-```sql
-insert into public.admins (user_id, email)
-select id, email from auth.users where email = 'ton.email@exemple.com';
-```
-
-Enfin, sur `/admin` : définir le code d'accès (*Paramètres*), puis importer le fichier Excel (*Import / export*).
-
-## Déployer sur GitHub Pages
-
-1. *Settings → Pages → Build and deployment → Source* : **GitHub Actions**.
-2. *Settings → Secrets and variables → Actions*, onglet **Variables** (ou **Secrets**, les deux sont lus) :
-   - `VITE_SUPABASE_URL` : `https://xxxx.supabase.co`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY` : `sb_publishable_…` (ou la clé `anon`)
-   - `BASE_PATH` (facultatif) : à mettre à `/` seulement avec un domaine personnalisé. Par défaut `/<nom-du-repo>/`.
-3. Chaque push sur `main` lance les tests, construit le site et le publie (`.github/workflows/deploy.yml`).
-4. Dans Supabase, *Authentication → URL Configuration* : ajouter `https://<user>.github.io/<repo>/` en Site URL et `https://<user>.github.io/<repo>/**` en Redirect URL.
-
-Le dépôt peut être public : il ne contient **aucune donnée**. Les fichiers Excel sont exclus par `.gitignore`, sauf l'exemple fictif `exemples/exemple-import.xlsx`. Les deux variables ci-dessus sont publiques par nature : elles finissent dans le site, et la sécurité repose sur RLS et les fonctions SQL.
-
-Le workflow `keepalive.yml` appelle la base deux fois par jour pour éviter la mise en pause des projets Free (Supabase demande quelques requêtes par jour sur la semaine). GitHub désactive les workflows planifiés d'un dépôt public sans commit depuis 60 jours : le workflow se réactive lui-même à chaque passage pour l'éviter. Avec le plan Pro de Supabase, il devient inutile.
+La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build à chaque envoi ; sur une pull request, elle construit aussi l'image.
 
 ## Utilisation
 
@@ -103,32 +87,32 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 
 | Qui | Peut |
 |---|---|
-| Anonyme | rien, sauf appeler `get_map_data(code)` et `ping()` |
-| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
-| Connecté, non admin | rien |
-| Admin (`public.admins`) | lire et modifier les données, changer le code, gérer les admins, régler l'affichage par défaut |
+| Anonyme | rien, sauf ouvrir la carte avec le code (`POST /api/carte`) |
+| Avec le bon code, ou lecteur venu par le portail | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
+| Venu par le portail sans droit d'usage `gd-map` | comme un anonyme : le code reste possible |
+| Admin (rôle dans `acces`, et droit d'usage sur le portail) | lire et modifier les données, changer le code, nommer les admins, régler l'affichage par défaut |
 
-- Aucune règle RLS n'autorise la lecture anonyme ; les droits du rôle `anon` sur les tables sont en plus révoqués.
+- **Le portail dit qui est la personne et si elle peut entrer**, d'après le claim `urn:gdcom:organizations` relu à chaque connexion ; **les rôles de la carte sont dans gd-map** (table `acces`), relus à chaque requête : un rôle retiré cesse aussitôt (D-002).
+- Le serveur exécute chaque requête avec les droits du visiteur (rôle `anon` ou `authenticated`, utilisateur de la session) : les règles RLS et les fonctions SQL décident, testées dans `db/tests`. Les tables de connexion ne sont lisibles par aucun rôle de l'API.
+- Personne ne modifie son profil ni ne se donne l'accès : les routes de modification de compte de Better Auth sont fermées, et le droit d'usage ne s'écrit qu'au retour du portail. Les jetons du portail sont chiffrés en base, l'ID token n'est pas gardé.
 - Le code est stocké en **bcrypt** (`settings.access_code_hash`), illisible même par un admin.
-- Anti-bruteforce : 10 essais ratés par IP en 15 min, 300 au total par heure.
-- La création de comptes admin passe par l'Edge Function `admin-users`, qui garde la clé secrète côté serveur et vérifie que l'appelant est admin.
-- Les inscriptions libres sont désactivées dans Supabase (voir SUPABASE_SETUP.md).
+- Anti-bruteforce : 10 essais ratés par IP en 15 min, 300 au total par heure. L'IP est celle que Traefik écrit dans `X-Forwarded-For` ; `cf-connecting-ip` n'est pas lu (D-004).
 
 ## Structure du projet
 
 ```
 src/
-  pages/        MapPage (carte), CodeGate (code d'accès), HelpPage (/aide)
+  pages/        MapPage (carte), CodeGate (code d'accès ou portail), HelpPage (/aide)
   components/   MapView (D3 : projections, encarts, zones partagées, zoom), légende, filtres, infobulle, panneau
   admin/        connexion, commerciaux, managers, structures, synthèse, import/export Excel, paramètres
   lib/          parseZones (listes de zones), excel (lecture/écriture), importDiff (aperçu),
-                mapModel (couleurs, zones partagées, filtres), zones (référentiel), api (Supabase)
-public/geo/     contours GeoJSON : départements + DROM, détail Île-de-France, arrondissements, Monaco
-supabase/
-  migrations/   schéma, RLS, fonctions, remplissage des zones
-  functions/    admin-users (Edge Function)
+                mapModel (couleurs, zones partagées, filtres), zones (référentiel), api (appels au serveur), session
+server/         serveur Hono : API (app.ts), connexion par le portail (auth.ts), base (db.ts), migrations
+db/
+  migrations/   socle, schéma, RLS, fonctions, zones, connexion par le portail et rôles
   tests/        tests des règles d'accès (PGlite)
-scripts/        génération des contours, de la migration des zones et du fichier d'exemple
+public/geo/     contours GeoJSON : départements + DROM, détail Île-de-France, arrondissements, Monaco
+scripts/        contours, migration des zones, fichier d'exemple, reprise des données de Supabase
 exemples/       exemple-import.xlsx (données fictives)
 ```
 
@@ -136,18 +120,19 @@ exemples/       exemple-import.xlsx (données fictives)
 
 | Commande | Rôle |
 |---|---|
-| `npm run dev` | serveur de développement (Supabase requis) |
-| `npm run demo` | serveur de développement avec les données d'exemple, sans Supabase |
-| `npm test` | tests : listes de zones, import/export Excel, règles d'accès SQL |
-| `npm run build` | build de production dans `dist/` |
+| `npm run dev` | front de développement (passe `/api` au serveur) |
+| `npm run dev:server` | serveur de développement, relancé à chaque modification (lit `.env.local`) |
+| `npm run demo` | front avec les données d'exemple, sans serveur |
+| `npm start` | serveur de production (`node server/index.ts`) |
+| `npm test` | tests : listes de zones, Excel, règles d'accès SQL, API |
+| `npm run build` | types, puis build du front dans `dist/` |
 | `npm run lint` | oxlint |
-| `npm run db:push` | applique les migrations sur le projet Supabase lié |
-| `npm run functions:deploy` | déploie l'Edge Function `admin-users` |
+| `npm run auth:schema` | réécrit les tables de Better Auth en SQL, à reporter dans une migration |
 | `npm run build:geo` | retélécharge et simplifie les contours (`public/geo/`) |
 | `npm run gen:zones-sql` | régénère la migration des zones depuis `src/lib/zones.ts` |
 | `npm run sample:excel` | régénère `exemples/exemple-import.xlsx` |
 
-Les tests SQL jouent les migrations dans [PGlite](https://pglite.dev) (Postgres en WebAssembly), avec un environnement qui imite Supabase. Ils vérifient les règles d'accès avec et sans l'exposition automatique des tables. Si `Classeur V3.xlsx` est présent à la racine (non versionné), un test vérifie aussi qu'il se lit sans valeur inconnue.
+Les tests SQL et ceux de l'API jouent toutes les migrations dans [PGlite](https://pglite.dev) (Postgres en WebAssembly), puis chaque requête passe avec le rôle, l'utilisateur et l'IP que pose le serveur. Si `Classeur V3.xlsx` est présent à la racine (non versionné), un test vérifie aussi qu'il se lit sans valeur inconnue.
 
 ## Sources des contours
 

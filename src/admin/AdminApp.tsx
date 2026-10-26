@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import GateLayout from '../components/GateLayout'
 import Icon from '../components/Icon'
-import { useAdminSession } from '../hooks/useAdminSession'
+import { useSession } from '../hooks/useSession'
 import { fetchMapData, MAP_DATA_ERRORS } from '../lib/api'
-import { isDemo, requireSupabase } from '../lib/supabase'
+import { signIn, signInFailed, signOut } from '../lib/session'
 import type { MapData } from '../lib/types'
 import CommerciauxPage from './CommerciauxPage'
 import ImportExportPage from './ImportExportPage'
@@ -19,43 +19,38 @@ export interface AdminDataProps {
   reload: () => Promise<void>
 }
 
-function LoginForm() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+function PortalLogin() {
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(signInFailed() ? 'La connexion par le portail n\'a pas abouti. Réessayez.' : null)
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
+  const start = async () => {
     setBusy(true)
     setError(null)
-    const { error } = await requireSupabase().auth.signInWithPassword({ email: email.trim(), password })
-    setBusy(false)
-    if (error) setError(error.message === 'Invalid login credentials' ? 'E-mail ou mot de passe incorrect.' : error.message)
+    try {
+      await signIn('/admin')
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
   }
 
   return (
     <GateLayout title="Espace admin" subtitle="Carte commerciale">
-      <form onSubmit={submit}>
-        <label className="field">
-          <span>E-mail</span>
-          <input className="input" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Mot de passe</span>
-          <input className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
+      <div className="stack">
+        <p className="gate-note" style={{ marginTop: 0 }}>
+          La connexion passe par le portail du groupe : mot de passe, passkey et double authentification s'y gèrent.
+        </p>
         {error && (
           <div className="alert error" role="alert">
             <Icon name="alert" size={16} />
             {error}
           </div>
         )}
-        <button type="submit" className="btn primary" disabled={busy}>
+        <button type="button" className="btn primary" onClick={() => void start()} disabled={busy}>
           <Icon name={busy ? 'refresh' : 'lock'} className={busy ? 'spin' : undefined} />
-          {busy ? 'Connexion…' : 'Se connecter'}
+          {busy ? 'Redirection…' : 'Se connecter avec GD One'}
         </button>
-      </form>
+      </div>
       <div className="gate-footer">
         <Link to="/">Retour à la carte</Link>
       </div>
@@ -63,7 +58,10 @@ function LoginForm() {
   )
 }
 
-const signOut = () => (isDemo ? Promise.resolve() : requireSupabase().auth.signOut())
+const leave = async () => {
+  await signOut()
+  window.location.assign('/admin')
+}
 
 function useAdminData() {
   const [data, setData] = useState<MapData | null>(null)
@@ -97,7 +95,7 @@ function UserBadge({ email }: { email: string }) {
   )
 }
 
-function AdminLayout({ email }: { email: string }) {
+function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
   const { data, error, reload } = useAdminData()
 
   return (
@@ -124,7 +122,7 @@ function AdminLayout({ email }: { email: string }) {
               Voir la carte
             </Link>
             <UserBadge email={email} />
-            <button type="button" className="btn small ghost" onClick={() => void signOut()} title="Déconnexion">
+            <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
               <Icon name="logout" size={16} />
               <span className="hide-below-1600">Déconnexion</span>
             </button>
@@ -141,7 +139,7 @@ function AdminLayout({ email }: { email: string }) {
             <Route path="structures" element={<StructuresPage data={data} reload={reload} />} />
             <Route path="synthese" element={<SynthesePage data={data} reload={reload} />} />
             <Route path="import" element={<ImportExportPage data={data} reload={reload} />} />
-            <Route path="parametres" element={<SettingsPage email={email} data={data} reload={reload} />} />
+            <Route path="parametres" element={<SettingsPage email={email} portalUrl={portalUrl} data={data} reload={reload} />} />
           </Routes>
         )}
       </main>
@@ -150,18 +148,18 @@ function AdminLayout({ email }: { email: string }) {
 }
 
 export default function AdminApp() {
-  const session = useAdminSession()
+  const { loading, me } = useSession()
 
-  if (session.loading) return <div className="map-empty">Chargement…</div>
-  if (!session.session) return <LoginForm />
-  if (!session.isAdmin) {
+  if (loading) return <div className="map-empty">Chargement…</div>
+  if (!me.user) return <PortalLogin />
+  if (me.role !== 'admin') {
     return (
       <GateLayout title="Accès refusé">
         <div className="stack">
           <p style={{ margin: 0, textAlign: 'center' }}>
-            Le compte <strong>{session.session.user.email}</strong> n'est pas administrateur de la carte.
+            Le compte <strong>{me.user.email}</strong> n'est pas administrateur de la carte.
           </p>
-          <button type="button" className="btn" onClick={() => void signOut()}>
+          <button type="button" className="btn" onClick={() => void leave()}>
             <Icon name="logout" size={16} />
             Se déconnecter
           </button>
@@ -172,5 +170,5 @@ export default function AdminApp() {
       </GateLayout>
     )
   }
-  return <AdminLayout email={session.session.user.email ?? ''} />
+  return <AdminLayout email={me.user.email} portalUrl={me.portalUrl} />
 }
