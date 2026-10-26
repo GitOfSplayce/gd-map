@@ -34,3 +34,6 @@ npm-debug.log*
 
 # Documents internes (charte graphique, etc.)
 *.pdf
+
+# Sortie de `npm run auth:schema`, à reporter dans une migration
+better-auth.generated.sql

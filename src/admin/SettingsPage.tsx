@@ -1,22 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { adminUsers, getAccessStatus, setAccessCode, type AccessStatus, type AdminUser } from '../lib/api'
+import { getAccessStatus, listAccess, removeRole, setAccessCode, setRole, type AccessStatus, type KnownUser, type RoleEntry } from '../lib/api'
 import Icon from '../components/Icon'
 import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
 import { KeySwatch } from '../components/Legend'
 import { setDefaultSharedMode } from '../lib/api'
 import { SHARED_MODES, type SharedMode } from '../lib/mapModel'
-import { requireSupabase } from '../lib/supabase'
 import type { AdminDataProps } from './AdminApp'
 
 const MIN_CODE = 6
-const MIN_PASSWORD = 10
-
-function randomPassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-  const bytes = crypto.getRandomValues(new Uint32Array(14))
-  return Array.from(bytes, (b) => chars[b % chars.length]).join('')
-}
 
 const formatDate = (d: string | null) => (d ? new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 
@@ -91,26 +83,26 @@ function AccessCodeCard() {
   )
 }
 
-function AdminsCard({ email }: { email: string }) {
+const ROLE_LABELS: Record<RoleEntry['role'], string> = { admin: 'Admin', responsable: 'Responsable' }
+
+/**
+ * Rôles de la carte (D-002). Toute personne dont l'organisation a accès à la carte sur le portail la
+ * consulte sans code ; ici, on choisit qui l'administre. Les comptes eux-mêmes vivent sur le portail.
+ */
+function RolesCard({ email }: { email: string }) {
   const confirm = useConfirm()
-  const [admins, setAdmins] = useState<AdminUser[] | null>(null)
+  const [state, setState] = useState<{ roles: RoleEntry[]; users: KnownUser[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [newEmail, setNewEmail] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [resetFor, setResetFor] = useState<string | null>(null)
-  const [resetPassword, setResetPassword] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      setAdmins(await adminUsers<AdminUser[]>({ action: 'list' }))
+      setState(await listAccess())
       setError(null)
     } catch (e) {
       setError((e as Error).message)
-      // Repli : la liste reste lisible même si l'Edge Function n'est pas déployée
-      const { data } = await requireSupabase().from('admins').select('user_id, email, created_at').order('created_at')
-      if (data) setAdmins(data.map((a) => ({ ...a, last_sign_in_at: null })))
     }
   }, [])
   useEffect(() => {
@@ -134,22 +126,23 @@ function AdminsCard({ email }: { email: string }) {
     }
   }
 
-  const create = async (e: FormEvent) => {
+  const add = async (e: FormEvent) => {
     e.preventDefault()
-    if (newPassword.length < MIN_PASSWORD) return setError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD} caractères.`)
-    const ok = await run(
-      () => adminUsers({ action: 'create', email: newEmail, password: newPassword }),
-      `Admin ajouté : ${newEmail}. Transmettez-lui son mot de passe par un canal sûr (s'il avait déjà un compte, son mot de passe est inchangé).`,
-    )
-    if (ok) {
-      setNewEmail('')
-      setNewPassword('')
-    }
+    const target = newEmail.trim().toLowerCase()
+    const ok = await run(() => setRole(target, 'admin'), `${target} est admin : l'administration lui est ouverte dès sa connexion par le portail.`)
+    if (ok) setNewEmail('')
   }
+
+  const known = new Set(state?.roles.map((r) => r.email))
+  const others = state?.users.filter((u) => !known.has(u.email)) ?? []
 
   return (
     <div className="card stack">
       <h2>Administrateurs</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        Ils se connectent par le portail GD One. Les personnes dont l'organisation a accès à la carte sur le portail la consultent sans code ; ici, on choisit
+        celles qui l'administrent.
+      </p>
       {error && (
         <div className="alert error">
           <Icon name="alert" size={16} />
@@ -168,73 +161,40 @@ function AdminsCard({ email }: { email: string }) {
           <thead>
             <tr>
               <th>E-mail</th>
-              <th>Admin depuis</th>
+              <th>Rôle</th>
+              <th>Depuis</th>
               <th>Dernière connexion</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {admins?.map((a) => (
-              <tr key={a.user_id}>
+            {state?.roles.map((r) => (
+              <tr key={r.email}>
                 <td>
-                  {a.email} {a.email === email && <span className="badge">vous</span>}
+                  {r.name ? `${r.name} · ` : ''}
+                  {r.email} {r.email === email && <span className="badge">vous</span>}
                 </td>
-                <td>{formatDate(a.created_at)}</td>
-                <td>{formatDate(a.last_sign_in_at)}</td>
+                <td>{ROLE_LABELS[r.role]}</td>
+                <td>{formatDate(r.created_at)}</td>
+                <td>{r.last_sign_in_at ? formatDate(r.last_sign_in_at) : <span className="muted">pas encore venu</span>}</td>
                 <td>
-                  {a.email !== email && (
-                    <div className="row" style={{ flexWrap: 'nowrap' }}>
-                      {resetFor === a.user_id ? (
-                        <form
-                          className="row"
-                          style={{ flexWrap: 'nowrap' }}
-                          onSubmit={async (e) => {
-                            e.preventDefault()
-                            const ok = await run(
-                              () => adminUsers({ action: 'set_password', user_id: a.user_id, password: resetPassword }),
-                              `Mot de passe de ${a.email} modifié.`,
-                            )
-                            if (ok) setResetFor(null)
-                          }}
-                        >
-                          <input className="input" style={{ width: 170 }} value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} aria-label="Nouveau mot de passe" />
-                          <button type="submit" className="btn small primary" disabled={busy}>
-                            OK
-                          </button>
-                          <button type="button" className="btn small ghost" onClick={() => setResetFor(null)}>
-                            Annuler
-                          </button>
-                        </form>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn small"
-                          onClick={() => {
-                            setResetFor(a.user_id)
-                            setResetPassword(randomPassword())
-                          }}
-                        >
-                          <Icon name="key" size={15} />
-                          Nouveau mot de passe
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn small danger"
-                        disabled={busy}
-                        onClick={() => {
-                          void confirm({
-                            title: `Retirer l'accès de ${a.email} ?`,
-                            message: 'Son compte administrateur est supprimé.',
-                            confirmLabel: 'Retirer',
-                            danger: true,
-                          }).then((ok) => ok && run(() => adminUsers({ action: 'remove', user_id: a.user_id }), `${a.email} n'est plus admin.`))
-                        }}
-                      >
-                        <Icon name="trash" size={15} />
-                        Retirer
-                      </button>
-                    </div>
+                  {r.email !== email && (
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      disabled={busy}
+                      onClick={() => {
+                        void confirm({
+                          title: `Retirer le rôle de ${r.email} ?`,
+                          message: 'Son compte reste sur le portail : il garde la lecture de la carte si son organisation y a droit.',
+                          confirmLabel: 'Retirer',
+                          danger: true,
+                        }).then((ok) => ok && run(() => removeRole(r.email), `${r.email} n'est plus ${ROLE_LABELS[r.role].toLowerCase()}.`))
+                      }}
+                    >
+                      <Icon name="trash" size={15} />
+                      Retirer
+                    </button>
                   )}
                 </td>
               </tr>
@@ -243,60 +203,74 @@ function AdminsCard({ email }: { email: string }) {
         </table>
       </div>
 
-      <form className="stack" onSubmit={create} style={{ maxWidth: 520 }}>
+      <form className="stack" onSubmit={add} style={{ maxWidth: 520 }}>
         <h3 style={{ margin: 0 }}>Ajouter un admin</h3>
         <label className="field">
-          <span>E-mail</span>
-          <input className="input" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Mot de passe provisoire</span>
+          <span>E-mail de son compte GD One</span>
           <div className="row" style={{ flexWrap: 'nowrap' }}>
-            <input className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-            <button type="button" className="btn" onClick={() => setNewPassword(randomPassword())}>
-              <Icon name="shuffle" size={16} />
-              Générer
+            <input className="input" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+            <button type="submit" className="btn primary" disabled={busy}>
+              <Icon name="plus" size={16} />
+              Ajouter
             </button>
           </div>
         </label>
-        <div>
-          <button type="submit" className="btn primary" disabled={busy}>
-            <Icon name="plus" size={16} />
-            Ajouter
-          </button>
-        </div>
       </form>
+
+      {others.length > 0 && (
+        <>
+          <h3 style={{ margin: 0 }}>Déjà venus par le portail</h3>
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>Personne</th>
+                  <th>Accès à la carte</th>
+                  <th>Dernière connexion</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {others.map((u) => (
+                  <tr key={u.email}>
+                    <td>
+                      {u.name} · {u.email}
+                    </td>
+                    <td>{u.has_access ? 'Lecture' : <span className="muted">aucun sur le portail</span>}</td>
+                    <td>{formatDate(u.last_sign_in_at)}</td>
+                    <td>
+                      <button type="button" className="btn small" disabled={busy} onClick={() => void run(() => setRole(u.email, 'admin'), `${u.email} est admin.`)}>
+                        <Icon name="key" size={15} />
+                        Nommer admin
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-function MyPasswordCard() {
-  const [password, setPassword] = useState('')
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (password.length < MIN_PASSWORD) return setMessage({ kind: 'error', text: `Au moins ${MIN_PASSWORD} caractères.` })
-    const { error } = await requireSupabase().auth.updateUser({ password })
-    setMessage(error ? { kind: 'error', text: error.message } : { kind: 'success', text: 'Mot de passe modifié.' })
-    if (!error) setPassword('')
-  }
-
+/** Le compte (mot de passe, passkeys, double authentification) se gère sur le portail. */
+function PortalAccountCard({ portalUrl }: { portalUrl: string | null }) {
   return (
     <div className="card stack">
-      <h2>Mon mot de passe</h2>
-      <form className="row" onSubmit={submit} style={{ maxWidth: 520, flexWrap: 'nowrap' }}>
-        <input className="input" type="password" autoComplete="new-password" placeholder="Nouveau mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <button type="submit" className="btn">
-          Modifier
-        </button>
-      </form>
-      {message && (
-          <div className={`alert ${message.kind}`}>
-            <Icon name={message.kind === 'success' ? 'check' : 'alert'} size={16} />
-            {message.text}
-          </div>
-        )}
+      <h2>Mon compte</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        Mot de passe, passkeys et double authentification se gèrent sur le portail GD One, pour toutes les applications du groupe.
+      </p>
+      {portalUrl && (
+        <div>
+          <a className="btn" href={`${portalUrl}/compte/securite`} target="_blank" rel="noopener noreferrer">
+            <Icon name="lock" size={16} />
+            Ouvrir la sécurité de mon compte
+          </a>
+        </div>
+      )}
     </div>
   )
 }
@@ -358,7 +332,7 @@ function DisplayCard({ data, reload }: AdminDataProps) {
   )
 }
 
-export default function SettingsPage({ email, data, reload }: { email: string } & AdminDataProps) {
+export default function SettingsPage({ email, portalUrl, data, reload }: { email: string; portalUrl: string | null } & AdminDataProps) {
   return (
     <>
       <header>
@@ -367,8 +341,8 @@ export default function SettingsPage({ email, data, reload }: { email: string } 
       <div className="stack" style={{ gap: 20 }}>
         <AccessCodeCard />
         <DisplayCard data={data} reload={reload} />
-        <AdminsCard email={email} />
-        <MyPasswordCard />
+        <RolesCard email={email} />
+        <PortalAccountCard portalUrl={portalUrl} />
       </div>
     </>
   )

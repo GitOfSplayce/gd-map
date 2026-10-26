@@ -1,0 +1,43 @@
+name: CI
+
+# Vérifie chaque envoi : types, lint, tests (règles d'accès et API comprises) et build.
+# Le déploiement, lui, se lance dans Dokploy, qui construit le Dockerfile depuis main (D-005).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifier:
+    name: Types, lint, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  image:
+    # Seulement sur les pull requests : l'image est construite de toute façon par Dokploy au déploiement
+    if: github.event_name == 'pull_request'
+    name: Image Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Construire l'image
+        run: docker build --tag gd-map:ci .

@@ -9,9 +9,9 @@ import ZonePanel from '../components/ZonePanel'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import ZoneTooltip from '../components/ZoneTooltip'
-import { useAdminSession } from '../hooks/useAdminSession'
 import { useGeo } from '../hooks/useGeo'
 import { useMapAccess } from '../hooks/useMapAccess'
+import { useSession } from '../hooks/useSession'
 import { exportMapPng } from '../lib/exportPng'
 import {
   DEFAULT_FILTERS,
@@ -26,6 +26,7 @@ import {
 } from '../lib/mapModel'
 import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
+import { signIn, signOut, type SessionRole } from '../lib/session'
 import { sortStructures } from '../lib/structures'
 import type { MapData } from '../lib/types'
 import CodeGate from './CodeGate'
@@ -45,26 +46,42 @@ const COLOR_MODES: { key: ColorMode; label: string }[] = [
 const SHARED_MODE_KEYS = SHARED_MODES.map((m) => m.key)
 
 export default function MapPage() {
-  const admin = useAdminSession()
-  const access = useMapAccess(admin)
+  const session = useSession()
+  const role = session.me.role
+  const access = useMapAccess({ loading: session.loading, signedIn: role !== null })
 
   if (access.data && access.status !== 'locked') {
-    return <MapScreen data={access.data} isAdmin={admin.isAdmin} onLock={access.lock} onReload={access.reload} />
+    return <MapScreen data={access.data} role={role} onLock={access.lock} onReload={access.reload} />
   }
-  if (access.status === 'checking' || (access.status === 'loading' && admin.isAdmin)) {
+  if (session.loading || access.status === 'checking' || (access.status === 'loading' && role !== null)) {
     return <div className="map-empty">Chargement…</div>
   }
-  return <CodeGate error={access.error} busy={access.status === 'loading'} onSubmit={access.submit} />
+  return (
+    <CodeGate
+      error={access.error}
+      busy={access.status === 'loading'}
+      onSubmit={access.submit}
+      onPortal={() => signIn('/')}
+      // Connecté par le portail, mais sans droit d'usage de la carte : le code reste possible
+      deniedEmail={session.me.user && !role ? session.me.user.email : null}
+    />
+  )
 }
 
 interface ScreenProps {
   data: MapData
-  isAdmin: boolean
+  /** null : ouverte avec le code d'accès. */
+  role: SessionRole | null
   onLock: () => void
   onReload: () => Promise<unknown>
 }
 
-function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
+const leave = async () => {
+  await signOut()
+  window.location.assign('/')
+}
+
+function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
   const [params, setParams] = useSearchParams()
   const pick = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
     const v = params.get(key) as T | null
@@ -204,11 +221,16 @@ function MapScreen({ data, isAdmin, onLock, onReload }: ScreenProps) {
               <Icon name="help" size={16} />
               <span className="hide-mobile">Aide</span>
             </Link>
-            {isAdmin ? (
+            {role === 'admin' ? (
               <Link className="btn small" to="/admin">
                 <Icon name="settings" size={16} />
                 Admin
               </Link>
+            ) : role === 'lecteur' ? (
+              <button type="button" className="btn small" onClick={() => void leave()} title="Fermer la session de la carte">
+                <Icon name="logout" size={16} />
+                Déconnexion
+              </button>
             ) : (
               <button type="button" className="btn small" onClick={onLock} title="Oublier le code sur cet appareil">
                 <Icon name="logout" size={16} />

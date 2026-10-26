@@ -31,17 +31,18 @@ const storage = {
 
 export type AccessStatus = 'checking' | 'locked' | 'loading' | 'ready'
 
-export function useMapAccess(admin: { loading: boolean; isAdmin: boolean }) {
+/** `signedIn` : connecté par le portail avec accès à la carte (lecteur ou admin), donc sans code. */
+export function useMapAccess(session: { loading: boolean; signedIn: boolean }) {
   const [status, setStatus] = useState<AccessStatus>('checking')
   const [data, setData] = useState<MapData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const codeRef = useRef<string | null>(storage.get())
 
-  const load = useCallback(async (code: string | null, asAdmin: boolean) => {
+  const load = useCallback(async (code: string | null, withSession: boolean) => {
     setStatus((s) => (s === 'ready' ? 'ready' : 'loading'))
-    const res = await fetchMapData(asAdmin ? null : code)
+    const res = await fetchMapData(withSession ? null : code)
     if ('data' in res) {
-      if (code && !asAdmin) {
+      if (code && !withSession) {
         storage.set(code)
         codeRef.current = code
       }
@@ -60,18 +61,18 @@ export function useMapAccess(admin: { loading: boolean; isAdmin: boolean }) {
   }, [])
 
   useEffect(() => {
-    if (admin.loading) return
-    if (admin.isAdmin) void load(null, true)
+    if (session.loading) return
+    if (session.signedIn) void load(null, true)
     else if (codeRef.current) void load(codeRef.current, false)
     else setStatus('locked')
-  }, [admin.loading, admin.isAdmin, load])
+  }, [session.loading, session.signedIn, load])
 
   return {
     status,
     data,
     error,
     submit: (code: string) => load(code.trim(), false),
-    reload: () => load(codeRef.current, admin.isAdmin),
+    reload: () => load(codeRef.current, session.signedIn),
     lock: () => {
       storage.clear()
       codeRef.current = null
