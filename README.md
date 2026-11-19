@@ -5,7 +5,7 @@ Cartographie des secteurs commerciaux du groupe, par structure : **MD** (Maison 
 - **Consultation** : par le portail du groupe (GD One), sans code, pour les personnes dont l'organisation a accès à la carte ; ou avec le **code d'accès** pour celles qui n'ont pas de compte sur le portail. On envoie le lien et le code séparément.
 - **Administration** (`/admin`, connexion par le portail) : saisie des commerciaux et de leurs zones, managers, structures, import et export du fichier Excel, code d'accès, admins et affichage par défaut des zones partagées.
 
-Stack : front Vite + React + TypeScript, carte en D3 + SVG, SheetJS pour l'Excel dans le navigateur ; serveur Node (Hono) avec Better Auth, client OIDC du portail GDCOM ; PostgreSQL 17. Une seule image Docker, déployée par Dokploy sur le serveur interne exposé (`https://carte.gdone.fr`). Les choix sont dans **[DECISIONS.md](DECISIONS.md)**, la mise en service dans **[MIGRATION.md](MIGRATION.md)**.
+Stack : front Vite + React + TypeScript, carte en D3 + SVG, SheetJS pour l'Excel dans le navigateur ; serveur Node (Hono) avec Better Auth, client OIDC du portail GDCOM ; PostgreSQL 17. Une seule image Docker, déployée par Dokploy sur le VPS gdconnect-vps en attendant le serveur interne (`https://carte.gdone.fr`, D-008). Les choix sont dans **[DECISIONS.md](DECISIONS.md)**, la mise en service dans **[MIGRATION.md](MIGRATION.md)**.
 
 ---
 
@@ -29,7 +29,7 @@ Avec `GD_MAP_DEV_SESSION`, le serveur fait comme si cette personne était connec
 
 ## Déploiement
 
-Dokploy construit le `Dockerfile` depuis `main`, comme pour Tikko. Au démarrage, le conteneur attend la base, applique les migrations (`db/migrations`), ajoute les premiers admins (`GD_MAP_ADMINS`) puis écoute sur le port 3600 (`/api/health` pour la sonde). Toutes les étapes, de la base Dokploy à la bascule depuis Supabase, sont dans **[MIGRATION.md](MIGRATION.md)**.
+Dokploy construit le `Dockerfile` et déploie à chaque push sur `main` ; les tests tournent pendant la construction, et un test qui échoue arrête le déploiement (D-008). Au démarrage, le conteneur attend la base, applique les migrations (`db/migrations`), ajoute les premiers admins (`GD_MAP_ADMINS`) puis écoute sur le port 3600 (`/api/health` pour la sonde). Toutes les étapes, de la base Dokploy à la bascule depuis Supabase, sont dans **[MIGRATION.md](MIGRATION.md)**.
 
 | Variable | Rôle |
 |---|---|
@@ -39,7 +39,7 @@ Dokploy construit le `Dockerfile` depuis `main`, comme pour Tikko. Au démarrage
 | `GD_MAP_OIDC_ISSUER`, `GD_MAP_OIDC_CLIENT_ID`, `GD_MAP_OIDC_CLIENT_SECRET` | client OIDC déclaré sur le portail (`https://portail.gdone.fr`) |
 | `GD_MAP_ADMINS` | premiers admins, adresses séparées par des virgules |
 
-La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build à chaque envoi ; sur une pull request, elle construit aussi l'image.
+La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les pull requests et sur `main` ; sur une pull request, elle construit aussi l'image.
 
 ## Utilisation
 

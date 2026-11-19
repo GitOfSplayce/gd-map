@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # Image de la carte (D-003) : le site construit par Vite et le serveur Node (Hono) qui le sert avec
-# l'API. Dokploy la construit depuis main (D-005). Au démarrage : migrations, puis écoute sur 3600.
+# l'API. Dokploy la construit et la déploie à chaque push sur main (D-008). Au démarrage : migrations,
+# puis écoute sur 3600.
 
 FROM node:22-alpine AS base
 WORKDIR /app
@@ -11,11 +12,13 @@ FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# ---- Construction du site ----
+# ---- Construction du site, et les tests ----
+# Dokploy déploie à chaque push sur main (D-008) : un test qui échoue arrête la construction, et la
+# version en ligne reste en place.
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN npm run build && npm test
 
 # ---- Dépendances d'exécution seules ----
 FROM base AS prod-deps

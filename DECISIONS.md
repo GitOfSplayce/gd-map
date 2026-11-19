@@ -144,3 +144,21 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 
 - `retour` n'accepte qu'un chemin de la carte (ni `//…`, ni adresse complète) : pas de redirection ouverte.
 - Une entrée en `GET` qui démarre une connexion ne fait courir aucun risque : au pire, quelqu'un se connecte à la carte avec son propre compte du portail.
+
+## D-008 — Hébergement provisoire sur gdconnect-vps, déploiement automatique à chaque push (2026-11-19)
+
+**Décision (validée par l'équipe).**
+
+- **En attendant le serveur interne**, la carte et sa base tournent sur le VPS existant **gdconnect-vps** (Hostinger KVM 2, Debian, Dokploy central). Son Traefik trie déjà les visites par nom sur le port 443 (vitrine, GD Connect). Le serveur interne reste la cible (D-004) : y passer ne demandera qu'une sauvegarde restaurée et un changement d'IP dans le DNS. L'adresse `carte.gdone.fr` et le client OIDC ne changent pas.
+- **DNS** : `carte.gdone.fr` (zone OVH) pointe vers l'IP du VPS. Pas de Cloudflare, et on n'en ajoute pas : Traefik écrit la vraie IP du visiteur dans `X-Forwarded-For`, que lit la limite d'essais du code (D-004).
+- **Déploiement** : l'intégration GitHub de Dokploy déploie à chaque push sur la branche choisie (`main` après la bascule). Les **tests tournent pendant la construction de l'image** : un test qui échoue arrête la construction, et la version en ligne reste en place. Cette règle remplace le déploiement à la main de D-005.
+
+**Pourquoi.**
+
+- **Le port 443 du bureau** est déjà pris par un autre service, sans tri par nom de domaine.
+- **Déployer depuis la CI** après les tests demanderait de mettre dans GitHub une clé d'API Dokploy, qui ouvre tout le Dokploy central, donc tous les VPS. Les tests se jouent plutôt dans la construction de l'image, sans aucun secret.
+
+**Conséquences.**
+
+- **Construction** : `npm ci`, build et tests prennent environ 1 Go de mémoire et un peu de processeur pendant une à deux minutes sur gdconnect-vps, à côté de la vitrine et de GD Connect. La carte tourne ensuite dans environ 120 Mo.
+- **CI GitHub** : elle reste pour les pull requests et pour Dependabot.
