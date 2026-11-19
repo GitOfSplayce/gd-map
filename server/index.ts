@@ -69,6 +69,7 @@ const app = createApp({
   authHandler: (request) => auth.handler(request),
   remoteAddress: (c) => getConnInfo(c).remote.address,
   portalUrl: env.oidc?.issuer ?? null,
+  baseUrl: env.baseUrl,
 })
 
 // Le site : fichiers versionnés par Vite gardés un an, le reste revalidé, et index.html pour toute

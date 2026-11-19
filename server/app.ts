@@ -27,6 +27,8 @@ export interface AppDependencies {
   remoteAddress?: (c: Context) => string | undefined
   /** Adresse du portail, pour envoyer vers son compte (mot de passe, passkeys, double authentification). */
   portalUrl?: string | null
+  /** Adresse publique de la carte : origine des requêtes qu'elle adresse elle-même à Better Auth. */
+  baseUrl: string
 }
 
 type Env = { Variables: { user: SessionUser | null; visitor: Visitor } }
@@ -60,6 +62,17 @@ export function clientIp(forwardedFor: string | undefined, remote: string | unde
   const first = forwardedFor?.split(',')[0]?.trim()
   return first || remote || 'inconnue'
 }
+
+/**
+ * Chemin de retour après la connexion : un chemin de la carte, rien d'autre. `//exemple.fr` ou une
+ * adresse complète renverraient ailleurs (redirection ouverte) : on revient alors à l'accueil.
+ */
+export function returnPath(value: string | undefined) {
+  return value && /^\/(?![/\\])/.test(value) ? value : '/'
+}
+
+/** Le chemin, avec `connexion=echec` : l'écran dit que la connexion par le portail n'a pas abouti. */
+export const failedSignInPath = (path: string) => `${path}${path.includes('?') ? '&' : '?'}connexion=echec`
 
 async function jsonBody(c: Context): Promise<Record<string, unknown>> {
   const body = await c.req.json().catch(() => null)
@@ -133,6 +146,34 @@ export function createApp(deps: AppDependencies) {
       role: admin ? 'admin' : user.hasAccess ? 'lecteur' : null,
       portalUrl,
     })
+  })
+
+  /**
+   * Entrée par le portail (D-007) : la tuile de GD One mène ici, et l'on arrive sur la carte déjà
+   * connecté. Déjà venu, on y va tout droit ; sinon, on part vers le portail par la même route que le
+   * bouton de la carte (sign-in/social de Better Auth), dont on garde le cookie d'état, puis on revient
+   * sur `retour`. En cas d'échec, l'écran le dit (`?connexion=echec`) et le code d'accès reste possible.
+   */
+  app.get('/api/connexion', async (c) => {
+    const back = returnPath(c.req.query('retour'))
+    const user = c.get('user')
+    if (user?.hasAccess) return c.redirect(back, 302)
+
+    const start = await deps.authHandler(
+      new Request(`${deps.baseUrl}/api/auth/sign-in/social`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: new URL(deps.baseUrl).origin, Cookie: c.req.header('cookie') ?? '' },
+        body: JSON.stringify({ provider: 'gdcom', callbackURL: back, errorCallbackURL: failedSignInPath(back) }),
+      }),
+    )
+    const target = start.ok ? ((await start.json().catch(() => null)) as { url?: unknown } | null)?.url : undefined
+    if (typeof target !== 'string') {
+      console.error('[connexion] départ vers le portail impossible', start.status)
+      return c.redirect(failedSignInPath(back), 302)
+    }
+    const redirect = new Response(null, { status: 302, headers: { Location: target, 'Cache-Control': 'no-store' } })
+    for (const cookie of start.headers.getSetCookie()) redirect.headers.append('Set-Cookie', cookie)
+    return redirect
   })
 
   // POST et non GET : le code d'accès ne doit pas finir dans les journaux d'accès de Traefik

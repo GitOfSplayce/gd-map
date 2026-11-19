@@ -119,3 +119,28 @@ Le **code d'accès** reste pour ceux qui n'auront jamais de compte sur le portai
 - Un `pg_dump` quotidien part vers le bucket de sauvegardes OVH, avec la sauvegarde intégrée de Dokploy ou votre propre tâche.
 - Jamais de sauvegarde vers GitHub.
 - Une restauration est éprouvée avant la bascule.
+
+## D-007 — La tuile du portail ouvre la carte déjà connecté ; le claim se limite à ce qu'elle lit (2026-11-19)
+
+**Décision (validée par l'équipe).** La carte a une entrée par le portail : `GET /api/connexion?retour=<chemin>`.
+
+- **Déjà venu avec l'accès** : on va tout droit au chemin demandé, sans repasser par le portail.
+- **Sinon** : départ vers le portail, par la même route de Better Auth que le bouton (`sign-in/social`), en gardant son cookie d'état ; au retour, la session est ouverte sur `retour`. Un compte connecté sans droit d'usage repasse aussi par le portail, qui a pu le lui donner depuis.
+- **Échec** : retour sur le chemin avec `?connexion=echec`, que l'écran affiche ; le code d'accès reste possible.
+
+Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il n'y a qu'un chemin de connexion.
+
+**Côté portail.**
+
+- La déclaration demandée par D-002 a été faite sous **D-031** du portail (2026-11-10).
+- **D-043** du portail fait pointer la tuile sur `/api/connexion` (`signInPath`) et limite le claim envoyé à la carte : GDCOM et les organisations qui ont le droit d'usage `gd-map`, comme pour BK Studio (portail, D-034).
+
+**Pourquoi.**
+
+- **La tuile** menait à l'accueil, où il fallait cliquer une seconde fois sur « Se connecter avec GD One ».
+- **Le claim complet** portait, pour un membre de GDCOM, 68 organisations (un ID token de plus de 29 000 caractères), alors que la carte ne lit que la présence d'un droit d'usage.
+
+**Sécurité.**
+
+- `retour` n'accepte qu'un chemin de la carte (ni `//…`, ni adresse complète) : pas de redirection ouverte.
+- Une entrée en `GET` qui démarre une connexion ne fait courir aucun risque : au pire, quelqu'un se connecte à la carte avec son propre compte du portail.

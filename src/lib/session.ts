@@ -29,18 +29,12 @@ export async function fetchMe(): Promise<Me> {
 export const SIGN_IN_FAILED = 'connexion'
 
 /**
- * Part vers le portail ; au retour, Better Auth ouvre la session et renvoie vers `returnTo` (un chemin
- * de la carte : `/`, `/admin`).
+ * Part vers le portail par l'entrée de la carte (`/api/connexion`, celle qu'ouvre la tuile de GD One) ;
+ * au retour, la session est ouverte et l'on revient sur `returnTo` (un chemin de la carte : `/`,
+ * `/admin`). Un échec revient avec `?connexion=echec`, que l'écran affiche.
  */
 export async function signIn(returnTo: string) {
-  const separator = returnTo.includes('?') ? '&' : '?'
-  // Better Auth 1.7 : un fournisseur genericOAuth passe par la route standard des connexions sociales
-  const { url } = await api<{ url: string }>('POST', '/auth/sign-in/social', {
-    provider: 'gdcom',
-    callbackURL: returnTo,
-    errorCallbackURL: `${returnTo}${separator}${SIGN_IN_FAILED}=echec`,
-  })
-  window.location.assign(url)
+  window.location.assign(`/api/connexion?retour=${encodeURIComponent(returnTo)}`)
 }
 
 /** Ferme la session de la carte (celle du portail reste ouverte). */

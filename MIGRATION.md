@@ -30,8 +30,9 @@ Cette étape vaut aussi pour Tikko, quand il sera publié (D-004).
 
 ## 3. Portail : ouvrir la carte
 
-1. Fusionner puis déployer la PR du portail : https://github.com/GitOfSplayce/gdcom-portail/pull/1.
-   - **Sans elle, personne n'a le droit d'usage `gd-map`, pas même GDCOM.**
+1. Vérifier que le portail en production contient la carte :
+   - **D-031**, déjà dans `main` : sans elle, personne n'a le droit d'usage `gd-map`, pas même GDCOM ;
+   - la PR **D-043**, qui fait ouvrir la carte déjà connecté par la tuile et allège le claim de la carte, à fusionner puis déployer.
 2. Ajouter `GDCOM_PORTAIL_GD_MAP_URL=https://carte.gdone.fr` dans les variables du portail et redéployer. C'est ce qui fait apparaître la tuile.
 3. Dans **Support → Clients OIDC → Nouveau client** :
    - Nom : `Carte commerciale` ; application : **Carte commerciale** (`gd-map`).

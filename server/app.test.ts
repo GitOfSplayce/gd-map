@@ -5,7 +5,7 @@ import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { clientIp, createApp, type SessionUser } from './app.ts'
+import { clientIp, createApp, failedSignInPath, returnPath, type SessionUser } from './app.ts'
 import { VISITOR_SETTINGS, visitorParams, type Db } from './db.ts'
 
 const MIGRATIONS = fileURLToPath(new URL('../db/migrations/', import.meta.url))
@@ -18,6 +18,20 @@ const USERS: Record<string, SessionUser> = {
 
 let pglite: PGlite
 let app: ReturnType<typeof createApp>
+
+/** Better Auth simulé : ce que reçoit le départ vers le portail, et s'il réussit. */
+const signIns: { origin: string | null; body: Record<string, unknown> }[] = []
+let portalDown = false
+
+async function fakeAuthHandler(request: Request) {
+  if (new URL(request.url).pathname !== '/api/auth/sign-in/social') return new Response('auth', { status: 418 })
+  signIns.push({ origin: request.headers.get('origin'), body: await request.json() })
+  if (portalDown) return Response.json({ message: 'Provider not found' }, { status: 404 })
+  const headers = new Headers()
+  headers.append('Set-Cookie', 'gd-map.state=etat; Path=/; HttpOnly; SameSite=Lax')
+  headers.append('Set-Cookie', 'gd-map.pkce=verifier; Path=/; HttpOnly; SameSite=Lax')
+  return Response.json({ url: 'https://portail.exemple.fr/api/auth/oauth2/authorize?state=etat', redirect: true }, { headers })
+}
 
 beforeAll(async () => {
   pglite = new PGlite({ extensions: { pgcrypto } })
@@ -40,8 +54,9 @@ beforeAll(async () => {
   app = createApp({
     db,
     getUser: async (headers) => USERS[headers.get('x-test-user') ?? ''] ?? null,
-    authHandler: async () => new Response('auth', { status: 418 }),
+    authHandler: fakeAuthHandler,
     portalUrl: 'https://portail.exemple.fr',
+    baseUrl: 'https://carte.exemple.fr',
   })
 }, 60_000)
 
@@ -78,11 +93,63 @@ describe('session', () => {
   })
 
   it('laisse les routes de connexion à Better Auth', async () => {
-    expect((await app.request('/api/auth/sign-in/oauth2', { method: 'POST' })).status).toBe(418)
+    expect((await app.request('/api/auth/callback/gdcom')).status).toBe(418)
   })
 
   it('répond sur /api/health', async () => {
     expect(await call('anon', 'GET', '/api/health')).toEqual({ status: 200, body: { app: 'up', db: 'up' } })
+  })
+})
+
+describe('entrée par le portail (/api/connexion)', () => {
+  const enter = (who: Who, query = '') =>
+    app.request(`/api/connexion${query}`, { headers: who === 'anon' ? {} : { 'x-test-user': who }, redirect: 'manual' })
+
+  it('part vers le portail avec le cookie d’état, et revient sur le chemin demandé', async () => {
+    signIns.length = 0
+    const res = await enter('anon', '?retour=%2Fadmin')
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('https://portail.exemple.fr/api/auth/oauth2/authorize?state=etat')
+    expect(res.headers.getSetCookie()).toEqual([
+      'gd-map.state=etat; Path=/; HttpOnly; SameSite=Lax',
+      'gd-map.pkce=verifier; Path=/; HttpOnly; SameSite=Lax',
+    ])
+    expect(signIns).toEqual([
+      {
+        origin: 'https://carte.exemple.fr',
+        body: { provider: 'gdcom', callbackURL: '/admin', errorCallbackURL: '/admin?connexion=echec' },
+      },
+    ])
+  })
+
+  it('déjà venu avec l’accès : tout droit, sans repasser par le portail', async () => {
+    signIns.length = 0
+    const res = await enter('reader', '?retour=%2F')
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/')
+    expect(signIns).toEqual([])
+  })
+
+  it('connecté sans droit d’usage : repasse par le portail, qui a pu le lui donner depuis', async () => {
+    signIns.length = 0
+    expect((await enter('outsider')).headers.get('location')).toContain('portail.exemple.fr')
+    expect(signIns).toHaveLength(1)
+  })
+
+  it('n’emmène jamais hors de la carte', async () => {
+    for (const retour of ['//exemple.org', 'https://exemple.org', '/\\exemple.org', 'admin', '']) {
+      expect(returnPath(retour), retour).toBe('/')
+    }
+    expect(returnPath('/admin/parametres')).toBe('/admin/parametres')
+    expect(failedSignInPath('/?vue=paris')).toBe('/?vue=paris&connexion=echec')
+  })
+
+  it('portail injoignable : retour sur la carte, qui le dit', async () => {
+    portalDown = true
+    const res = await enter('anon', '?retour=%2Fadmin')
+    portalDown = false
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/admin?connexion=echec')
   })
 })
 

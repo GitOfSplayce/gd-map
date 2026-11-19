@@ -92,6 +92,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 | Venu par le portail sans droit d'usage `gd-map` | comme un anonyme : le code reste possible |
 | Admin (rôle dans `acces`, et droit d'usage sur le portail) | lire et modifier les données, changer le code, nommer les admins, régler l'affichage par défaut |
 
+- **Entrée par le portail** : la tuile de GD One ouvre `/api/connexion`, qui mène à la carte déjà connecté (D-007) ; le bouton « Se connecter avec GD One » passe par la même entrée.
 - **Le portail dit qui est la personne et si elle peut entrer**, d'après le claim `urn:gdcom:organizations` relu à chaque connexion ; **les rôles de la carte sont dans gd-map** (table `acces`), relus à chaque requête : un rôle retiré cesse aussitôt (D-002).
 - Le serveur exécute chaque requête avec les droits du visiteur (rôle `anon` ou `authenticated`, utilisateur de la session) : les règles RLS et les fonctions SQL décident, testées dans `db/tests`. Les tables de connexion ne sont lisibles par aucun rôle de l'API.
 - Personne ne modifie son profil ni ne se donne l'accès : les routes de modification de compte de Better Auth sont fermées, et le droit d'usage ne s'écrit qu'au retour du portail. Les jetons du portail sont chiffrés en base, l'ID token n'est pas gardé.
