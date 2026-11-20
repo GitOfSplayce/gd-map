@@ -104,12 +104,13 @@ export default function HelpPage() {
         </section>
 
         <section>
-          <h2>CA et objectifs (admins)</h2>
+          <h2>CA et objectifs (admins et responsables)</h2>
           <p>
             Le CA et l'objectif de chaque commercial se saisissent par structure et par année, dans son panneau (onglet{' '}
             <em>Commerciaux</em> de l'admin ; raccourcis <code>120k</code> et <code>1,2M</code> acceptés), ou par l'import Excel
             (colonnes <code>CA MD</code>, <code>Objectif MD</code>…).
-            Ils ne sont <strong>jamais visibles avec le seul code d'accès</strong> : il faut être connecté en admin.
+            Ils ne sont <strong>jamais visibles avec le seul code d'accès</strong> : il faut être connecté en admin. Un{' '}
+            <strong>responsable</strong>, nommé par un admin, saisit ceux des commerciaux de ses managers dans <em>Chiffres de l'équipe</em>.
           </p>
           <ul>
             <li>

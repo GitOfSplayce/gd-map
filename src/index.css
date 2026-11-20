@@ -486,6 +486,10 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 .gate .code-input { width: 100%; font-size: 18px; letter-spacing: 0.12em; text-align: center; min-height: 48px; }
 .gate .btn.primary { min-height: 46px; font-size: 15px; }
 .gate-footer { margin-top: 18px; display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
+.gate-or { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px; color: var(--muted); font-size: 12px; }
+.gate-or::before, .gate-or::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+.gate .btn.portal { width: 100%; justify-content: center; min-height: 44px; font-size: 14.5px; }
+.gate .gate-note { margin: 10px 0 0; text-align: center; color: var(--muted); font-size: 12.5px; }
 .gate-footer a { text-decoration: none; }
 .gate-footer a:hover { text-decoration: underline; }
 
@@ -1239,7 +1243,6 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .help th { border: 1px solid var(--border); padding: 7px 9px; text-align: left; }
 .help th { background: var(--azurin-50); color: var(--saphir); }
 
-.config-missing { max-width: 640px; margin: 10vh auto; padding: 0 16px; }
 
 /* ---------- Petits écrans ---------- */
 

@@ -1,5 +1,5 @@
-// Tests des règles d'accès : les migrations sont jouées dans PGlite (Postgres en WASM),
-// avec un environnement minimal qui imite Supabase (rôles anon/authenticated, auth.users, auth.uid()).
+// Tests des règles d'accès : toutes les migrations (socle compris) sont jouées dans PGlite (Postgres en
+// WASM), puis chaque requête passe avec le rôle, l'utilisateur et l'IP que pose le serveur (server/db.ts).
 import { PGlite } from '@electric-sql/pglite'
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -8,60 +8,48 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 const MIGRATIONS = fileURLToPath(new URL('../migrations/', import.meta.url))
 
+// Quatre personnes venues par le portail : un admin, un responsable (D-009), une lectrice (droit d'usage
+// sans rôle : elle n'a que le code, comme tout le monde) et un compte sans droit d'usage de la carte.
 const ADMIN = '00000000-0000-0000-0000-00000000000a'
-const USER = '00000000-0000-0000-0000-00000000000b'
+const READER = '00000000-0000-0000-0000-00000000000b'
+const OUTSIDER = '00000000-0000-0000-0000-00000000000c'
+const RESPONSABLE = '00000000-0000-0000-0000-00000000000d'
 
-// Ce que Supabase fournit avant nos migrations.
-// autoGrants = option « exposer automatiquement les nouvelles tables » (activée par défaut chez Supabase).
-const supabaseStub = (autoGrants: boolean) => `
-  create schema auth;
-  create schema extensions;
-  create table auth.users (id uuid primary key, email text);
-  create function auth.uid() returns uuid language sql stable as $$
-    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-  $$;
-  create role anon nologin;
-  create role authenticated nologin;
-  create role service_role nologin bypassrls;
-  grant usage on schema public, auth, extensions to anon, authenticated, service_role;
-  grant execute on function auth.uid() to anon, authenticated;
-  ${autoGrants ? `
-  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;` : ''}
-  insert into auth.users values ('${ADMIN}', 'admin@exemple.fr'), ('${USER}', 'autre@exemple.fr');
-`
-
-describe.each([
-  ['droits automatiques de Supabase', true],
-  ['sans exposition automatique des tables', false],
-])('%s', (_label, autoGrants) => {
+describe('règles d\'accès', () => {
   let db: PGlite
 
-  type Who = 'anon' | 'admin' | 'user' | 'postgres'
+  type Who = 'anon' | 'admin' | 'reader' | 'outsider' | 'responsable' | 'postgres'
+  const SUB: Record<Who, string> = { anon: '', admin: ADMIN, reader: READER, outsider: OUTSIDER, responsable: RESPONSABLE, postgres: '' }
 
-  /** Exécute une requête avec le rôle et l'utilisateur voulus, puis revient au superutilisateur. */
-  async function as<T = Record<string, unknown>>(who: Who, sql: string, params: unknown[] = []): Promise<T[]> {
-    const role = who === 'anon' ? 'anon' : who === 'postgres' ? 'postgres' : 'authenticated'
-    const sub = who === 'admin' ? ADMIN : who === 'user' ? USER : ''
-    await db.exec(`set request.jwt.claim.sub = '${sub}'; set role ${role};`)
-    try {
-      return (await db.query<T>(sql, params)).rows
-    } finally {
-      await db.exec(`reset role; reset request.jwt.claim.sub;`)
-    }
+  /** Exécute une requête comme le serveur : rôle, utilisateur et IP posés pour la transaction. */
+  async function as<T = Record<string, unknown>>(who: Who, sql: string, params: unknown[] = [], ip = '198.51.100.7'): Promise<T[]> {
+    if (who === 'postgres') return (await db.query<T>(sql, params)).rows
+    const role = who === 'anon' ? 'anon' : 'authenticated'
+    return db.transaction(async (tx) => {
+      await tx.query(
+        `select set_config('role', $1, true), set_config('request.jwt.claim.sub', $2, true), set_config('app.client_ip', $3, true)`,
+        [role, SUB[who], ip],
+      )
+      return (await tx.query<T>(sql, params)).rows
+    })
   }
 
-  const rpc = async (who: Who, fn: string, args: string, params: unknown[] = []) =>
-    (await as<{ r: unknown }>(who, `select public.${fn}(${args}) as r`, params))[0].r as Record<string, unknown>
+  const rpc = async (who: Who, fn: string, args: string, params: unknown[] = [], ip?: string) =>
+    (await as<{ r: unknown }>(who, `select public.${fn}(${args}) as r`, params, ip))[0].r as Record<string, unknown>
 
   beforeAll(async () => {
     db = new PGlite({ extensions: { pgcrypto } })
-    await db.exec(supabaseStub(autoGrants))
     for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
       await db.exec(readFileSync(MIGRATIONS + file, 'utf8'))
     }
-    await db.exec(`insert into public.admins (user_id, email) values ('${ADMIN}', 'admin@exemple.fr')`)
+    await db.exec(`
+      insert into public."user" (id, name, email, "emailVerified", "hasAccess") values
+        ('${ADMIN}', 'Admin', 'Admin@Exemple.fr', true, true),
+        ('${READER}', 'Lectrice', 'lectrice@exemple.fr', true, true),
+        ('${OUTSIDER}', 'Extérieur', 'exterieur@exemple.fr', true, false),
+        ('${RESPONSABLE}', 'Responsable', 'responsable@exemple.fr', true, true);
+      insert into public.acces (email, role) values ('admin@exemple.fr', 'admin');
+    `)
   }, 60_000)
 
   describe('migrations', () => {
@@ -81,8 +69,14 @@ describe.each([
 
   describe('anonyme (sans connexion)', () => {
     it('ne peut lire aucune table', async () => {
-      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'admins', 'access_attempts', 'managers', 'structures']) {
-        await expect(as('anon', `select * from public.${table}`), table).rejects.toThrow(/permission denied/)
+      for (const table of ['commerciaux', 'affectations', 'objectifs', 'zones', 'settings', 'acces', 'access_attempts', 'managers', 'structures', 'user', 'session', 'account', 'verification']) {
+        await expect(as('anon', `select * from public."${table}"`), table).rejects.toThrow(/permission denied/)
+      }
+    })
+
+    it('ne lit pas non plus les tables de connexion une fois connecté', async () => {
+      for (const table of ['user', 'session', 'account', 'verification']) {
+        await expect(as('admin', `select * from public."${table}"`), table).rejects.toThrow(/permission denied/)
       }
     })
 
@@ -91,6 +85,10 @@ describe.each([
       await expect(rpc('anon', 'set_access_code', `'nouveau-code'`)).rejects.toThrow(/permission denied/)
       await expect(rpc('anon', 'save_commercial', `'{"nom":"Pirate"}'::jsonb`)).rejects.toThrow(/permission denied/)
       await expect(rpc('anon', 'is_admin', '')).rejects.toThrow(/permission denied/)
+      await expect(rpc('anon', 'list_acces', '')).rejects.toThrow(/permission denied/)
+      await expect(rpc('anon', 'map_role', '')).rejects.toThrow(/permission denied/)
+      await expect(rpc('anon', 'get_equipe', '')).rejects.toThrow(/permission denied/)
+      await expect(rpc('anon', 'save_objectifs_equipe', `gen_random_uuid(), '[]'::jsonb`)).rejects.toThrow(/permission denied/)
     })
 
     it('reçoit not_configured tant qu\'aucun code n\'est défini', async () => {
@@ -98,17 +96,26 @@ describe.each([
     })
   })
 
-  describe('utilisateur connecté mais pas admin', () => {
-    it('ne voit rien et ne peut rien modifier', async () => {
+  describe('venus par le portail sans rôle', () => {
+    it('ne lisent aucune table directement et ne peuvent rien modifier', async () => {
       await as('postgres', `insert into public.commerciaux (nom) values ('Visible seulement des admins')`)
-      expect(await as('user', 'select * from public.commerciaux')).toEqual([])
-      expect(await as('user', 'select * from public.admins')).toEqual([])
-      await expect(as('user', `insert into public.commerciaux (nom) values ('Intrus')`)).rejects.toThrow(/row-level security/)
-      await expect(rpc('user', 'save_commercial', `'{"nom":"Intrus"}'::jsonb`)).rejects.toThrow(/réservé aux admins/)
-      await expect(rpc('user', 'set_access_code', `'nouveau-code'`)).rejects.toThrow(/réservé aux admins/)
-      await expect(as('user', `insert into public.admins (user_id, email) values ('${USER}', 'x')`)).rejects.toThrow(/row-level security/)
-      expect(await rpc('user', 'is_admin', '')).toBe(false)
+      for (const who of ['reader', 'outsider'] as const) {
+        expect(await as(who, 'select * from public.commerciaux'), who).toEqual([])
+        expect(await as(who, 'select * from public.acces'), who).toEqual([])
+        await expect(as(who, `insert into public.commerciaux (nom) values ('Intrus')`)).rejects.toThrow(/row-level security/)
+        await expect(rpc(who, 'save_commercial', `'{"nom":"Intrus"}'::jsonb`)).rejects.toThrow(/réservé aux admins/)
+        await expect(rpc(who, 'set_access_code', `'nouveau-code'`)).rejects.toThrow(/réservé aux admins/)
+        await expect(rpc(who, 'list_acces', '')).rejects.toThrow(/réservé aux admins/)
+        await expect(as(who, `insert into public.acces (email, role) values ('lectrice@exemple.fr', 'admin')`)).rejects.toThrow(/row-level security/)
+        expect(await rpc(who, 'is_admin', '')).toBe(false)
+      }
       await as('postgres', `delete from public.commerciaux`)
+    })
+
+    it('n\'ont aucun rôle, droit d\'usage ou pas (D-009)', async () => {
+      expect(await rpc('reader', 'map_role', '')).toBeNull()
+      expect(await rpc('outsider', 'map_role', '')).toBeNull()
+      await expect(rpc('reader', 'get_equipe', '')).rejects.toThrow(/réservé aux responsables/)
     })
   })
 
@@ -193,9 +200,34 @@ describe.each([
       await expect(as('admin', 'select * from public.settings')).rejects.toThrow(/permission denied/)
     })
 
-    it('ne peut pas se retirer lui-même de la liste des admins', async () => {
-      await as('admin', `delete from public.admins where user_id = '${ADMIN}'`)
+    it('ne peut ni retirer ni changer son propre rôle', async () => {
+      expect(await as('admin', `delete from public.acces where email = 'admin@exemple.fr' returning email`)).toEqual([])
+      expect(await as('admin', `update public.acces set role = 'responsable' where email = 'admin@exemple.fr' returning email`)).toEqual([])
       expect(await rpc('admin', 'is_admin', '')).toBe(true)
+    })
+
+    it('nomme et retire les autres admins, par adresse', async () => {
+      await as('admin', `insert into public.acces (email, role, created_by) values ('lectrice@exemple.fr', 'admin', public.current_email())`)
+      expect(await rpc('reader', 'is_admin', '')).toBe(true)
+      const list = await rpc('admin', 'list_acces', '')
+      const roles = list.roles as Record<string, unknown>[]
+      expect(roles.map((r) => r.email)).toEqual(['admin@exemple.fr', 'lectrice@exemple.fr'])
+      expect(roles[1]).toMatchObject({ role: 'admin', name: 'Lectrice', created_by: 'admin@exemple.fr' })
+      expect((list.users as Record<string, unknown>[]).find((u) => u.email === 'exterieur@exemple.fr')).toMatchObject({ has_access: false })
+      await as('admin', `delete from public.acces where email = 'lectrice@exemple.fr'`)
+      expect(await rpc('reader', 'is_admin', '')).toBe(false)
+    })
+
+    it('un rôle admin sans droit d\'usage sur le portail ne donne rien', async () => {
+      await as('admin', `insert into public.acces (email, role) values ('exterieur@exemple.fr', 'admin')`)
+      expect(await rpc('outsider', 'is_admin', '')).toBe(false)
+      expect(await rpc('outsider', 'get_map_data', 'null')).toEqual({ ok: false, error: 'not_configured' })
+      await as('admin', `delete from public.acces where email = 'exterieur@exemple.fr'`)
+    })
+
+    it('refuse une adresse mal écrite ou un rôle inconnu', async () => {
+      await expect(as('admin', `insert into public.acces (email, role) values ('Pas Une Adresse', 'admin')`)).rejects.toThrow(/check constraint/)
+      await expect(as('admin', `insert into public.acces (email, role) values ('x@exemple.fr', 'superadmin')`)).rejects.toThrow(/check constraint/)
     })
   })
 
@@ -248,13 +280,19 @@ describe.each([
     it('refuse un mauvais code', async () => {
       expect(await rpc('anon', 'get_map_data', `'mauvais'`)).toEqual({ ok: false, error: 'invalid_code' })
       expect(await rpc('anon', 'get_map_data', 'null')).toEqual({ ok: false, error: 'invalid_code' })
-      expect(await rpc('user', 'get_map_data', 'null')).toEqual({ ok: false, error: 'invalid_code' })
+      expect(await rpc('outsider', 'get_map_data', 'null')).toEqual({ ok: false, error: 'invalid_code' })
+    })
+
+    it('venue par le portail sans rôle, une lectrice passe par le code comme tout le monde (D-009)', async () => {
+      expect(await rpc('reader', 'get_map_data', 'null')).toEqual({ ok: false, error: 'invalid_code' })
+      expect((await rpc('reader', 'get_map_data', `'Carte-2026!'`)).ok).toBe(true)
     })
 
     it('bloque après 10 essais ratés, même avec le bon code', async () => {
       for (let i = 0; i < 10; i++) await rpc('anon', 'get_map_data', `'essai-${i}'`)
       expect(await rpc('anon', 'get_map_data', `'Carte-2026!'`)).toEqual({ ok: false, error: 'too_many_attempts' })
-      // Un admin n'est pas concerné
+      // Une autre adresse IP n'est pas bloquée, ni une personne venue par le portail
+      expect((await rpc('anon', 'get_map_data', `'Carte-2026!'`, [], '203.0.113.9')).ok).toBe(true)
       expect((await rpc('admin', 'get_map_data', 'null')).ok).toBe(true)
     })
 
@@ -297,9 +335,116 @@ describe.each([
     })
 
     it('un non-admin ne peut ni lire ni modifier les managers', async () => {
-      expect(await as('user', 'select * from public.managers')).toEqual([])
-      await expect(as('user', `insert into public.managers (nom) values ('Pirate')`)).rejects.toThrow(/row-level security/)
-      await expect(rpc('user', 'rename_manager', `'Hélène', 'Pirate'`)).rejects.toThrow(/réservé aux admins/)
+      expect(await as('reader', 'select * from public.managers')).toEqual([])
+      await expect(as('reader', `insert into public.managers (nom) values ('Pirate')`)).rejects.toThrow(/row-level security/)
+      await expect(rpc('reader', 'rename_manager', `'Hélène', 'Pirate'`)).rejects.toThrow(/réservé aux admins/)
+    })
+  })
+
+  describe('responsable (D-009)', () => {
+    const ids: Record<string, string> = {}
+    const objectifsOf = async (nom: string) =>
+      as<{ annee: number; ca: number | null; objectif: number | null }>(
+        'postgres',
+        `select o.annee, o.ca::float8 as ca, o.objectif::float8 as objectif from public.objectifs o join public.commerciaux c on c.id = o.commercial_id where c.nom = $1 order by o.annee`,
+        [nom],
+      )
+    const team = async () => (await rpc('responsable', 'team_managers', '')) as unknown as string[] | null
+
+    beforeAll(async () => {
+      await as('postgres', `insert into public.managers (nom) values ('Équipe Sud'), ('Équipe Nord') on conflict do nothing`)
+      const rows = await as<{ id: string; nom: string }>(
+        'postgres',
+        `insert into public.commerciaux (nom, manager1, manager2, actif, structures) values
+           ('Sud Un', 'Équipe Sud', null, true, '{MD}'),
+           ('Sud Deux', null, 'Équipe Sud', false, '{MD}'),
+           ('Nord Un', 'Équipe Nord', null, true, '{MD}')
+         returning id, nom`,
+      )
+      for (const r of rows) ids[r.nom] = r.id
+      await as('postgres', `insert into public.objectifs (commercial_id, structure, annee, ca, objectif) values
+        ('${ids['Sud Un']}', 'MD', 2026, 100, 200), ('${ids['Nord Un']}', 'MD', 2026, 300, 400)`)
+    })
+
+    it('un admin le nomme avec ses managers ; un manager inconnu ou un périmètre d\'admin est refusé', async () => {
+      await expect(as('admin', `insert into public.acces (email, role, managers) values ('responsable@exemple.fr', 'responsable', '{Inconnu}')`)).rejects.toThrow(/Manager inconnu : Inconnu/)
+      await expect(as('admin', `insert into public.acces (email, role, managers) values ('responsable@exemple.fr', 'admin', '{Équipe Sud}')`)).rejects.toThrow(/check constraint/)
+      await as('admin', `insert into public.acces (email, role, managers) values ('responsable@exemple.fr', 'responsable', '{" Équipe Sud ","Équipe Sud"}')`)
+      expect(await team()).toEqual(['Équipe Sud'])
+    })
+
+    it('est reconnu, sans être admin', async () => {
+      expect(await rpc('responsable', 'map_role', '')).toBe('responsable')
+      expect(await rpc('responsable', 'is_admin', '')).toBe(false)
+      expect(await rpc('admin', 'map_role', '')).toBe('admin')
+    })
+
+    it('ouvre la carte sans code, comme un visiteur : ni CA, ni notes', async () => {
+      const res = await rpc('responsable', 'get_map_data', 'null')
+      expect(res).toMatchObject({ ok: true, admin: false, objectifs: [] })
+      expect((res.commerciaux as Record<string, unknown>[])[0]).not.toHaveProperty('notes')
+    })
+
+    it('voit son équipe seulement (Manager 1 ou 2, inactifs compris), avec ses chiffres', async () => {
+      const equipe = await rpc('responsable', 'get_equipe', '')
+      expect(equipe.managers).toEqual(['Équipe Sud'])
+      expect((equipe.commerciaux as { nom: string }[]).map((c) => c.nom)).toEqual(['Sud Un', 'Sud Deux'])
+      expect(equipe.commerciaux as Record<string, unknown>[]).not.toContainEqual(expect.objectContaining({ notes: expect.anything() }))
+      expect(equipe.objectifs).toEqual([expect.objectContaining({ commercial_id: ids['Sud Un'], annee: 2026, ca: 100, objectif: 200 })])
+      expect((equipe.structures as { code: string }[]).length).toBeGreaterThan(0)
+    })
+
+    it('saisit le CA et l\'objectif de son équipe ; seules les lignes envoyées changent, une ligne vidée disparaît', async () => {
+      await rpc('responsable', 'save_objectifs_equipe', '$1::uuid, $2::jsonb', [ids['Sud Deux'], JSON.stringify([{ structure: 'MD', annee: 2026, ca: 50, objectif: 80 }])])
+      expect(await objectifsOf('Sud Deux')).toEqual([{ annee: 2026, ca: 50, objectif: 80 }])
+      await rpc('responsable', 'save_objectifs_equipe', '$1::uuid, $2::jsonb', [ids['Sud Un'], JSON.stringify([{ structure: 'MD', annee: 2025, ca: 10, objectif: null }])])
+      expect(await objectifsOf('Sud Un')).toEqual([{ annee: 2025, ca: 10, objectif: null }, { annee: 2026, ca: 100, objectif: 200 }])
+      await rpc('responsable', 'save_objectifs_equipe', '$1::uuid, $2::jsonb', [ids['Sud Un'], JSON.stringify([{ structure: 'MD', annee: 2025, ca: null, objectif: null }])])
+      expect(await objectifsOf('Sud Un')).toEqual([{ annee: 2026, ca: 100, objectif: 200 }])
+    })
+
+    it('ne touche pas un commercial hors de son équipe', async () => {
+      await expect(
+        rpc('responsable', 'save_objectifs_equipe', '$1::uuid, $2::jsonb', [ids['Nord Un'], JSON.stringify([{ structure: 'MD', annee: 2026, ca: 1, objectif: 1 }])]),
+      ).rejects.toThrow(/pas dans votre équipe/)
+      expect(await objectifsOf('Nord Un')).toEqual([{ annee: 2026, ca: 300, objectif: 400 }])
+    })
+
+    it('ne peut rien faire d\'autre : ni tables, ni fonctions d\'admin', async () => {
+      expect(await as('responsable', 'select * from public.objectifs')).toEqual([])
+      expect(await as('responsable', 'select * from public.acces')).toEqual([])
+      await expect(as('responsable', `insert into public.objectifs (commercial_id, structure, annee, ca) values ('${ids['Nord Un']}', 'MD', 2027, 1)`)).rejects.toThrow(/row-level security/)
+      expect(await as('responsable', `update public.commerciaux set nom = 'Pirate' where id = '${ids['Sud Un']}' returning id`)).toEqual([])
+      await expect(rpc('responsable', 'save_commercial', `'{"nom":"Intrus"}'::jsonb`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('responsable', 'list_acces', '')).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('responsable', 'rename_manager', `'Équipe Nord', 'Équipe Sud'`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('responsable', 'set_access_code', `'nouveau-code'`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('admin', 'get_equipe', '')).rejects.toThrow(/réservé aux responsables/)
+    })
+
+    it('son périmètre suit les managers : renommés, fusionnés, supprimés', async () => {
+      await rpc('admin', 'rename_manager', `'Équipe Sud', 'Équipe Sud-Est'`)
+      expect(await team()).toEqual(['Équipe Sud-Est'])
+      expect(((await rpc('responsable', 'get_equipe', '')).commerciaux as unknown[]).length).toBe(2)
+
+      await as('admin', `update public.acces set managers = '{Équipe Sud-Est,Équipe Nord}' where email = 'responsable@exemple.fr'`)
+      await rpc('admin', 'rename_manager', `'Équipe Nord', 'Équipe Sud-Est'`)
+      expect(await team()).toEqual(['Équipe Sud-Est'])
+      expect(((await rpc('responsable', 'get_equipe', '')).commerciaux as unknown[]).length).toBe(3)
+
+      await as('admin', `delete from public.managers where nom = 'Équipe Sud-Est'`)
+      expect(await team()).toEqual([])
+      expect((await rpc('responsable', 'get_equipe', '')).commerciaux).toEqual([])
+    })
+
+    it('perd tout sans droit d\'usage sur le portail', async () => {
+      await as('postgres', `update public."user" set "hasAccess" = false where id = '${RESPONSABLE}'`)
+      expect(await rpc('responsable', 'map_role', '')).toBeNull()
+      expect(await rpc('responsable', 'get_map_data', 'null')).toMatchObject({ ok: false })
+      await expect(rpc('responsable', 'get_equipe', '')).rejects.toThrow(/réservé aux responsables/)
+      await as('postgres', `update public."user" set "hasAccess" = true where id = '${RESPONSABLE}'`)
+      await as('postgres', `delete from public.commerciaux where nom in ('Sud Un', 'Sud Deux', 'Nord Un')`)
+      await as('admin', `delete from public.acces where email = 'responsable@exemple.fr'`)
     })
   })
 
@@ -383,10 +528,10 @@ describe.each([
     })
 
     it('un non-admin ne peut ni lire ni modifier les structures', async () => {
-      expect(await as('user', 'select * from public.structures')).toEqual([])
-      await expect(as('user', `insert into public.structures (code, nom) values ('PI', 'Pirate')`)).rejects.toThrow(/row-level security/)
+      expect(await as('reader', 'select * from public.structures')).toEqual([])
+      await expect(as('reader', `insert into public.structures (code, nom) values ('PI', 'Pirate')`)).rejects.toThrow(/row-level security/)
       await expect(as('anon', `insert into public.structures (code, nom) values ('PI', 'Pirate')`)).rejects.toThrow(/permission denied/)
-      await expect(rpc('user', 'reorder_structures', `array['BK']`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('reader', 'reorder_structures', `array['BK']`)).rejects.toThrow(/réservé aux admins/)
       await expect(rpc('anon', 'reorder_structures', `array['BK']`)).rejects.toThrow(/permission denied/)
       expect(await codes()).toEqual(['MD', 'SP', 'MC', 'BK'])
     })
@@ -487,13 +632,13 @@ describe.each([
 
     it('refuse un mode inconnu et les non-admins', async () => {
       await expect(rpc('admin', 'set_default_shared_mode', `'paillettes'`)).rejects.toThrow(/Mode inconnu/)
-      await expect(rpc('user', 'set_default_shared_mode', `'rayures'`)).rejects.toThrow(/réservé aux admins/)
+      await expect(rpc('reader', 'set_default_shared_mode', `'rayures'`)).rejects.toThrow(/réservé aux admins/)
       await expect(rpc('anon', 'set_default_shared_mode', `'rayures'`)).rejects.toThrow(/permission denied/)
     })
   })
 
-  describe('compatibilité Supabase', () => {
-    // En production, l'extension safeupdate refuse tout DELETE ou UPDATE sans WHERE venant de l'API
+  describe('fonctions', () => {
+    // Garde-fou repris de Supabase (extension safeupdate) : un DELETE ou un UPDATE sans WHERE est toujours une erreur
     it('aucune fonction ne fait de DELETE ou d\'UPDATE sans WHERE', async () => {
       const fns = await as<{ proname: string; prosrc: string }>(
         'postgres',
@@ -511,9 +656,4 @@ describe.each([
     })
   })
 
-  describe('ping', () => {
-    it('répond à un visiteur anonyme (workflow keepalive)', async () => {
-      expect(await rpc('anon', 'ping', '')).toBe('ok')
-    })
-  })
 })

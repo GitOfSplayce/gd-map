@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+*.xlsx
+# Le fichier d'exemple fictif sert aux tests, lancés pendant la construction (D-008)
+!exemples/exemple-import.xlsx
+*.pdf
+supabase
+better-auth.generated.sql
+Dockerfile
+.dockerignore

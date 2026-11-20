@@ -1,5 +1,5 @@
 // Référentiel des zones : départements (métropole + Corse), DROM, arrondissements de Paris et Monaco.
-// La migration supabase/migrations/*_zones.sql est générée à partir de ce fichier (npm run gen:zones-sql).
+// La migration db/migrations/*_zones.sql est générée à partir de ce fichier (npm run gen:zones-sql).
 
 export type ZoneType = 'departement' | 'arrondissement' | 'drom' | 'monaco'
 

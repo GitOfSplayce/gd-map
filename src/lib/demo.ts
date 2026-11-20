@@ -1,4 +1,4 @@
-// Mode démo (npm run demo) : la carte fonctionne sans Supabase, avec le fichier d'exemple fictif.
+// Mode démo (npm run demo) : la carte fonctionne sans serveur ni base, avec le fichier d'exemple fictif.
 // Absent du build de production : n'est importé que si VITE_DEMO=1.
 import sampleUrl from '../../exemples/exemple-import.xlsx?url'
 import { parseSheet, readWorkbook } from './excel'

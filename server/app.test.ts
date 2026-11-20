@@ -1,0 +1,334 @@
+// L'API de bout en bout : vraies migrations dans PGlite, vraies routes Hono ; seule la session est
+// simulée (en-tête x-test-user), comme la donnerait Better Auth après la connexion par le portail.
+import { PGlite } from '@electric-sql/pglite'
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
+import { readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { clientIp, createApp, failedSignInPath, returnPath, type SessionUser } from './app.ts'
+import { VISITOR_SETTINGS, visitorParams, type Db } from './db.ts'
+
+const MIGRATIONS = fileURLToPath(new URL('../db/migrations/', import.meta.url))
+
+const USERS: Record<string, SessionUser> = {
+  admin: { id: '00000000-0000-0000-0000-00000000000a', email: 'admin@exemple.fr', name: 'Admin', image: null, hasAccess: true },
+  reader: { id: '00000000-0000-0000-0000-00000000000b', email: 'lectrice@exemple.fr', name: 'Lectrice', image: null, hasAccess: true },
+  outsider: { id: '00000000-0000-0000-0000-00000000000c', email: 'exterieur@exemple.fr', name: 'Extérieur', image: null, hasAccess: false },
+  responsable: { id: '00000000-0000-0000-0000-00000000000d', email: 'responsable@exemple.fr', name: 'Responsable', image: null, hasAccess: true },
+}
+
+let pglite: PGlite
+let app: ReturnType<typeof createApp>
+
+/** Better Auth simulé : ce que reçoit le départ vers le portail, et s'il réussit. */
+const signIns: { origin: string | null; body: Record<string, unknown> }[] = []
+let portalDown = false
+
+async function fakeAuthHandler(request: Request) {
+  if (new URL(request.url).pathname !== '/api/auth/sign-in/social') return new Response('auth', { status: 418 })
+  signIns.push({ origin: request.headers.get('origin'), body: await request.json() })
+  if (portalDown) return Response.json({ message: 'Provider not found' }, { status: 404 })
+  const headers = new Headers()
+  headers.append('Set-Cookie', 'gd-map.state=etat; Path=/; HttpOnly; SameSite=Lax')
+  headers.append('Set-Cookie', 'gd-map.pkce=verifier; Path=/; HttpOnly; SameSite=Lax')
+  return Response.json({ url: 'https://portail.exemple.fr/api/auth/oauth2/authorize?state=etat', redirect: true }, { headers })
+}
+
+beforeAll(async () => {
+  pglite = new PGlite({ extensions: { pgcrypto } })
+  for (const file of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
+    await pglite.exec(readFileSync(MIGRATIONS + file, 'utf8'))
+  }
+  for (const u of Object.values(USERS)) {
+    await pglite.query(`insert into public."user" (id, name, email, "emailVerified", "hasAccess") values ($1, $2, $3, true, $4)`, [u.id, u.name, u.email, u.hasAccess])
+  }
+  await pglite.query(`insert into public.acces (email, role) values ('admin@exemple.fr', 'admin')`)
+
+  const db: Db = {
+    query: (text, params) => pglite.query(text, params),
+    as: (visitor, fn) =>
+      pglite.transaction(async (tx) => {
+        await tx.query(VISITOR_SETTINGS, visitorParams(visitor))
+        return fn({ query: (text, params) => tx.query(text, params) })
+      }),
+  }
+  app = createApp({
+    db,
+    getUser: async (headers) => USERS[headers.get('x-test-user') ?? ''] ?? null,
+    authHandler: fakeAuthHandler,
+    portalUrl: 'https://portail.exemple.fr',
+    baseUrl: 'https://carte.exemple.fr',
+  })
+}, 60_000)
+
+type Who = 'anon' | keyof typeof USERS
+
+async function call(who: Who, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+  const res = await app.request(path, {
+    method,
+    headers: {
+      ...(who === 'anon' ? {} : { 'x-test-user': who }),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      'x-forwarded-for': '198.51.100.20',
+      ...headers,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, unknown> }
+}
+
+describe('adresse IP du visiteur', () => {
+  it('prend la première valeur de X-Forwarded-For, sinon la connexion', () => {
+    expect(clientIp('203.0.113.5, 10.0.0.2', '10.0.0.2')).toBe('203.0.113.5')
+    expect(clientIp(undefined, '10.0.0.3')).toBe('10.0.0.3')
+    expect(clientIp('  ', undefined)).toBe('inconnue')
+  })
+})
+
+describe('session', () => {
+  it('dit qui est connecté et ce qu’il peut faire', async () => {
+    expect((await call('anon', 'GET', '/api/moi')).body).toEqual({ user: null, role: null, portalUrl: 'https://portail.exemple.fr' })
+    expect((await call('admin', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'admin@exemple.fr' }, role: 'admin' })
+    // Le droit d'usage du portail ne suffit plus : sans rôle dans la carte, pas de rôle (D-009)
+    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'lectrice@exemple.fr' }, role: null })
+    expect((await call('outsider', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'exterieur@exemple.fr' }, role: null })
+  })
+
+  it('laisse les routes de connexion à Better Auth', async () => {
+    expect((await app.request('/api/auth/callback/gdcom')).status).toBe(418)
+  })
+
+  it('répond sur /api/health', async () => {
+    expect(await call('anon', 'GET', '/api/health')).toEqual({ status: 200, body: { app: 'up', db: 'up' } })
+  })
+})
+
+describe('entrée par le portail (/api/connexion)', () => {
+  const enter = (who: Who, query = '') =>
+    app.request(`/api/connexion${query}`, { headers: who === 'anon' ? {} : { 'x-test-user': who }, redirect: 'manual' })
+
+  it('part vers le portail avec le cookie d’état, et revient sur le chemin demandé', async () => {
+    signIns.length = 0
+    const res = await enter('anon', '?retour=%2Fadmin')
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('https://portail.exemple.fr/api/auth/oauth2/authorize?state=etat')
+    expect(res.headers.getSetCookie()).toEqual([
+      'gd-map.state=etat; Path=/; HttpOnly; SameSite=Lax',
+      'gd-map.pkce=verifier; Path=/; HttpOnly; SameSite=Lax',
+    ])
+    expect(signIns).toEqual([
+      {
+        origin: 'https://carte.exemple.fr',
+        body: { provider: 'gdcom', callbackURL: '/admin', errorCallbackURL: '/admin?connexion=echec' },
+      },
+    ])
+  })
+
+  it('déjà venu avec l’accès : tout droit, sans repasser par le portail', async () => {
+    signIns.length = 0
+    const res = await enter('reader', '?retour=%2F')
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/')
+    expect(signIns).toEqual([])
+  })
+
+  it('connecté sans droit d’usage : repasse par le portail, qui a pu le lui donner depuis', async () => {
+    signIns.length = 0
+    expect((await enter('outsider')).headers.get('location')).toContain('portail.exemple.fr')
+    expect(signIns).toHaveLength(1)
+  })
+
+  it('n’emmène jamais hors de la carte', async () => {
+    for (const retour of ['//exemple.org', 'https://exemple.org', '/\\exemple.org', 'admin', '']) {
+      expect(returnPath(retour), retour).toBe('/')
+    }
+    expect(returnPath('/admin/parametres')).toBe('/admin/parametres')
+    expect(failedSignInPath('/?vue=paris')).toBe('/?vue=paris&connexion=echec')
+  })
+
+  it('portail injoignable : retour sur la carte, qui le dit', async () => {
+    portalDown = true
+    const res = await enter('anon', '?retour=%2Fadmin')
+    portalDown = false
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/admin?connexion=echec')
+  })
+})
+
+describe('administration', () => {
+  it('refuse sans session (401) et sans rôle admin (403)', async () => {
+    expect((await call('anon', 'POST', '/api/admin/commerciaux', { nom: 'Pirate' })).status).toBe(401)
+    expect((await call('reader', 'POST', '/api/admin/commerciaux', { nom: 'Pirate' })).status).toBe(403)
+    expect((await call('outsider', 'GET', '/api/admin/acces')).status).toBe(403)
+  })
+
+  it('enregistre un commercial, refuse un doublon avec le code SQL, puis le supprime', async () => {
+    const created = await call('admin', 'POST', '/api/admin/commerciaux', {
+      nom: 'Agathe Rolland',
+      manager1: 'Hélène',
+      structures: ['MD'],
+      affectations: [{ structure: 'MD', zone_code: '22', couverture: 'propre' }],
+      objectifs: [{ structure: 'MD', annee: 2026, ca: 1000.5, objectif: 2000 }],
+    })
+    expect(created.status).toBe(200)
+    expect(created.body.id).toMatch(/^[0-9a-f-]{36}$/)
+    const duplicate = await call('admin', 'POST', '/api/admin/commerciaux', { nom: ' agathe rolland ' })
+    expect(duplicate).toMatchObject({ status: 409, body: { code: '23505' } })
+
+    const map = (await call('admin', 'POST', '/api/carte', { code: null })).body
+    expect(map.objectifs).toEqual([expect.objectContaining({ ca: 1000.5, objectif: 2000 })])
+
+    expect((await call('admin', 'DELETE', `/api/admin/commerciaux/${created.body.id}`)).status).toBe(200)
+    expect((await call('admin', 'DELETE', '/api/admin/commerciaux/pas-un-uuid')).status).toBe(400)
+  })
+
+  it('importe en une fois', async () => {
+    const res = await call('admin', 'POST', '/api/admin/import', {
+      items: [{ nom: 'Basile Fournier', structures: ['SP'], affectations: [{ structure: 'SP', zone_code: '2A', couverture: 'propre' }] }],
+      deleteIds: [],
+    })
+    expect(res).toEqual({ status: 200, body: { saved: 1, deleted: 0 } })
+    expect((await call('admin', 'POST', '/api/admin/import', { items: 'nope' })).status).toBe(400)
+  })
+
+  it('gère les managers : création, couleur, coordonnées, renommage, suppression', async () => {
+    expect((await call('admin', 'POST', '/api/admin/managers', { nom: ' Victor ', couleur: '#123456' })).status).toBe(200)
+    expect((await call('admin', 'POST', '/api/admin/managers', { nom: 'Victor', couleur: null })).body).toMatchObject({ code: '23505' })
+    expect((await call('admin', 'PATCH', '/api/admin/managers/Victor', { telephone: '06 00 00 00 01', email: 'victor@exemple.fr' })).status).toBe(200)
+    expect((await call('admin', 'PATCH', '/api/admin/managers/Victor', { email: 'pas-un-mail' })).body).toMatchObject({ code: '23514' })
+    expect((await call('admin', 'POST', `/api/admin/managers/${encodeURIComponent('Victor')}/renommer`, { nom: 'Victor H.' })).status).toBe(200)
+    const managers = (await call('admin', 'POST', '/api/carte', {})).body.managers as Record<string, unknown>[]
+    expect(managers.find((m) => m.nom === 'Victor H.')).toMatchObject({ couleur: '#123456', telephone: '06 00 00 00 01' })
+    expect((await call('admin', 'DELETE', `/api/admin/managers/${encodeURIComponent('Victor H.')}`)).status).toBe(200)
+  })
+
+  it('gère les structures et leur ordre', async () => {
+    expect((await call('admin', 'POST', '/api/admin/structures', { code: 'nv', nom: 'Minuscules' })).body).toMatchObject({ code: '23514' })
+    expect((await call('admin', 'POST', '/api/admin/structures', { code: 'NV', nom: 'Nouvelle', ordre: 5 })).status).toBe(200)
+    expect((await call('admin', 'PATCH', '/api/admin/structures/NV', { code: 'NS', nom: 'Nouvelle structure' })).status).toBe(200)
+    expect((await call('admin', 'PUT', '/api/admin/ordre-structures', { codes: ['NS', 'MD', 'SP', 'MC', 'BK'] })).status).toBe(200)
+    const order = ((await call('admin', 'POST', '/api/carte', {})).body.structures as { code: string }[]).map((s) => s.code)
+    expect(order).toEqual(['NS', 'MD', 'SP', 'MC', 'BK'])
+    expect((await call('admin', 'DELETE', '/api/admin/structures/NS')).status).toBe(200)
+    expect((await call('admin', 'PUT', '/api/admin/ordre-structures', { codes: ['MD', 'SP', 'MC', 'BK'] })).status).toBe(200)
+  })
+
+  it('règle l’affichage par défaut et refuse un mode inconnu', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/affichage', { mode: 'decoupage' })).status).toBe(200)
+    expect((await call('admin', 'PUT', '/api/admin/affichage', { mode: 'paillettes' })).status).toBe(400)
+  })
+})
+
+describe('code d’accès et lecture de la carte', () => {
+  it('sans code défini : not_configured pour un visiteur', async () => {
+    expect((await call('anon', 'POST', '/api/carte', { code: 'peu-importe' })).body).toEqual({ ok: false, error: 'not_configured' })
+    expect((await call('admin', 'GET', '/api/admin/code')).body).toMatchObject({ configured: false })
+  })
+
+  it('un admin le définit (6 caractères au moins) ; le statut dit qui', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/code', { code: '12345' })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/code', { code: 'Carte-2026!' })).status).toBe(200)
+    expect((await call('admin', 'GET', '/api/admin/code')).body).toMatchObject({ configured: true, updated_by: 'admin@exemple.fr' })
+  })
+
+  it('ouvre la carte avec le code ; venu par le portail sans rôle, il faut aussi le code (D-009)', async () => {
+    const visitor = (await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' })).body
+    expect(visitor).toMatchObject({ ok: true, admin: false })
+    expect((await call('reader', 'POST', '/api/carte', {})).body).toEqual({ ok: false, error: 'invalid_code' })
+    expect((await call('reader', 'POST', '/api/carte', { code: 'Carte-2026!' })).body).toMatchObject({ ok: true, admin: false })
+    expect((await call('outsider', 'POST', '/api/carte', {})).body).toEqual({ ok: false, error: 'invalid_code' })
+  })
+
+  it('limite les essais par adresse IP, sans se laisser tromper par cf-connecting-ip', async () => {
+    const ip = { 'x-forwarded-for': '203.0.113.50, 10.0.0.2' }
+    for (let i = 0; i < 10; i++) {
+      // Un en-tête cf-connecting-ip différent à chaque essai ne change rien : il n'est plus lu (D-004)
+      await call('anon', 'POST', '/api/carte', { code: `essai-${i}` }, { ...ip, 'cf-connecting-ip': `192.0.2.${i}` })
+    }
+    expect((await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' }, ip)).body).toEqual({ ok: false, error: 'too_many_attempts' })
+    expect((await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' }, { 'x-forwarded-for': '203.0.113.51' })).body).toMatchObject({ ok: true })
+  })
+})
+
+describe('rôles', () => {
+  it('un admin en nomme un autre, qui l’est aussitôt', async () => {
+    expect((await call('admin', 'PUT', `/api/admin/acces/${encodeURIComponent('Lectrice@Exemple.fr')}`, { role: 'admin' })).body).toEqual({ email: 'lectrice@exemple.fr' })
+    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ role: 'admin' })
+    const list = (await call('admin', 'GET', '/api/admin/acces')).body
+    expect((list.roles as { email: string }[]).map((r) => r.email)).toEqual(['admin@exemple.fr', 'lectrice@exemple.fr'])
+  })
+
+  it('personne ne change ni ne retire son propre rôle', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/acces/admin@exemple.fr', { role: 'responsable' })).status).toBe(400)
+    expect((await call('admin', 'DELETE', '/api/admin/acces/admin@exemple.fr')).status).toBe(400)
+    expect((await call('admin', 'DELETE', '/api/admin/acces/inconnu@exemple.fr')).status).toBe(404)
+  })
+
+  it('un retrait vaut à la requête suivante', async () => {
+    expect((await call('admin', 'DELETE', '/api/admin/acces/lectrice@exemple.fr')).status).toBe(200)
+    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ role: null })
+    expect((await call('reader', 'GET', '/api/admin/acces')).status).toBe(403)
+  })
+
+  it('refuse un rôle inconnu', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/acces/x@exemple.fr', { role: 'superadmin' })).body).toMatchObject({ code: '23514' })
+  })
+})
+
+describe('responsable (D-009)', () => {
+  let sud: string
+  let nord: string
+
+  beforeAll(async () => {
+    for (const [nom, manager1] of [['Sud Un', 'Équipe Sud'], ['Nord Un', 'Équipe Nord']]) {
+      const res = await call('admin', 'POST', '/api/admin/commerciaux', { nom, manager1, structures: ['MD'] })
+      if (nom === 'Sud Un') sud = res.body.id as string
+      else nord = res.body.id as string
+    }
+  })
+
+  it('un admin le nomme avec au moins un manager connu', async () => {
+    const url = '/api/admin/acces/responsable@exemple.fr'
+    expect((await call('admin', 'PUT', url, { role: 'responsable' })).status).toBe(400)
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: 'Équipe Sud' })).status).toBe(400)
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Inconnu'] })).body).toMatchObject({ code: '23503' })
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Équipe Sud'] })).status).toBe(200)
+    const roles = (await call('admin', 'GET', '/api/admin/acces')).body.roles as Record<string, unknown>[]
+    expect(roles.find((r) => r.email === 'responsable@exemple.fr')).toMatchObject({ role: 'responsable', managers: ['Équipe Sud'] })
+    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: 'responsable' })
+  })
+
+  it('ouvre la carte sans code, sans les chiffres', async () => {
+    expect((await call('responsable', 'POST', '/api/carte', {})).body).toMatchObject({ ok: true, admin: false, objectifs: [] })
+  })
+
+  it('lit et saisit les chiffres de son équipe, pas des autres', async () => {
+    expect((await call('anon', 'GET', '/api/equipe')).status).toBe(401)
+    expect((await call('reader', 'GET', '/api/equipe')).status).toBe(403)
+    expect((await call('admin', 'GET', '/api/equipe')).status).toBe(403)
+
+    const objectifs = [{ structure: 'MD', annee: 2026, ca: 1500, objectif: 3000 }]
+    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(200)
+    const equipe = (await call('responsable', 'GET', '/api/equipe')).body
+    expect((equipe.commerciaux as { nom: string }[]).map((c) => c.nom)).toEqual(['Sud Un'])
+    expect(equipe.objectifs).toEqual([expect.objectContaining({ commercial_id: sud, ca: 1500, objectif: 3000 })])
+
+    expect((await call('responsable', 'PUT', `/api/equipe/${nord}/objectifs`, { objectifs })).status).toBe(403)
+    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs: 'nope' })).status).toBe(400)
+    expect((await call('responsable', 'PUT', '/api/equipe/pas-un-uuid/objectifs', { objectifs })).status).toBe(400)
+    expect((await call('anon', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(401)
+    expect((await call('responsable', 'POST', '/api/admin/commerciaux', { nom: 'Intrus' })).status).toBe(403)
+  })
+
+  it('redevenu sans rôle, il n\'a plus que le code', async () => {
+    expect((await call('admin', 'DELETE', '/api/admin/acces/responsable@exemple.fr')).status).toBe(200)
+    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: null })
+    expect((await call('responsable', 'GET', '/api/equipe')).status).toBe(403)
+  })
+})
+
+describe('routes inconnues', () => {
+  it('répondent 404 en JSON sous /api', async () => {
+    expect(await call('admin', 'GET', '/api/nulle-part')).toEqual({ status: 404, body: { error: 'Introuvable' } })
+  })
+})

@@ -3,7 +3,7 @@
 import { writeFileSync } from 'node:fs'
 import { ZONES } from '../src/lib/zones.ts'
 
-const OUT = new URL('../supabase/migrations/20261001090300_zones.sql', import.meta.url).pathname
+const OUT = new URL('../db/migrations/20261001090300_zones.sql', import.meta.url).pathname
 
 const q = (s: string) => `'${s.replaceAll("'", "''")}'`
 const rows = ZONES.map((z) => `  (${q(z.code)}, ${q(z.nom)}, ${q(z.type)}, ${q(z.region)})`)

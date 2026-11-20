@@ -1,0 +1,21 @@
+# Mises à jour proposées en pull request : la CI les vérifie, on fusionne puis on redéploie dans Dokploy.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Une seule PR pour les versions mineures et correctives ; une par paquet pour une version majeure
+      mineures:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
