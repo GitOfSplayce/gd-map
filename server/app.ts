@@ -7,13 +7,15 @@ import type { Db, Queryable, Visitor } from './db.ts'
 // L'API de la carte. Chaque route fait une requête SQL avec les droits du visiteur (server/db.ts) :
 // les règles RLS et les fonctions SQL, testées dans db/tests, décident de ce qui est permis. Les
 // routes /api/admin/* vérifient en plus le rôle admin, pour répondre 401 ou 403 plutôt qu'une erreur SQL.
+// Rôles (D-009) : la carte se lit avec le code ; seuls les admins et les responsables nommés dans
+// `acces` l'ouvrent par le portail.
 
 export interface SessionUser {
   id: string
   email: string
   name: string
   image: string | null
-  /** Une organisation de la personne a le droit d'usage `gd-map` sur le portail. */
+  /** Une organisation de la personne a le droit d'usage `gd-map` sur le portail (nécessaire, pas suffisant : D-009). */
   hasAccess: boolean
 }
 
@@ -135,15 +137,18 @@ export function createApp(deps: AppDependencies) {
   const one = async <T>(c: Context<Env>, sql: string, params: unknown[] = []) =>
     as(c, async (q) => (await q.query<{ r: T }>(sql, params)).rows[0]?.r as T)
 
-  /** Qui est connecté, et ce qu'il peut faire : lecteur (droit d'usage du portail) ou admin. */
+  /**
+   * Qui est connecté, et ce qu'il peut faire (D-009) : admin, responsable, ou rien. Sans rôle (ou sans
+   * droit d'usage sur le portail), la carte s'ouvre avec le code d'accès, comme pour tout le monde.
+   */
   app.get('/api/moi', async (c) => {
     const user = c.get('user')
     const portalUrl = deps.portalUrl ?? null
     if (!user) return c.json({ user: null, role: null, portalUrl })
-    const admin = await one<boolean>(c, 'select public.is_admin() as r')
+    const role = await one<'admin' | 'responsable' | null>(c, 'select public.map_role() as r')
     return c.json({
       user: { email: user.email, name: user.name, image: user.image },
-      role: admin ? 'admin' : user.hasAccess ? 'lecteur' : null,
+      role: role ?? null,
       portalUrl,
     })
   })
@@ -181,6 +186,27 @@ export function createApp(deps: AppDependencies) {
     const body = await jsonBody(c)
     const code = body.code == null ? null : text(body.code, 'code')
     return c.json(await one(c, 'select public.get_map_data($1) as r', [code]))
+  })
+
+  // ---------- Responsable : les chiffres de son équipe (D-009) ----------
+
+  // Connecté, sinon 401 ; le rôle de responsable et l'équipe, la base les vérifie (42501 → 403).
+  const signedIn = (c: Context<Env>) => {
+    if (!c.get('user')) throw new HttpError(401, 'Non connecté')
+  }
+
+  app.get('/api/equipe', async (c) => {
+    signedIn(c)
+    return c.json(await one(c, 'select public.get_equipe() as r'))
+  })
+
+  /** CA et objectifs d'un commercial de son équipe : seules les lignes envoyées changent. */
+  app.put('/api/equipe/:id/objectifs', async (c) => {
+    signedIn(c)
+    const body = await jsonBody(c)
+    if (!Array.isArray(body.objectifs)) throw new HttpError(400, 'Liste de CA et objectifs illisible')
+    await as(c, (q) => q.query('select public.save_objectifs_equipe($1::uuid, $2::jsonb)', [c.req.param('id'), JSON.stringify(body.objectifs)]))
+    return c.json({ ok: true })
   })
 
   app.use('/api/admin/*', async (c, next) => {
@@ -293,19 +319,25 @@ export function createApp(deps: AppDependencies) {
 
   app.get('/api/admin/acces', async (c) => c.json(await one(c, 'select public.list_acces() as r')))
 
-  /** Donne (ou change) le rôle d'une adresse. Son propre rôle ne se change pas (règle RLS). */
+  /**
+   * Donne (ou change) le rôle d'une adresse, avec le périmètre d'un responsable (ses managers). Son
+   * propre rôle ne se change pas (règle RLS).
+   */
   app.put('/api/admin/acces/:email', async (c) => {
     const body = await jsonBody(c)
     const role = text(body.role, 'role')
+    const managers = body.managers ?? []
+    if (!Array.isArray(managers) || !managers.every((m) => typeof m === 'string')) throw new HttpError(400, 'Liste de managers illisible')
+    if (role === 'responsable' && !managers.length) throw new HttpError(400, 'Choisissez au moins un manager pour un responsable')
     if (c.req.param('email').trim().toLowerCase() === c.get('user')?.email.toLowerCase()) {
       throw new HttpError(400, 'Vous ne pouvez pas changer votre propre rôle')
     }
     const rows = await as(c, async (q) => {
       const { rows } = await q.query<{ email: string }>(
-        `insert into public.acces (email, role, created_by) values (lower(btrim($1)), $2, public.current_email())
-         on conflict (email) do update set role = excluded.role
+        `insert into public.acces (email, role, managers, created_by) values (lower(btrim($1)), $2, $3::text[], public.current_email())
+         on conflict (email) do update set role = excluded.role, managers = excluded.managers
          returning email`,
-        [c.req.param('email'), role],
+        [c.req.param('email'), role, role === 'responsable' ? managers : []],
       )
       return rows
     })

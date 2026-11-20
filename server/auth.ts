@@ -73,7 +73,7 @@ export function createAuth(deps: AuthDependencies) {
         idpUserId: { type: 'string', required: false, input: true },
         /**
          * Une de ses organisations a le droit d'usage `gd-map` : relu à chaque connexion. Sans lui, la
-         * personne n'est ni lectrice ni admin, même avec un rôle dans `acces`.
+         * personne n'est ni admin ni responsable, même avec un rôle dans `acces` (D-009).
          */
         hasAccess: { type: 'boolean', required: false, defaultValue: false, input: true },
       },

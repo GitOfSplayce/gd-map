@@ -162,3 +162,31 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 
 - **Construction** : `npm ci`, build et tests prennent environ 1 Go de mémoire et un peu de processeur pendant une à deux minutes sur gdconnect-vps, à côté de la vitrine et de GD Connect. La carte tourne ensuite dans environ 120 Mo.
 - **CI GitHub** : elle reste pour les pull requests et pour Dependabot.
+
+## D-009 — La carte se lit avec le code ; le portail est réservé aux admins et aux responsables (2026-11-20)
+
+**Décision (validée par l'équipe).** Elle remplace le rôle « Lecteur » de D-002.
+
+- **Lire la carte** : tout le monde, avec le **code d'accès** (6 caractères au moins). Avoir un compte GD One ne donne plus la lecture sans code.
+- **Se connecter par le portail** sert seulement aux personnes **nommées dans la carte** (table `acces`, page *Paramètres*) :
+
+| Rôle | Droits |
+|---|---|
+| Admin (le patron, et qui il désigne) | tout : commerciaux, zones, managers, structures, import, code d'accès, rôles |
+| Responsable (responsable commercial, manager) | la carte sans code, et le **CA et les objectifs** des commerciaux de son équipe, rien d'autre |
+
+- **L'équipe d'un responsable** : les commerciaux dont le **Manager 1 ou le Manager 2** fait partie de son périmètre, une liste de managers choisie par un admin. Un manager qui a la même adresse e-mail que la personne est proposé d'office. Renommer ou fusionner un manager le suit dans les périmètres, le supprimer l'en retire.
+- **Pas d'organisation dédiée sur le portail.** Chacun reste dans l'organisation de son entité. Le portail continue de dire qui est la personne, et si son organisation a le droit d'usage `gd-map` : c'est nécessaire, mais plus suffisant. Qui, dans l'organisation, a un rôle se décide dans la carte.
+
+**Pourquoi.**
+
+- Dans une entité, tout le monde n'est pas commercial : le droit d'usage du portail, donné à toute une organisation, ouvrirait les chiffres et les coordonnées à des personnes qui n'ont pas à les voir.
+- Le code existe déjà, tout le monde le connaît ; il suffit pour lire.
+- Un rôle par personne, gardé dans gd-map, garde le portail générique (D-002) et suit les managers de la carte, que le portail ne connaît pas.
+
+**Conséquences.**
+
+- `has_map_access()` disparaît ; `map_role()` dit admin, responsable ou rien, et `get_map_data` n'ouvre la carte sans code qu'à un rôle.
+- Un responsable lit et écrit ses chiffres par `get_equipe()` et `save_objectifs_equipe()`, qui vérifient en base que chaque commercial est de son équipe. Il n'a aucun accès direct aux tables, ni aux fonctions d'admin. Sur la carte, il ne voit pas le CA ni la vue Performance (réservés aux admins, comme avant).
+- Pour qu'un responsable d'une autre entité puisse se connecter, l'organisation de son entité reçoit le droit d'usage `gd-map` sur le portail (Support → Organisations). Sans rôle dans la carte, ce droit ne donne rien de plus que le code.
+- Un compte venu par le portail sans rôle voit l'écran du code, avec un message qui le dit.

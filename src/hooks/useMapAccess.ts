@@ -31,7 +31,7 @@ const storage = {
 
 export type AccessStatus = 'checking' | 'locked' | 'loading' | 'ready'
 
-/** `signedIn` : connecté par le portail avec accès à la carte (lecteur ou admin), donc sans code. */
+/** `signedIn` : connecté par le portail avec un rôle dans la carte (admin ou responsable), donc sans code. */
 export function useMapAccess(session: { loading: boolean; signedIn: boolean }) {
   const [status, setStatus] = useState<AccessStatus>('checking')
   const [data, setData] = useState<MapData | null>(null)

@@ -62,8 +62,9 @@ export default function MapPage() {
       busy={access.status === 'loading'}
       onSubmit={access.submit}
       onPortal={() => signIn('/')}
-      // Connecté par le portail, mais sans droit d'usage de la carte : le code reste possible
+      // Connecté par le portail, mais sans rôle dans la carte : le code, comme tout le monde (D-009)
       deniedEmail={session.me.user && !role ? session.me.user.email : null}
+      onSignOut={leave}
     />
   )
 }
@@ -226,11 +227,17 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
                 <Icon name="settings" size={16} />
                 Admin
               </Link>
-            ) : role === 'lecteur' ? (
-              <button type="button" className="btn small" onClick={() => void leave()} title="Fermer la session de la carte">
-                <Icon name="logout" size={16} />
-                Déconnexion
-              </button>
+            ) : role === 'responsable' ? (
+              <>
+                <Link className="btn small" to="/admin">
+                  <Icon name="pencil" size={16} />
+                  Chiffres
+                </Link>
+                <button type="button" className="btn small ghost" onClick={() => void leave()} title="Fermer la session de la carte">
+                  <Icon name="logout" size={16} />
+                  <span className="hide-mobile">Déconnexion</span>
+                </button>
+              </>
             ) : (
               <button type="button" className="btn small" onClick={onLock} title="Oublier le code sur cet appareil">
                 <Icon name="logout" size={16} />

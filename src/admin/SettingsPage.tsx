@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { getAccessStatus, listAccess, removeRole, setAccessCode, setRole, type AccessStatus, type KnownUser, type RoleEntry } from '../lib/api'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { getAccessStatus, listAccess, removeRole, setAccessCode, setRole, type AccessStatus, type KnownUser, type Role, type RoleEntry } from '../lib/api'
 import Icon from '../components/Icon'
 import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
 import { KeySwatch } from '../components/Legend'
 import { setDefaultSharedMode } from '../lib/api'
 import { SHARED_MODES, type SharedMode } from '../lib/mapModel'
+import type { Manager } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
 
 const MIN_CODE = 6
@@ -83,19 +84,36 @@ function AccessCodeCard() {
   )
 }
 
-const ROLE_LABELS: Record<RoleEntry['role'], string> = { admin: 'Admin', responsable: 'Responsable' }
+const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', responsable: 'Responsable' }
+const ROLE_HINTS: Record<Role, string> = {
+  admin: 'gère tout : commerciaux, zones, chiffres, code d\'accès et rôles',
+  responsable: 'saisit le CA et les objectifs des commerciaux de ses managers, rien d\'autre',
+}
+
+interface RoleForm {
+  email: string
+  role: Role
+  managers: string[]
+  /** Modification d'un rôle existant (adresse figée). */
+  editing: boolean
+  /** Managers cochés à la main : on ne les remplace plus par la suggestion. */
+  touched: boolean
+}
+
+const EMPTY_FORM: RoleForm = { email: '', role: 'admin', managers: [], editing: false, touched: false }
 
 /**
- * Rôles de la carte (D-002). Toute personne dont l'organisation a accès à la carte sur le portail la
- * consulte sans code ; ici, on choisit qui l'administre. Les comptes eux-mêmes vivent sur le portail.
+ * Accès nominatifs (D-009). La carte se lit avec le code d'accès ; le portail GD One ne sert qu'aux
+ * personnes nommées ici. Les comptes eux-mêmes vivent sur le portail.
  */
-function RolesCard({ email }: { email: string }) {
+function RolesCard({ email, managers }: { email: string; managers: Manager[] }) {
   const confirm = useConfirm()
   const [state, setState] = useState<{ roles: RoleEntry[]; users: KnownUser[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [newEmail, setNewEmail] = useState('')
+  const [form, setForm] = useState<RoleForm>(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -126,22 +144,52 @@ function RolesCard({ email }: { email: string }) {
     }
   }
 
-  const add = async (e: FormEvent) => {
+  // Un manager qui a la même adresse e-mail est sans doute la personne : coché d'office pour un responsable
+  const suggested = (mail: string) => {
+    const target = mail.trim().toLowerCase()
+    return target ? managers.filter((m) => m.email?.toLowerCase() === target).map((m) => m.nom) : []
+  }
+
+  const edit = (next: Partial<RoleForm>) =>
+    setForm((f) => {
+      const merged = { ...f, ...next }
+      if (merged.role === 'responsable' && !merged.touched) merged.managers = suggested(merged.email)
+      return merged
+    })
+
+  const start = (next: RoleForm) => {
+    setForm(next)
+    setNotice(null)
+    setError(null)
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const toggleManager = (nom: string) =>
+    setForm((f) => ({ ...f, touched: true, managers: f.managers.includes(nom) ? f.managers.filter((m) => m !== nom) : [...f.managers, nom] }))
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    const target = newEmail.trim().toLowerCase()
-    const ok = await run(() => setRole(target, 'admin'), `${target} est admin : l'administration lui est ouverte dès sa connexion par le portail.`)
-    if (ok) setNewEmail('')
+    const target = form.email.trim().toLowerCase()
+    if (form.role === 'responsable' && !form.managers.length) return setError('Cochez au moins un manager : ses commerciaux forment l\'équipe du responsable.')
+    const success =
+      form.role === 'admin'
+        ? `${target} est admin : l'administration lui est ouverte dès sa connexion par le portail.`
+        : `${target} est responsable de ${form.managers.join(', ')} : la saisie de leurs chiffres lui est ouverte dès sa connexion par le portail.`
+    const ok = await run(() => setRole(target, form.role, form.managers), success)
+    if (ok) setForm(EMPTY_FORM)
   }
 
   const known = new Set(state?.roles.map((r) => r.email))
   const others = state?.users.filter((u) => !known.has(u.email)) ?? []
+  const managerNames = managers.map((m) => m.nom)
 
   return (
     <div className="card stack">
-      <h2>Administrateurs</h2>
+      <h2>Admins et responsables</h2>
       <p className="muted" style={{ margin: 0 }}>
-        Ils se connectent par le portail GD One. Les personnes dont l'organisation a accès à la carte sur le portail la consultent sans code ; ici, on choisit
-        celles qui l'administrent.
+        La carte se consulte avec le code d'accès. La connexion par le portail GD One ne sert qu'aux personnes nommées ici : les <strong>admins</strong>{' '}
+        gèrent tout ; un <strong>responsable</strong> saisit le CA et les objectifs des commerciaux de ses managers (Manager 1 ou Manager 2). Les autres
+        comptes du portail passent par le code, comme tout le monde.
       </p>
       {error && (
         <div className="alert error">
@@ -160,9 +208,9 @@ function RolesCard({ email }: { email: string }) {
         <table className="grid">
           <thead>
             <tr>
-              <th>E-mail</th>
+              <th>Personne</th>
               <th>Rôle</th>
-              <th>Depuis</th>
+              <th>Périmètre</th>
               <th>Dernière connexion</th>
               <th />
             </tr>
@@ -175,26 +223,45 @@ function RolesCard({ email }: { email: string }) {
                   {r.email} {r.email === email && <span className="badge">vous</span>}
                 </td>
                 <td>{ROLE_LABELS[r.role]}</td>
-                <td>{formatDate(r.created_at)}</td>
+                <td>
+                  {r.role === 'admin' ? (
+                    <span className="muted">toute la carte</span>
+                  ) : r.managers.length ? (
+                    r.managers.join(', ')
+                  ) : (
+                    <span className="badge warning">aucun manager</span>
+                  )}
+                </td>
                 <td>{r.last_sign_in_at ? formatDate(r.last_sign_in_at) : <span className="muted">pas encore venu</span>}</td>
                 <td>
                   {r.email !== email && (
-                    <button
-                      type="button"
-                      className="btn small danger"
-                      disabled={busy}
-                      onClick={() => {
-                        void confirm({
-                          title: `Retirer le rôle de ${r.email} ?`,
-                          message: 'Son compte reste sur le portail : il garde la lecture de la carte si son organisation y a droit.',
-                          confirmLabel: 'Retirer',
-                          danger: true,
-                        }).then((ok) => ok && run(() => removeRole(r.email), `${r.email} n'est plus ${ROLE_LABELS[r.role].toLowerCase()}.`))
-                      }}
-                    >
-                      <Icon name="trash" size={15} />
-                      Retirer
-                    </button>
+                    <div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn small"
+                        disabled={busy}
+                        onClick={() => start({ email: r.email, role: r.role, managers: r.managers, editing: true, touched: true })}
+                      >
+                        <Icon name="pencil" size={15} />
+                        Modifier
+                      </button>
+                      <button
+                        type="button"
+                        className="btn small danger"
+                        disabled={busy}
+                        onClick={() => {
+                          void confirm({
+                            title: `Retirer le rôle de ${r.email} ?`,
+                            message: 'Son compte reste sur le portail ; la carte lui reste ouverte avec le code d\'accès, comme à tout le monde.',
+                            confirmLabel: 'Retirer',
+                            danger: true,
+                          }).then((ok) => ok && run(() => removeRole(r.email), `${r.email} n'est plus ${ROLE_LABELS[r.role].toLowerCase()}.`))
+                        }}
+                      >
+                        <Icon name="trash" size={15} />
+                        Retirer
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -203,29 +270,80 @@ function RolesCard({ email }: { email: string }) {
         </table>
       </div>
 
-      <form className="stack" onSubmit={add} style={{ maxWidth: 520 }}>
-        <h3 style={{ margin: 0 }}>Ajouter un admin</h3>
+      <form ref={formRef} className="stack" onSubmit={submit} style={{ maxWidth: 680 }}>
+        <h3 style={{ margin: 0 }}>{form.editing ? `Modifier le rôle de ${form.email}` : 'Nommer une personne'}</h3>
         <label className="field">
           <span>E-mail de son compte GD One</span>
-          <div className="row" style={{ flexWrap: 'nowrap' }}>
-            <input className="input" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-            <button type="submit" className="btn primary" disabled={busy}>
-              <Icon name="plus" size={16} />
-              Ajouter
-            </button>
-          </div>
+          <input
+            className="input"
+            type="email"
+            required
+            readOnly={form.editing}
+            value={form.email}
+            onChange={(e) => edit({ email: e.target.value })}
+          />
         </label>
+        <div className="field">
+          <span>Rôle</span>
+          <div className="row">
+            <div className="seg" role="radiogroup" aria-label="Rôle">
+              {(['admin', 'responsable'] as const).map((r) => (
+                <button key={r} type="button" role="radio" aria-checked={form.role === r} aria-pressed={form.role === r} onClick={() => edit({ role: r })}>
+                  {ROLE_LABELS[r]}
+                </button>
+              ))}
+            </div>
+            <span className="muted small">{ROLE_HINTS[form.role]}</span>
+          </div>
+        </div>
+        {form.role === 'responsable' && (
+          <div className="field">
+            <span>Ses managers</span>
+            {managerNames.length ? (
+              <div className="row" style={{ gap: '6px 16px' }}>
+                {managers.map((m) => (
+                  <label key={m.nom} className="check">
+                    <input type="checkbox" checked={form.managers.includes(m.nom)} onChange={() => toggleManager(m.nom)} />
+                    <span>{m.nom}</span>
+                    {m.email && m.email.toLowerCase() === form.email.trim().toLowerCase() && <span className="badge">même adresse</span>}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="muted small" style={{ margin: 0 }}>
+                Aucun manager pour l'instant : créez-les dans l'onglet Managers.
+              </p>
+            )}
+            <p className="muted small" style={{ margin: 0 }}>
+              Son équipe : les commerciaux dont le Manager 1 ou le Manager 2 est coché. Un manager qui a la même adresse e-mail est coché d'office.
+            </p>
+          </div>
+        )}
+        <div className="row">
+          <button type="submit" className="btn primary" disabled={busy}>
+            <Icon name={form.editing ? 'save' : 'plus'} size={16} />
+            {form.editing ? 'Enregistrer' : 'Nommer'}
+          </button>
+          {(form.editing || form.email) && (
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => setForm(EMPTY_FORM)}>
+              Annuler
+            </button>
+          )}
+        </div>
       </form>
 
       {others.length > 0 && (
         <>
-          <h3 style={{ margin: 0 }}>Déjà venus par le portail</h3>
+          <h3 style={{ margin: 0 }}>Venus par le portail, sans rôle</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Ces comptes se sont déjà connectés : sans rôle, ils n'ont que le code d'accès. Pour en nommer un, sans retaper son adresse :
+          </p>
           <div className="table-wrap">
             <table className="grid">
               <thead>
                 <tr>
                   <th>Personne</th>
-                  <th>Accès à la carte</th>
+                  <th>Portail</th>
                   <th>Dernière connexion</th>
                   <th />
                 </tr>
@@ -236,12 +354,17 @@ function RolesCard({ email }: { email: string }) {
                     <td>
                       {u.name} · {u.email}
                     </td>
-                    <td>{u.has_access ? 'Lecture' : <span className="muted">aucun sur le portail</span>}</td>
+                    <td>{u.has_access ? 'droit d\'usage de la carte' : <span className="muted">sans droit d'usage : un rôle ne lui donnerait rien</span>}</td>
                     <td>{formatDate(u.last_sign_in_at)}</td>
                     <td>
-                      <button type="button" className="btn small" disabled={busy} onClick={() => void run(() => setRole(u.email, 'admin'), `${u.email} est admin.`)}>
+                      <button
+                        type="button"
+                        className="btn small"
+                        disabled={busy}
+                        onClick={() => start({ ...EMPTY_FORM, email: u.email, role: 'responsable', managers: suggested(u.email) })}
+                      >
                         <Icon name="key" size={15} />
-                        Nommer admin
+                        Nommer
                       </button>
                     </td>
                   </tr>
@@ -341,7 +464,7 @@ export default function SettingsPage({ email, portalUrl, data, reload }: { email
       <div className="stack" style={{ gap: 20 }}>
         <AccessCodeCard />
         <DisplayCard data={data} reload={reload} />
-        <RolesCard email={email} />
+        <RolesCard email={email} managers={data.managers} />
         <PortalAccountCard portalUrl={portalUrl} />
       </div>
     </>

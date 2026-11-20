@@ -11,11 +11,13 @@ interface Props {
   onSubmit: (code: string) => void
   /** Connexion par le portail GDCOM (GD One) : part vers le portail, ou échoue avec un message. */
   onPortal: () => Promise<void>
-  /** Connecté par le portail, mais sans accès à la carte : l'adresse, pour le dire. */
+  /** Connecté par le portail, mais sans rôle dans la carte (D-009) : l'adresse, pour le dire. */
   deniedEmail: string | null
+  /** Ferme la session de la carte, pour se connecter avec un autre compte. */
+  onSignOut: () => Promise<void>
 }
 
-export default function CodeGate({ error, busy, onSubmit, onPortal, deniedEmail }: Props) {
+export default function CodeGate({ error, busy, onSubmit, onPortal, deniedEmail, onSignOut }: Props) {
   const [code, setCode] = useState('')
   const [portalError, setPortalError] = useState<string | null>(() =>
     signInFailed() ? 'La connexion par le portail n\'a pas abouti. Réessayez, ou utilisez le code d\'accès.' : null,
@@ -72,10 +74,19 @@ export default function CodeGate({ error, busy, onSubmit, onPortal, deniedEmail 
 
       <div className="gate-or">ou</div>
       {deniedEmail ? (
-        <div className="alert error" role="alert">
-          <Icon name="alert" size={16} />
-          Le compte {deniedEmail} n'a pas accès à la carte sur le portail. Utilisez le code d'accès.
-        </div>
+        <>
+          <div className="alert warning" role="status">
+            <Icon name="alert" size={16} />
+            <span>
+              Le compte {deniedEmail} n'a pas de rôle sur la carte : utilisez le code d'accès. Pour saisir des chiffres ou administrer la carte, demandez un
+              rôle à un admin.
+            </span>
+          </div>
+          <button type="button" className="btn ghost" onClick={() => void onSignOut()}>
+            <Icon name="logout" size={16} />
+            Changer de compte
+          </button>
+        </>
       ) : (
         <>
           {portalError && (
@@ -88,7 +99,7 @@ export default function CodeGate({ error, busy, onSubmit, onPortal, deniedEmail 
             <Icon name={leaving ? 'refresh' : 'user'} size={16} className={leaving ? 'spin' : undefined} />
             {leaving ? 'Redirection…' : 'Se connecter avec GD One'}
           </button>
-          <p className="gate-note">Avec un compte du portail du groupe, sans code.</p>
+          <p className="gate-note">Pour les admins et les responsables nommés dans la carte.</p>
         </>
       )}
 

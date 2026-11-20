@@ -65,6 +65,12 @@ try {
         [admin.email, admin.created_at],
       )
     }
+    // `truncate` ne passe pas par les déclencheurs : un périmètre de responsable (D-009) qui citerait un
+    // manager absent de la copie en est retiré ici.
+    await to.query(
+      `update public.acces a set managers = coalesce(array(select m from unnest(a.managers) as m where exists (select 1 from public.managers where nom = m)), '{}')
+       where a.managers <> '{}'`,
+    )
     await to.query('delete from public.access_attempts')
     await to.query('commit')
 

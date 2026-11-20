@@ -14,6 +14,7 @@ const USERS: Record<string, SessionUser> = {
   admin: { id: '00000000-0000-0000-0000-00000000000a', email: 'admin@exemple.fr', name: 'Admin', image: null, hasAccess: true },
   reader: { id: '00000000-0000-0000-0000-00000000000b', email: 'lectrice@exemple.fr', name: 'Lectrice', image: null, hasAccess: true },
   outsider: { id: '00000000-0000-0000-0000-00000000000c', email: 'exterieur@exemple.fr', name: 'Extérieur', image: null, hasAccess: false },
+  responsable: { id: '00000000-0000-0000-0000-00000000000d', email: 'responsable@exemple.fr', name: 'Responsable', image: null, hasAccess: true },
 }
 
 let pglite: PGlite
@@ -88,7 +89,8 @@ describe('session', () => {
   it('dit qui est connecté et ce qu’il peut faire', async () => {
     expect((await call('anon', 'GET', '/api/moi')).body).toEqual({ user: null, role: null, portalUrl: 'https://portail.exemple.fr' })
     expect((await call('admin', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'admin@exemple.fr' }, role: 'admin' })
-    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ role: 'lecteur' })
+    // Le droit d'usage du portail ne suffit plus : sans rôle dans la carte, pas de rôle (D-009)
+    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'lectrice@exemple.fr' }, role: null })
     expect((await call('outsider', 'GET', '/api/moi')).body).toMatchObject({ user: { email: 'exterieur@exemple.fr' }, role: null })
   })
 
@@ -229,10 +231,11 @@ describe('code d’accès et lecture de la carte', () => {
     expect((await call('admin', 'GET', '/api/admin/code')).body).toMatchObject({ configured: true, updated_by: 'admin@exemple.fr' })
   })
 
-  it('ouvre la carte avec le code, ou sans code pour une lectrice venue par le portail', async () => {
+  it('ouvre la carte avec le code ; venu par le portail sans rôle, il faut aussi le code (D-009)', async () => {
     const visitor = (await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' })).body
     expect(visitor).toMatchObject({ ok: true, admin: false })
-    expect((await call('reader', 'POST', '/api/carte', {})).body).toMatchObject({ ok: true, admin: false })
+    expect((await call('reader', 'POST', '/api/carte', {})).body).toEqual({ ok: false, error: 'invalid_code' })
+    expect((await call('reader', 'POST', '/api/carte', { code: 'Carte-2026!' })).body).toMatchObject({ ok: true, admin: false })
     expect((await call('outsider', 'POST', '/api/carte', {})).body).toEqual({ ok: false, error: 'invalid_code' })
   })
 
@@ -263,12 +266,64 @@ describe('rôles', () => {
 
   it('un retrait vaut à la requête suivante', async () => {
     expect((await call('admin', 'DELETE', '/api/admin/acces/lectrice@exemple.fr')).status).toBe(200)
-    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ role: 'lecteur' })
+    expect((await call('reader', 'GET', '/api/moi')).body).toMatchObject({ role: null })
     expect((await call('reader', 'GET', '/api/admin/acces')).status).toBe(403)
   })
 
   it('refuse un rôle inconnu', async () => {
     expect((await call('admin', 'PUT', '/api/admin/acces/x@exemple.fr', { role: 'superadmin' })).body).toMatchObject({ code: '23514' })
+  })
+})
+
+describe('responsable (D-009)', () => {
+  let sud: string
+  let nord: string
+
+  beforeAll(async () => {
+    for (const [nom, manager1] of [['Sud Un', 'Équipe Sud'], ['Nord Un', 'Équipe Nord']]) {
+      const res = await call('admin', 'POST', '/api/admin/commerciaux', { nom, manager1, structures: ['MD'] })
+      if (nom === 'Sud Un') sud = res.body.id as string
+      else nord = res.body.id as string
+    }
+  })
+
+  it('un admin le nomme avec au moins un manager connu', async () => {
+    const url = '/api/admin/acces/responsable@exemple.fr'
+    expect((await call('admin', 'PUT', url, { role: 'responsable' })).status).toBe(400)
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: 'Équipe Sud' })).status).toBe(400)
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Inconnu'] })).body).toMatchObject({ code: '23503' })
+    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Équipe Sud'] })).status).toBe(200)
+    const roles = (await call('admin', 'GET', '/api/admin/acces')).body.roles as Record<string, unknown>[]
+    expect(roles.find((r) => r.email === 'responsable@exemple.fr')).toMatchObject({ role: 'responsable', managers: ['Équipe Sud'] })
+    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: 'responsable' })
+  })
+
+  it('ouvre la carte sans code, sans les chiffres', async () => {
+    expect((await call('responsable', 'POST', '/api/carte', {})).body).toMatchObject({ ok: true, admin: false, objectifs: [] })
+  })
+
+  it('lit et saisit les chiffres de son équipe, pas des autres', async () => {
+    expect((await call('anon', 'GET', '/api/equipe')).status).toBe(401)
+    expect((await call('reader', 'GET', '/api/equipe')).status).toBe(403)
+    expect((await call('admin', 'GET', '/api/equipe')).status).toBe(403)
+
+    const objectifs = [{ structure: 'MD', annee: 2026, ca: 1500, objectif: 3000 }]
+    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(200)
+    const equipe = (await call('responsable', 'GET', '/api/equipe')).body
+    expect((equipe.commerciaux as { nom: string }[]).map((c) => c.nom)).toEqual(['Sud Un'])
+    expect(equipe.objectifs).toEqual([expect.objectContaining({ commercial_id: sud, ca: 1500, objectif: 3000 })])
+
+    expect((await call('responsable', 'PUT', `/api/equipe/${nord}/objectifs`, { objectifs })).status).toBe(403)
+    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs: 'nope' })).status).toBe(400)
+    expect((await call('responsable', 'PUT', '/api/equipe/pas-un-uuid/objectifs', { objectifs })).status).toBe(400)
+    expect((await call('anon', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(401)
+    expect((await call('responsable', 'POST', '/api/admin/commerciaux', { nom: 'Intrus' })).status).toBe(403)
+  })
+
+  it('redevenu sans rôle, il n\'a plus que le code', async () => {
+    expect((await call('admin', 'DELETE', '/api/admin/acces/responsable@exemple.fr')).status).toBe(200)
+    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: null })
+    expect((await call('responsable', 'GET', '/api/equipe')).status).toBe(403)
   })
 })
 

@@ -1,6 +1,6 @@
 # Mise en service sur Dokploy et bascule depuis Supabase
 
-Ce guide suit l'ordre à respecter. Les choix qui le justifient sont dans [DECISIONS.md](DECISIONS.md) (D-001 à D-008).
+Ce guide suit l'ordre à respecter. Les choix qui le justifient sont dans [DECISIONS.md](DECISIONS.md) (D-001 à D-009).
 
 La carte part d'abord sur le VPS **gdconnect-vps**, par le Dokploy central (D-008). Le serveur interne reste la cible : le passage se fera plus tard (annexe en fin de guide).
 
@@ -33,7 +33,7 @@ Pas de Cloudflare devant, et on n'en ajoute pas (D-008).
    - Type : **web**, **confidentiel**.
    - Adresse de retour : `https://carte.gdone.fr/api/auth/callback/gdcom`.
    - Noter l'**identifiant** et le **secret**. Le secret n'est affiché qu'une fois.
-4. Les membres de l'organisation GDCOM ont l'accès d'office. Une **autre** organisation du groupe qui doit voir la carte reçoit le droit d'usage `gd-map` (Support → Organisations).
+4. Les membres de l'organisation GDCOM ont le droit d'usage d'office. Une **autre** organisation du groupe dont un membre sera admin ou responsable reçoit le droit d'usage `gd-map` (Support → Organisations). Ce droit ne donne rien d'autre : la lecture passe par le code, et les rôles se donnent dans la carte (D-009).
 
 ## 3. Dokploy : la base
 
@@ -97,6 +97,7 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
    - l'admin montre les mêmes commerciaux ;
    - un export Excel est identique à celui de l'ancien site.
 6. **Restauration éprouvée** (D-006) : restaurer la dernière sauvegarde S3 dans une base de test et y relancer la carte. Une sauvegarde jamais restaurée n'est pas une sauvegarde.
+7. **Rôles** (D-009), dans *Paramètres → Admins et responsables* : nommer le patron **admin**, puis chaque **responsable** avec ses managers. Leur organisation doit avoir le droit d'usage `gd-map` sur le portail (étape 2).
 
 ## 6. Contrôles de sécurité, depuis l'extérieur
 
@@ -110,7 +111,7 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
   ```
 
   Le onzième essai, même avec le bon code, doit répondre `too_many_attempts` pendant un quart d'heure, depuis cette connexion seulement.
-- Un compte GD One sans droit d'usage voit « n'a pas accès à la carte » et peut encore utiliser le code.
+- Un compte GD One sans rôle dans la carte voit « n'a pas de rôle sur la carte » et peut encore utiliser le code (D-009).
 
 ## 7. Bascule
 

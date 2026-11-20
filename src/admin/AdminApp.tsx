@@ -8,6 +8,7 @@ import { fetchMapData, MAP_DATA_ERRORS } from '../lib/api'
 import { signIn, signInFailed, signOut } from '../lib/session'
 import type { MapData } from '../lib/types'
 import CommerciauxPage from './CommerciauxPage'
+import EquipePage from './EquipePage'
 import ImportExportPage from './ImportExportPage'
 import ManagersPage from './ManagersPage'
 import SynthesePage from './SynthesePage'
@@ -38,7 +39,8 @@ function PortalLogin() {
     <GateLayout title="Espace admin" subtitle="Carte commerciale">
       <div className="stack">
         <p className="gate-note" style={{ marginTop: 0 }}>
-          La connexion passe par le portail du groupe : mot de passe, passkey et double authentification s'y gèrent.
+          Pour les admins et les responsables nommés dans la carte. La connexion passe par le portail du groupe : mot de passe, passkey et
+          double authentification s'y gèrent.
         </p>
         {error && (
           <div className="alert error" role="alert">
@@ -147,17 +149,53 @@ function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | 
   )
 }
 
+/** Responsable (D-009) : une seule page, les chiffres de son équipe. */
+function ResponsableLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
+  return (
+    <div className="admin-shell">
+      <AppHeader
+        subtitle="Chiffres de l'équipe"
+        home="/admin"
+        actions={
+          <>
+            <Link className="btn small" to="/">
+              <Icon name="map" size={16} />
+              Voir la carte
+            </Link>
+            {portalUrl && (
+              <a className="btn small ghost" href={`${portalUrl}/compte/securite`} target="_blank" rel="noopener noreferrer" title="Mon compte GD One">
+                <Icon name="lock" size={16} />
+                <span className="hide-below-1600">Mon compte</span>
+              </a>
+            )}
+            <UserBadge email={email} />
+            <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
+              <Icon name="logout" size={16} />
+              <span className="hide-below-1600">Déconnexion</span>
+            </button>
+          </>
+        }
+      />
+      <main className="admin-main">
+        <EquipePage />
+      </main>
+    </div>
+  )
+}
+
 export default function AdminApp() {
   const { loading, me } = useSession()
 
   if (loading) return <div className="map-empty">Chargement…</div>
   if (!me.user) return <PortalLogin />
+  if (me.role === 'responsable') return <ResponsableLayout email={me.user.email} portalUrl={me.portalUrl} />
   if (me.role !== 'admin') {
     return (
       <GateLayout title="Accès refusé">
         <div className="stack">
           <p style={{ margin: 0, textAlign: 'center' }}>
-            Le compte <strong>{me.user.email}</strong> n'est pas administrateur de la carte.
+            Le compte <strong>{me.user.email}</strong> n'a pas de rôle sur la carte. Un admin peut le nommer admin ou responsable ; la carte
+            reste ouverte à tous avec le code d'accès.
           </p>
           <button type="button" className="btn" onClick={() => void leave()}>
             <Icon name="logout" size={16} />

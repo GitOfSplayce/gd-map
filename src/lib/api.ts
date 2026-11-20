@@ -1,5 +1,5 @@
 import type { StructureDef } from './structures'
-import type { CommercialPayload, DisplaySettings, Manager, MapData } from './types'
+import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData, Objectif } from './types'
 
 // Appels à l'API de la carte (server/app.ts), sur la même origine que le site : le cookie de session
 // part de lui-même. Les droits sont vérifiés côté serveur et en base, jamais ici.
@@ -201,7 +201,28 @@ export async function setAccessCode(code: string): Promise<void> {
   await guarded(() => api('PUT', '/admin/code', { code }))
 }
 
-// ---------- Rôles (D-002) ----------
+// ---------- Responsable : les chiffres de son équipe (D-009) ----------
+
+export interface Equipe {
+  /** Les managers de son périmètre : leurs commerciaux (Manager 1 ou 2) forment l'équipe. */
+  managers: string[]
+  commerciaux: Pick<Commercial, 'id' | 'nom' | 'statut' | 'manager1' | 'manager2' | 'couleur' | 'actif' | 'structures'>[]
+  objectifs: Objectif[]
+  structures: StructureDef[]
+}
+
+export async function fetchEquipe(): Promise<Equipe> {
+  if (DEMO) return { managers: [], commerciaux: [], objectifs: [], structures: [] }
+  return guarded(() => api<Equipe>('GET', '/equipe'))
+}
+
+/** CA et objectifs d'un commercial de l'équipe : seules les lignes envoyées changent (vides : effacées). */
+export async function saveObjectifsEquipe(id: string, objectifs: Omit<Objectif, 'commercial_id'>[]): Promise<void> {
+  if (DEMO) throw new Error('Indisponible en mode démo.')
+  await guarded(() => api('PUT', `/equipe/${seg(id)}/objectifs`, { objectifs }))
+}
+
+// ---------- Rôles (D-002, D-009) ----------
 
 export type Role = 'admin' | 'responsable'
 
@@ -234,10 +255,11 @@ export async function listAccess(): Promise<{ roles: RoleEntry[]; users: KnownUs
   return guarded(() => api('GET', '/admin/acces'))
 }
 
-export async function setRole(email: string, role: Role): Promise<void> {
+/** Donne ou change un rôle ; `managers` : le périmètre d'un responsable (au moins un). */
+export async function setRole(email: string, role: Role, managers: string[] = []): Promise<void> {
   if (DEMO) throw new Error('Indisponible en mode démo.')
   await guarded(
-    () => api('PUT', `/admin/acces/${seg(email.trim().toLowerCase())}`, { role }),
+    () => api('PUT', `/admin/acces/${seg(email.trim().toLowerCase())}`, { role, managers: role === 'responsable' ? managers : [] }),
     (error) => {
       if (error instanceof ApiError && error.code === '23514') throw new Error('Adresse e-mail illisible.')
       fail(error)
