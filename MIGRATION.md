@@ -97,6 +97,14 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
    - l'admin montre les mêmes commerciaux ;
    - un export Excel est identique à celui de l'ancien site.
 6. **Restauration éprouvée** (D-006) : restaurer la dernière sauvegarde S3 dans une base de test et y relancer la carte. Une sauvegarde jamais restaurée n'est pas une sauvegarde.
+   - Une sauvegarde ne contient pas les rôles de Postgres. Sur une base **neuve**, les créer d'abord, dans le terminal de la base :
+
+     ```sh
+     psql -U gdmap -d gd_map -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role postgres nologin;"
+     ```
+
+   - Puis, onglet **Backups** de cette base → **Restore Backup** : destination OVH, fichier `carte-commerciale-db-…/carte-commerciale/<date>.sql.gz`, base `gd_map`.
+   - Fait le 2026-11-20 dans une base jetable : mêmes nombres de lignes, 15 migrations, code d'accès présent, et la carte répond à un visiteur anonyme.
 7. **Rôles** (D-009), dans *Paramètres → Admins et responsables* : nommer le patron **admin**, puis chaque **responsable** avec ses managers. Leur organisation doit avoir le droit d'usage `gd-map` sur le portail (étape 2).
 
 ## 6. Contrôles de sécurité, depuis l'extérieur
@@ -148,7 +156,7 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
    - L'IP publique doit être **fixe**.
 2. **Routes internes** : depuis l'extérieur, `curl -H "Host: tikko.gdcommunication.local" http://<IP publique>` ne doit **pas** afficher Tikko. Sinon, ajouter à son routeur un middleware Traefik `ipAllowList` limité au réseau du bureau.
 3. **Conseillé** : placer le serveur dans un réseau séparé des postes (VLAN ou DMZ).
-4. **Dokploy interne** : créer la base et l'application comme aux étapes 3 et 4, puis y restaurer la dernière sauvegarde S3 de `gd-map-db`.
+4. **Dokploy interne** : créer la base comme à l'étape 3, y créer les rôles (étape 5.6), restaurer la dernière sauvegarde S3, puis créer l'application comme à l'étape 4.
 5. **DNS** : l'enregistrement `carte` pointe vers l'IP publique du bureau. Dans le DNS interne, `carte.gdone.fr` pointe vers `10.10.1.14`.
 6. Vérifier (étapes 5 et 6), puis arrêter l'application sur gdconnect-vps.
 
