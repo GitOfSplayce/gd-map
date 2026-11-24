@@ -102,6 +102,20 @@ interface RoleForm {
 
 const EMPTY_FORM: RoleForm = { email: '', role: 'admin', managers: [], editing: false, touched: false }
 
+/** Nom et adresse sur deux lignes ; l'adresse seule tant que le portail n'a pas transmis le nom. */
+function Person({ name, email, self = false }: { name: string | null; email: string; self?: boolean }) {
+  return (
+    <div className="who">
+      <div>
+        <div className="who-name">
+          {name || email} {self && <span className="badge">vous</span>}
+        </div>
+        {name && <div className="who-sub">{email}</div>}
+      </div>
+    </div>
+  )
+}
+
 /**
  * Accès nominatifs (D-009). La carte se lit avec le code d'accès ; le portail GD One ne sert qu'aux
  * personnes nommées ici. Les comptes eux-mêmes vivent sur le portail.
@@ -205,37 +219,38 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
       )}
 
       <div className="table-wrap">
-        <table className="grid">
+        <table className="grid list">
           <thead>
             <tr>
               <th>Personne</th>
               <th>Rôle</th>
               <th>Périmètre</th>
               <th>Dernière connexion</th>
-              <th />
+              <th className="col-actions">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {state?.roles.map((r) => (
               <tr key={r.email}>
                 <td>
-                  {r.name ? `${r.name} · ` : ''}
-                  {r.email} {r.email === email && <span className="badge">vous</span>}
+                  <Person name={r.name} email={r.email} self={r.email === email} />
                 </td>
                 <td>{ROLE_LABELS[r.role]}</td>
                 <td>
                   {r.role === 'admin' ? (
-                    <span className="muted">toute la carte</span>
+                    <span className="muted">Toute la carte</span>
                   ) : r.managers.length ? (
                     r.managers.join(', ')
                   ) : (
                     <span className="badge warning">aucun manager</span>
                   )}
                 </td>
-                <td>{r.last_sign_in_at ? formatDate(r.last_sign_in_at) : <span className="muted">pas encore venu</span>}</td>
-                <td>
+                <td className="nowrap">{r.last_sign_in_at ? formatDate(r.last_sign_in_at) : <span className="muted">Jamais</span>}</td>
+                <td className="col-actions">
                   {r.email !== email && (
-                    <div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}>
+                    <div className="row" style={{ flexWrap: 'nowrap', justifyContent: 'flex-end', gap: 6 }}>
                       <button
                         type="button"
                         className="btn small"
@@ -270,7 +285,7 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
         </table>
       </div>
 
-      <form ref={formRef} className="stack" onSubmit={submit} style={{ maxWidth: 680 }}>
+      <form ref={formRef} className="stack" onSubmit={submit} style={{ maxWidth: 680, marginTop: 12 }}>
         <h3 style={{ margin: 0 }}>{form.editing ? `Modifier le rôle de ${form.email}` : 'Nommer une personne'}</h3>
         <label className="field">
           <span>E-mail de son compte GD One</span>
@@ -334,29 +349,31 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
 
       {others.length > 0 && (
         <>
-          <h3 style={{ margin: 0 }}>Venus par le portail, sans rôle</h3>
+          <h3 style={{ margin: '12px 0 0' }}>Venus par le portail, sans rôle</h3>
           <p className="muted small" style={{ margin: 0 }}>
             Ces comptes se sont déjà connectés : sans rôle, ils n'ont que le code d'accès. Pour en nommer un, sans retaper son adresse :
           </p>
           <div className="table-wrap">
-            <table className="grid">
+            <table className="grid list">
               <thead>
                 <tr>
                   <th>Personne</th>
                   <th>Portail</th>
                   <th>Dernière connexion</th>
-                  <th />
+                  <th className="col-actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {others.map((u) => (
                   <tr key={u.email}>
                     <td>
-                      {u.name} · {u.email}
+                      <Person name={u.name} email={u.email} />
                     </td>
-                    <td>{u.has_access ? 'droit d\'usage de la carte' : <span className="muted">sans droit d'usage : un rôle ne lui donnerait rien</span>}</td>
-                    <td>{formatDate(u.last_sign_in_at)}</td>
-                    <td>
+                    <td>{u.has_access ? 'Droit d\'usage de la carte' : <span className="muted">Sans droit d'usage : un rôle ne lui donnerait rien</span>}</td>
+                    <td className="nowrap">{formatDate(u.last_sign_in_at)}</td>
+                    <td className="col-actions">
                       <button
                         type="button"
                         className="btn small"

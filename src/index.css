@@ -896,6 +896,8 @@ table.grid tr.details td { background: var(--surface-2); }
 
 /* Liste des commerciaux : tableau compact, édition dans un panneau latéral */
 table.grid.list td { vertical-align: middle; }
+/* Le cadre (.table-wrap) ferme déjà le tableau */
+table.grid.list > tbody:last-child > tr:last-child > td { border-bottom: 0; }
 table.grid.list tr.clickable { cursor: pointer; transition: background 0.12s; }
 table.grid.list tr.clickable:hover td { background: var(--azurin-50); }
 table.grid.list tr.clickable:focus-visible { outline: 2px solid var(--saphir); outline-offset: -2px; }
