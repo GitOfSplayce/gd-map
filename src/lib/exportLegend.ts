@@ -224,6 +224,83 @@ export function packColumns(heights: readonly (readonly number[])[], height: num
   return { columns, used }
 }
 
+/** Marges et tailles de la page, en points. */
+export interface PageSizes extends ColumnSizes {
+  pad: number
+  header: number
+  gutter: number
+  column: number
+}
+
+export interface PageLayout {
+  columns: Placed[][]
+  /** Gauche de chaque colonne, et haut de la légende. */
+  xs: number[]
+  top: number
+  mapScale: number
+  width: number
+  height: number
+}
+
+const MAP_SCALES = [1, 1.15, 1.3, 1.5]
+/** La légende ne passe sous la carte que si le texte y gagne nettement. */
+const UNDER_GAIN = 1.18
+
+/** Grossissement du texte une fois l'image posée sur une feuille A4, en long ou en large. */
+const readability = (w: number, h: number) => Math.max(Math.min(297 / w, 210 / h), Math.min(210 / w, 297 / h))
+
+/**
+ * Place la carte et sa légende : à côté, en colonnes de plus en plus longues, ou dessous quand elle est longue.
+ * De toutes ces pages, celle où le texte se lit le mieux, avec une préférence pour la légende à côté.
+ */
+export function layoutPage(map: { w: number; h: number }, heights: readonly (readonly number[])[], s: PageSizes): PageLayout {
+  const { pad, header, gutter, column } = s
+  if (!heights.some((list) => list.length)) {
+    return { columns: [], xs: [], top: header, mapScale: 1, width: map.w + pad * 2, height: header + map.h + pad }
+  }
+  const beside: PageLayout[] = []
+  const shortest = Math.max(map.h, 560)
+  for (let tall = shortest; ; tall += 12) {
+    const { columns, used } = packColumns(heights, tall, s)
+    const mapScale = Math.max(1, Math.min(MAP_SCALES[MAP_SCALES.length - 1], tall / map.h))
+    const x = pad + map.w * mapScale + gutter
+    beside.push({
+      columns,
+      xs: columns.map((_, c) => x + c * (column + gutter)),
+      top: header,
+      mapScale,
+      width: x + columns.length * (column + gutter) - gutter + pad,
+      height: header + Math.max(map.h * mapScale, used) + pad,
+    })
+    if (columns.length <= 1 || tall > shortest * 3) break
+  }
+
+  const below: PageLayout[] = []
+  for (const mapScale of MAP_SCALES) {
+    const inner = map.w * mapScale
+    const count = Math.floor((inner + gutter) / (column + gutter))
+    if (count < 2) continue
+    let packed = packColumns(heights, 0, s)
+    for (let tall = 40; packed.columns.length > count; tall += 8) packed = packColumns(heights, tall, s)
+    // Les colonnes se répartissent sur la largeur de la carte
+    const step = packed.columns.length > 1 ? Math.min((inner - column) / (count - 1), column * 1.6) : 0
+    below.push({
+      columns: packed.columns,
+      xs: packed.columns.map((_, c) => pad + c * step),
+      top: header + map.h * mapScale + gutter,
+      mapScale,
+      width: inner + pad * 2,
+      height: header + map.h * mapScale + gutter + packed.used + pad,
+    })
+  }
+
+  const best = (list: PageLayout[]) => list.reduce((a, b) => (readability(b.width, b.height) > readability(a.width, a.height) ? b : a))
+  const side = best(beside)
+  if (!below.length) return side
+  const under = best(below)
+  return readability(under.width, under.height) > readability(side.width, side.height) * UNDER_GAIN ? under : side
+}
+
 /** Passe à la ligne entre deux morceaux, jamais au milieu ; `width` d'un morceau donnée par `measure`. */
 export function wrapItems<T>(items: readonly T[], max: number, measure: (item: T) => number, space: number): T[][] {
   const lines: T[][] = []

@@ -1091,6 +1091,9 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+  /* Sa police à lui : il ne prend ni la taille ni le gris du texte qui l'entoure */
+  color: var(--text);
+  font-size: 1rem;
   text-align: left;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -1099,7 +1102,8 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .select-btn.open,
 .select-btn:focus-visible { border-color: var(--saphir); box-shadow: 0 0 0 3px var(--saphir-100); outline: none; }
 .select-btn.auto { width: auto; min-width: 170px; }
-.select-btn.year-select { min-width: 96px; min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
+.select-btn.year-select { min-width: 96px; }
+.toolbar .select-btn.year-select { min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
 .select-value { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .select-value.placeholder { color: #98a4b5; }
 .select-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1374,7 +1378,7 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 }
 .user-badge-name { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; }
 .user-badge-initials { display: none; }
-@media (max-width: 1599px) {
+@media (max-width: 1759px) {
   .user-badge { justify-content: center; width: 30px; height: 30px; padding: 0; }
   .user-badge-icon,
   .user-badge-name { display: none; }
@@ -1388,9 +1392,9 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   .admin-shell .topbar { flex-wrap: wrap; }
   .admin-shell .topbar .tabs { order: 3; width: 100%; }
 }
-@media (max-width: 1599px) {
+@media (max-width: 1759px) {
   .admin-shell .topbar .tabs a { padding-left: 10px; padding-right: 10px; }
-  .hide-below-1600 { display: none; }
+  .hide-below-1760 { display: none; }
 }
 /* Logo réduit au symbole pour laisser « Voir la carte » en entier */
 @media (max-width: 1439px) {

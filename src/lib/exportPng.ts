@@ -1,6 +1,6 @@
 // Export PNG : la carte (SVG sérialisé) avec un titre et la légende, dessinés sur un canvas.
 import { BRAND } from './colors'
-import { packColumns, wrapItems, type LegendEntry, type LegendSection, type Placed, type Segment, type Swatch, type ZoneToken } from './exportLegend'
+import { layoutPage, wrapItems, type LegendEntry, type LegendSection, type Placed, type Segment, type Swatch, type ZoneToken } from './exportLegend'
 import { COUVERTURE_OPACITY } from './mapModel'
 
 interface ExportOptions {
@@ -34,11 +34,6 @@ const TEXT_X = SWATCH + 10
 /** Titre de section : texte, trait jaune, puis de l'air avant la première ligne. */
 const SIZES = { title: 36, gap: 22 }
 const LINES = { label: 16, detail: 15, zone: 15.5 }
-/** Au-delà, l'image devient une bande : les colonnes s'allongent et la carte grandit. */
-const MAX_RATIO = 2.05
-/** Une colonne peut s'allonger un peu pour éviter d'en ouvrir une autre pour quelques lignes. */
-const STRETCH = 1.25
-const MAX_MAP_SCALE = 1.5
 
 export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend, filename }: ExportOptions) {
   const w = svg.width.baseVal.value
@@ -52,26 +47,7 @@ export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend
   const entries = legend.map((s) => s.entries.map((e) => measureEntry(ctx, e, colW)))
   const heights = entries.map((list) => list.map((e) => e.height))
 
-  // La légende à côté de la carte ; si elle ferait une image trop large, des colonnes plus longues
-  const place = (column: number) => {
-    const { columns, used } = packColumns(heights, column, SIZES)
-    const scale = Math.max(1, Math.min(MAX_MAP_SCALE, column / h))
-    const count = heights.length ? columns.length : 0
-    const width = PAD * 2 + w * scale + (count ? GUTTER + count * colW + (count - 1) * GUTTER : 0)
-    return { columns, scale, count, width, height: HEADER + Math.max(h * scale, used) + PAD }
-  }
-  const shortest = Math.max(h, 560)
-  let layout = place(shortest)
-  for (let column = shortest; layout.count > 1 && layout.width / layout.height > MAX_RATIO && column < shortest * 3; column += 24) layout = place(column)
-  const tallest = Math.max(shortest, layout.height - HEADER - PAD) * STRETCH
-  for (let column = shortest; layout.count > 1 && column <= tallest; column += 12) {
-    const fewer = place(column)
-    if (fewer.count < layout.count) {
-      layout = fewer
-      break
-    }
-  }
-  const { columns, scale: mapScale, count, width, height } = layout
+  const { columns, xs, top, mapScale, width, height } = layoutPage({ w, h }, heights, { ...SIZES, pad: PAD, header: HEADER, gutter: GUTTER, column: colW })
   const [mapW, mapH] = [w * mapScale, h * mapScale]
 
   // Deux pixels par point, dans la limite des navigateurs mobiles (16 millions de pixels)
@@ -99,12 +75,7 @@ export async function exportMapPng(svg: SVGSVGElement, { title, subtitle, legend
   ctx.lineWidth = 1
   ctx.stroke()
 
-  if (count) {
-    columns.forEach((rows, c) => {
-      const x = PAD + mapW + GUTTER + c * (colW + GUTTER)
-      rows.forEach((row) => drawRow(ctx, row, x, HEADER + row.y, colW, legend, entries))
-    })
-  }
+  columns.forEach((rows, c) => rows.forEach((row) => drawRow(ctx, row, xs[c], top + row.y, colW, legend, entries)))
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Export PNG impossible')

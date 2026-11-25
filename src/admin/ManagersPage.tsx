@@ -4,6 +4,7 @@ import Icon from '../components/Icon'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import { MissingContact } from '../components/ContactLinks'
 import MultiSelect from '../components/MultiSelect'
+import NameInput from '../components/NameInput'
 import Select from '../components/Select'
 import { useConfirm } from '../hooks/useConfirm'
 import { createManager, deleteManager, listAccess, renameManager, setManagerColor, updateManager, type KnownUser, type RoleEntry } from '../lib/api'
@@ -175,7 +176,7 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
       <div className="toolbar-row">
         {adding ? (
           <form className="row" onSubmit={add}>
-            <input className="input" style={{ width: 240 }} autoFocus placeholder="Nom du manager" value={addName} onChange={(e) => setAddName(e.target.value)} />
+            <NameInput style={{ width: 240 }} autoFocus placeholder="NOM Prénom du manager" value={addName} onChange={setAddName} />
             <button type="submit" className="btn primary" disabled={busy || !addName.trim()}>
               <Icon name="check" size={16} />
               Ajouter
@@ -401,7 +402,7 @@ function ManagerDrawer({ manager: m, color, structures, accounts, adminEmails, c
               <div className="form-grid">
                 <label className="field span-2">
                   <span>Nom (renommer met à jour ses commerciaux)</span>
-                  <input className="input" required value={form.nom} onChange={(e) => set({ nom: e.target.value })} />
+                  <NameInput required value={form.nom} onChange={(nom) => set({ nom })} />
                 </label>
                 <div className="field">
                   <span>Téléphone</span>

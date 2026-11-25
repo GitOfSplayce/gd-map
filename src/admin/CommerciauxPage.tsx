@@ -3,6 +3,7 @@ import ColorPicker from '../components/ColorPicker'
 import { MissingContact } from '../components/ContactLinks'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import Icon from '../components/Icon'
+import NameInput from '../components/NameInput'
 import SearchInput from '../components/SearchInput'
 import Sliding from '../components/Sliding'
 import Select from '../components/Select'
@@ -244,8 +245,8 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
           }
         />
         <span className="grow" />
-        <div className="row small muted">
-          Trier par
+        <div className="row">
+          <span className="muted small">Trier par</span>
           <Select
             className="auto"
             ariaLabel="Trier par"
@@ -505,7 +506,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
               <div className="form-grid">
                 <label className="field span-2">
                   <span>Nom *</span>
-                  <input className="input" value={d.nom} onChange={(e) => set({ nom: e.target.value })} autoFocus={!d.id} required />
+                  <NameInput value={d.nom} onChange={(nom) => set({ nom })} autoFocus={!d.id} required />
                 </label>
                 <div className="field">
                   <span>Statut</span>
