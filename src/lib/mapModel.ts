@@ -1,6 +1,6 @@
 // Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, zones partagées, couverture et légende.
 import { managerColors } from './colors'
-import { activeManagers, managerLabel, type ManagerField } from './managers'
+import { activeManagers, fichesOf, managerLabel, teamManager, type ManagerField } from './managers'
 import { isARecruter, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, type Vacancy } from './recrutement'
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
 import { inStructureOrder, structureCodes, type StructureDef } from './structures'
@@ -65,7 +65,7 @@ export interface LegendItem {
   perf?: Perf
   /** Départements à recruter : regroupés à part dans la légende et l'export PNG. */
   group?: 'a-recruter'
-  /** Libellé sous le titre du groupe (« Centre » pour « À recruter – Centre »). */
+  /** Libellé court, sous le titre « À recruter » (« Centre » pour « À recruter – Centre »). */
   shortLabel?: string
 }
 
@@ -77,7 +77,18 @@ export function aRecruterShortLabel(nom: string): string {
   return rest || nom
 }
 
-/** Clé de légende d'un département à recruter : son secteur, ou sa priorité. */
+/** Un groupe de départements à recruter : entouré et nommé sur la carte. */
+export interface MapGroup {
+  key: string
+  label: string
+  color: string
+  codes: string[]
+}
+
+/** Contour et nom d'un groupe sans priorité : plus foncé que ses hachures, pour se lire dessus. */
+export const groupColor = (p: Priorite | null) => (p === null ? '#4b5869' : prioriteColor(p))
+
+/** Clé de légende d'un département à recruter : son groupe, ou sa priorité. */
 const sectorKey = (structure: Structure, secteur: string) => `r:${structure}|${secteur}`
 const priorityKey = (p: Priorite | null) => `r:p${p ?? 0}`
 
@@ -195,6 +206,8 @@ export interface MapModel {
   /** Les managers actifs, et leur nom à l'écran (« Manager » quand il n'en reste qu'un). */
   activeManagers: ManagerField[]
   managerLabel: (field: ManagerField) => string
+  /** Groupes de départements à recruter, à entourer sur la carte. */
+  groups: MapGroup[]
   /** Ce que chaque structure de l'onglet a à recruter dans une zone (sans tenir compte des filtres). */
   vacanciesOf: (code: string) => Vacancy[]
   statuts: string[]
@@ -218,8 +231,11 @@ export function buildMapModel(
   const active = data.commerciaux.filter((c) => c.actif)
   const activeFields = activeManagers(data.settings)
 
-  const m1 = [...new Set(active.map((c) => c.manager1 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
-  const m2 = [...new Set(active.map((c) => c.manager2 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
+  // La fiche d'un manager compte dans sa propre équipe (D-013)
+  const fiches = fichesOf(data.managers)
+  const teamOf = (c: Commercial, field: ManagerField) => teamManager(c, field, fiches) || NO_MANAGER
+  const m1 = [...new Set(active.map((c) => teamOf(c, 'manager1')))].sort((a, b) => a.localeCompare(b, 'fr'))
+  const m2 = [...new Set(active.map((c) => teamOf(c, 'manager2')))].sort((a, b) => a.localeCompare(b, 'fr'))
   const statuts = [...new Set(active.map((c) => c.statut || '(sans statut)'))].sort((a, b) => a.localeCompare(b, 'fr'))
   // « (sans manager) » n'a pas de couleur à lui : il décalerait celles des autres
   const mgrColors = managerColors([...m1, ...m2].filter((nom) => nom !== NO_MANAGER), data.managers ?? [])
@@ -228,7 +244,7 @@ export function buildMapModel(
   const keyOf = (c: Commercial) =>
     colorMode === 'commercial' || colorMode === 'couverture' || colorMode === 'performance'
       ? c.id
-      : `m:${(colorMode === 'manager1' ? c.manager1 : c.manager2) || NO_MANAGER}`
+      : `m:${teamOf(c, colorMode)}`
   const colorOf = (key: string) =>
     key.startsWith('m:') ? (mgrColors.get(key.slice(2)) ?? '#888') : (byId.get(key)?.couleur ?? '#888')
 
@@ -238,7 +254,7 @@ export function buildMapModel(
     if (filters.hideARecruter && isARecruter(c)) return false
     if (filters.commerciaux.length && !filters.commerciaux.includes(c.id)) return false
     if (filters.statuts.length && !filters.statuts.includes(c.statut || '(sans statut)')) return false
-    if (filters.managers.length && !filters.managers.includes(c[filters.managerField] || NO_MANAGER)) return false
+    if (filters.managers.length && !filters.managers.includes(teamOf(c, filters.managerField))) return false
     return true
   }
 
@@ -365,7 +381,7 @@ export function buildMapModel(
     zoneCount: ZONES.filter((z) => z.type !== 'arrondissement' && coverageOf(z.code).bucket.key === b.key).length,
   }))
 
-  // Une ligne par secteur à recruter, puis une par priorité pour les départements sans secteur
+  // Une ligne par groupe à recruter, puis une par priorité pour les départements sans groupe
   const recruits = new Map<string, { structure: Structure; secteur: string | null; priorites: Set<Priorite | null>; zones: Set<string> }>()
   for (const r of rows) {
     if (!structs.includes(r.structure) || !recruitOf(r.zone_code)) continue
@@ -385,9 +401,14 @@ export function buildMapModel(
       label: g.secteur ? `À recruter – ${g.secteur}` : prioriteLabel(top),
       shortLabel: g.secteur ? (tab === 'ALL' ? `${g.secteur} (${g.structure})` : g.secteur) : prioriteLabel(top),
       color: prioriteColor(top),
-      detail: g.secteur ? (priorites.length ? priorites.map(prioriteLabel).join(', ') : 'sans priorité') : 'sans secteur',
+      detail: g.secteur ? (priorites.length ? priorites.map(prioriteLabel).join(', ') : 'sans priorité') : 'sans groupe',
       zoneCount: g.zones.size,
     }
+  })
+  const groups: MapGroup[] = [...recruits].flatMap(([key, g]) => {
+    if (!g.secteur) return []
+    const priorites = [...g.priorites].filter((p): p is Priorite => p !== null).sort()
+    return [{ key, label: tab === 'ALL' ? `${g.secteur} (${g.structure})` : g.secteur, color: groupColor(priorites[0] ?? null), codes: [...g.zones] }]
   })
   recruitLegend.sort((a, b) => a.rank - b.rank || a.shortLabel!.localeCompare(b.shortLabel!, 'fr'))
 
@@ -516,6 +537,7 @@ export function buildMapModel(
     activeManagers: activeFields,
     managerLabel: (field) => managerLabel(field, activeFields),
     vacanciesOf,
+    groups,
     statuts,
     visibleCommerciaux,
     year,

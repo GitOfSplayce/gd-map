@@ -16,6 +16,7 @@ import ManagersPage from './ManagersPage'
 import RecrutementPage from './RecrutementPage'
 import SynthesePage from './SynthesePage'
 import SettingsPage from './SettingsPage'
+import Sliding from '../components/Sliding'
 import StructuresPage from './StructuresPage'
 
 export interface AdminDataProps {
@@ -141,7 +142,7 @@ function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | 
         subtitle="Administration"
         home="/admin"
         nav={
-          <nav className="tabs">
+          <Sliding as="nav" className="tabs">
             <NavLink to="/admin" end>
               Commerciaux
             </NavLink>
@@ -152,7 +153,7 @@ function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | 
             <NavLink to="/admin/journal">Journal</NavLink>
             <NavLink to="/admin/export">Export</NavLink>
             <NavLink to="/admin/parametres">Paramètres</NavLink>
-          </nav>
+          </Sliding>
         }
         actions={<SessionActions email={email} />}
       />
@@ -183,13 +184,13 @@ function ManagerLayout({ email, portalUrl }: { email: string; portalUrl: string 
         subtitle="Espace manager"
         home="/admin"
         nav={
-          <nav className="tabs">
+          <Sliding as="nav" className="tabs">
             <NavLink to="/admin" end>
               Mon équipe
             </NavLink>
             <NavLink to="/admin/chiffres">CA et objectifs</NavLink>
             <NavLink to="/admin/journal">Journal</NavLink>
-          </nav>
+          </Sliding>
         }
         actions={<SessionActions email={email} portalUrl={portalUrl} />}
       />

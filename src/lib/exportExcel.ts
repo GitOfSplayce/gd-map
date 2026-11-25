@@ -1,6 +1,6 @@
 // Export Excel de la carte (admins) : Commerciaux, Départements (dont ceux à recruter), CA et objectifs, Managers.
 import { pctTextColor, sheetOf, type Column } from './excelSheets'
-import { activeManagers, managerLabel, managersOf, type ManagerField } from './managers'
+import { activeManagers, fichesOf, managerLabel, teamManager, type ManagerField } from './managers'
 import { strongest } from './mapModel'
 import { formatZoneList } from './parseZones'
 import { sumPerf, type Perf } from './performance'
@@ -110,7 +110,7 @@ function departementsSheet(data: MapData, active: ManagerField[], today: string)
     { header: 'Type', width: 16, value: (r) => (r.couverture ? COUVERTURE_LABELS[r.couverture] : null) },
     ...active.map((f): Column<ZoneRow> => ({ header: managerLabel(f, active), width: 22, value: (r) => r.commercial?.[f] ?? null })),
     { header: 'Priorité', width: 14, value: (r) => (r.priorite ? prioriteLabel(r.priorite) : null), fill: (r) => (r.priorite ? PRIORITY_FILL[r.priorite] : undefined), ...CENTER },
-    { header: 'Secteur à recruter', width: 24, value: (r) => r.secteurs || null },
+    { header: 'Groupe à recruter', width: 24, value: (r) => r.secteurs || null },
   ]
   return sheetOf({
     name: 'Départements',
@@ -157,9 +157,10 @@ function chiffresSheet(data: MapData, active: ManagerField[], today: string) {
 
 function managersSheet(data: MapData, year: number, active: ManagerField[], today: string) {
   const codes = structureCodes(data.structures)
+  const fiches = fichesOf(data.managers)
   const rows = data.managers
     .map((m) => {
-      const team = data.commerciaux.filter((c) => c.actif && !isARecruter(c) && managersOf(c, active).includes(m.nom))
+      const team = data.commerciaux.filter((c) => c.actif && !isARecruter(c) && active.some((f) => teamManager(c, f, fiches) === m.nom))
       return { m, team, perf: sumPerf(data.objectifs, team.map((c) => c.id), year, codes) }
     })
     .filter((r) => r.team.length || r.m.compte)

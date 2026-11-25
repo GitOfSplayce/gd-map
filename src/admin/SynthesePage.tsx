@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import Icon from '../components/Icon'
 import { PerfBar } from '../components/Legend'
+import Sliding from '../components/Sliding'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { downloadExcel, pctTextColor, sheetOf } from '../lib/excelSheets'
-import { activeManagers, managerLabel } from '../lib/managers'
+import { activeManagers, fichesOf, managerLabel, teamManager } from '../lib/managers'
 import { NO_MANAGER } from '../lib/mapModel'
 import { availableYears, defaultYear, formatPct, sumPerf, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
@@ -60,9 +61,11 @@ export default function SynthesePage({ data }: AdminDataProps) {
         perf: sumPerf(data.objectifs, [c.id], year, structures),
       }))
     }
+    // La fiche d'un manager compte dans sa propre équipe (D-013)
+    const fiches = fichesOf(data.managers)
     const teams = new Map<string, string[]>()
     for (const c of people) {
-      const m = c[groupBy] || NO_MANAGER
+      const m = teamManager(c, groupBy, fiches) || NO_MANAGER
       teams.set(m, [...(teams.get(m) ?? []), c.id])
     }
     return [...teams].map(([nom, ids]) => ({
@@ -151,22 +154,22 @@ export default function SynthesePage({ data }: AdminDataProps) {
             searchable={false}
           />
         </div>
-        <div className="seg">
+        <Sliding className="seg">
           {['ALL', ...codes].map((s) => (
             <button key={s} type="button" aria-pressed={scope === s} onClick={() => setScope(s)} disabled={groupBy === 'structure'}>
               {s === 'ALL' ? 'Toutes' : s}
             </button>
           ))}
-        </div>
+        </Sliding>
         <div className="row small muted">
           Regrouper par
-          <div className="seg">
+          <Sliding className="seg">
             {groups.map((g) => (
               <button key={g.key} type="button" aria-pressed={groupBy === g.key} onClick={() => setGroupBy(g.key)}>
                 {g.label}
               </button>
             ))}
-          </div>
+          </Sliding>
         </div>
         <Switch checked={showEmpty} onChange={setShowEmpty} label="Lignes sans chiffres" />
         <span className="grow" />

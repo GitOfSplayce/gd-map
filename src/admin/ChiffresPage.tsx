@@ -5,7 +5,7 @@ import { PerfBar } from '../components/Legend'
 import Select from '../components/Select'
 import { saveEquipe } from '../lib/api'
 import { formatAmountInput, parseAmountInput } from '../lib/amounts'
-import { myStructures, teamOf } from '../lib/equipe'
+import { isMine, myStructures, teamOf } from '../lib/equipe'
 import { availableYears, defaultYear } from '../lib/performance'
 import { plural } from '../lib/text'
 import type { Structure } from '../lib/types'
@@ -134,7 +134,7 @@ export default function ChiffresPage({ data, reload }: AdminDataProps) {
                   const name = (
                     <td rowSpan={Math.max(list.length, 1)}>
                       <span className="swatch" style={{ background: c.couleur, verticalAlign: 'middle' }} aria-hidden="true" /> <strong>{c.nom}</strong>{' '}
-                      {!c.actif && <span className="badge warning">inactif</span>}
+                      {isMine(data, c) && <span className="badge">vous</span>} {!c.actif && <span className="badge warning">inactif</span>}
                     </td>
                   )
                   if (!list.length) {

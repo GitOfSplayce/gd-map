@@ -233,3 +233,15 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 **Décision (validée par l'équipe).** L'import Excel est retiré. Il effaçait, même en « Fusionner », les CA de l'année et les zones quand leurs colonnes manquaient : il aurait écrasé la saisie des managers. L'export reste, réservé aux admins : quatre feuilles (Commerciaux, Départements, CA et objectifs, Managers), avec titres, couleurs, filtres et volets figés.
 
 **Conséquences.** SheetJS, qui n'écrit pas de mise en forme dans sa version libre, laisse la place à `write-excel-file`, chargée seulement à l'export. Les données de démonstration sont figées dans `src/lib/demoData.json`. `scripts/import-supabase.ts` est retiré : le relancer effacerait ce que la carte a reçu depuis la reprise.
+
+## D-013 — Trois niveaux ; un manager modifie aussi sa propre fiche ; les groupes à recruter se voient sur la carte (2026-11-25)
+
+**Décision (validée par l'équipe).**
+
+- **Trois niveaux** : la direction (admin), les managers, les commerciaux. Pas de lien entre managers : la direction est admin, elle modifie déjà tout.
+- **La fiche d'un manager.** Un manager peut aussi être un commercial. Sa fiche lui est reliée (`managers.commercial_id`, reprise d'après le nom, réglée dans l'onglet *Managers*). Elle fait partie de son équipe : il modifie ses propres départements, son CA et ses objectifs, dans ses structures ; ils prennent sa couleur en vue Manager et comptent dans son total. Le manager de sa fiche (Manager 1 ou 2) garde ses droits dessus, et n'est pas bloqué par ses départements.
+- **Totaux par manager** : son équipe et sa fiche, pas les équipes en dessous. Chaque CA ne compte qu'une fois ; le total de tous reste en bas de la synthèse.
+- **Groupes.** Ce que D-011 appelle « secteur » s'appelle **groupe** à l'écran (la colonne garde son nom, qui se confondait avec la région d'un commercial). Un groupe est entouré et nommé sur la carte ; il se crée, se renomme et se supprime dans l'onglet *Recrutement*.
+- **Peindre** : sur la carte de *Recrutement*, rester appuyé pose une priorité ou un groupe sur tous les départements traversés (appui long au doigt). Un trait commencé sur un département déjà peint ainsi l'efface. La carte se déplace alors par le fond, le clic droit ou deux doigts.
+
+**Pourquoi.** Les personnes rattachées à la direction sont en général les managers des autres : leurs départements comptaient pour elle, et elles ne pouvaient pas les modifier. Les groupes sans priorité se confondaient sur la carte.

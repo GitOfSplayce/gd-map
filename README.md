@@ -49,7 +49,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 - Couleur par **commercial** ou par manager (**Manager 1**, **Manager 2**, selon ceux que les admins ont activés dans *Paramètres*, D-010). Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
 - **Propre** = plein, **Gestion** (G) = trame de points, **Partiel** (P) = rayé comme une zone partagée, avec du **blanc** s'il est seul sur la zone, **Gestion-partiel** (GP) = traits pointillés (avec du blanc s'il est seul). Une zone partagée montre chaque part avec son motif (bande en points pour une gestion…). Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
 - **CA et objectifs** (admins et managers connectés) : saisie par structure et par année (raccourcis `120k`, `1,2M`), par un admin dans le panneau d'un commercial ou par un manager pour son équipe ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
-- **À recruter** (D-011) : un département vide d'une structure. Les admins lui donnent une priorité de 1 à 3 (hachures de couleur) et un secteur (onglet *Recrutement*) ; pourvu, il en sort tout seul.
+- **À recruter** (D-011) : un département vide d'une structure. Les admins lui donnent une priorité de 1 à 3 (hachures de couleur) et un groupe, entouré et nommé sur la carte (onglet *Recrutement* : on peint en restant appuyé) ; pourvu, il en sort tout seul.
 - **Espace manager** (D-010) : *Mon équipe* (départements, CA et objectifs de ses commerciaux dans ses structures), saisie en tableau, journal de son équipe ; sur la carte, *Placer un de mes commerciaux* dans un département libre.
 - **Journal** : qui a modifié quoi, quand, avant et après ; tout pour un admin, son équipe pour un manager.
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, gestion-partiel = ⅛, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
@@ -61,7 +61,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 
 ### Export Excel
 
-La carte est la source des données : elle n'importe plus d'Excel (D-012). L'onglet *Export* (admins) produit un classeur mis en forme, avec filtres et volets figés : **Commerciaux**, **Départements** (une ligne par structure, département et commercial, ou « à recruter » avec priorité et secteur), **CA et objectifs**, **Managers**.
+La carte est la source des données : elle n'importe plus d'Excel (D-012). L'onglet *Export* (admins) produit un classeur mis en forme, avec filtres et volets figés : **Commerciaux**, **Départements** (une ligne par structure, département et commercial, ou « à recruter » avec priorité et groupe), **CA et objectifs**, **Managers**.
 
 ### Saisie des départements
 
@@ -80,7 +80,7 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 | Anonyme | rien, sauf ouvrir la carte avec le code (`POST /api/carte`) |
 | Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Ni CA, ni objectifs, ni notes, actions, dates et jours/an. |
 | Venu par le portail **sans rôle** dans la carte (avec ou sans droit d'usage) | comme un anonyme : le code, comme tout le monde |
-| Manager (`managers.compte` = son compte GD One, et accès sur le portail) | lire toute la carte sans code, **CA et objectifs de toutes les équipes** compris (pas les notes) ; modifier les **départements, CA et objectifs** de ses commerciaux (Manager 1 ou 2, selon ceux activés), dans ses structures, sans prendre un département occupé par le commercial d'un autre manager ; lire le journal de son équipe |
+| Manager (`managers.compte` = son compte GD One, et accès sur le portail) | lire toute la carte sans code, **CA et objectifs de toutes les équipes** compris (pas les notes) ; modifier les **départements, CA et objectifs** de ses commerciaux (Manager 1 ou 2, selon ceux activés) et de sa propre fiche (D-013), dans ses structures, sans prendre un département occupé par le commercial d'un autre manager ; lire le journal de son équipe |
 | Admin (table `acces`, et accès sur le portail) | tout : données, code, admins, comptes et structures des managers, réglages, journal, export |
 
 - **Entrée par le portail** : la tuile de GD One ouvre `/api/connexion`, qui mène à la carte déjà connecté (D-007) ; le bouton « Se connecter avec GD One » passe par la même entrée.

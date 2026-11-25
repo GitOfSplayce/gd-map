@@ -5,7 +5,7 @@ import Icon from '../components/Icon'
 import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
 import { KeySwatch } from '../components/Legend'
-import { activeManagers, managersOf, type ManagerField } from '../lib/managers'
+import { activeManagers, fichesOf, managersOf, type ManagerField } from '../lib/managers'
 import { SHARED_MODES, type SharedMode } from '../lib/mapModel'
 import { plural } from '../lib/text'
 import type { AdminDataProps } from './AdminApp'
@@ -235,7 +235,8 @@ function ManagersCard({ data, reload }: AdminDataProps) {
     const name = field === 'manager1' ? 'Manager 1' : 'Manager 2'
     if (!value) {
       const left = (['manager1', 'manager2'] as const).filter((f) => next[f])
-      const orphans = data.commerciaux.filter((c) => c.actif && managersOf(c, active).length && !managersOf(c, left).length)
+      const fiches = fichesOf(data.managers)
+      const orphans = data.commerciaux.filter((c) => c.actif && managersOf(c, active).length && !managersOf(c, left).length && !fiches.has(c.id))
       const ok = await confirm({
         title: `Désactiver ${name} ?`,
         message: `Il disparaît de la carte, des filtres, des fiches et de l'export, et ne donne plus de droits. Rien n'est effacé : le réactiver le remet comme avant. ${

@@ -552,6 +552,40 @@ describe('règles d\'accès', () => {
       await save('sud', 'Sud Par M1', zones('MD 84'))
     })
 
+    it('modifie sa propre fiche, une fois reliée (D-013) ; les autres managers n\'y touchent pas, sauf le sien', async () => {
+      const [{ id }] = await as<{ id: string }>('postgres', `insert into public.commerciaux (nom, manager2, structures) values ('Sud En Personne', 'Nord', '{MD,BK}') returning id`)
+      ids['Sud En Personne'] = id
+      await expect(save('sud', 'Sud En Personne', zones('MD 48'))).rejects.toThrow(/pas dans votre équipe/)
+      await as('admin', `update public.managers set commercial_id = $1 where nom = 'Sud'`, [id])
+      await expect(as('admin', `update public.managers set commercial_id = $1 where nom = 'Ouest'`, [id])).rejects.toThrow(/duplicate key/)
+      expect(await as('sud', `update public.managers set commercial_id = null where nom = 'Sud' returning nom`)).toEqual([])
+
+      await save('sud', 'Sud En Personne', zones('MD 48'))
+      await save('sud', 'Sud En Personne', { objectifs: [{ structure: 'MD', annee: 2026, ca: 5, objectif: 6 }] })
+      expect(await zonesOf('Sud En Personne')).toEqual(['MD 48 propre'])
+      await expect(save('sud', 'Sud En Personne', zones('BK 48'))).rejects.toThrow(/BK n'est pas dans votre périmètre/)
+      // Son département est à son équipe : il s'y partage, et un autre manager ne le prend pas…
+      await save('sud', 'Sud Deux', zones('MD 13 partiel', 'MD 48 partiel'))
+      await save('sud', 'Sud Deux', zones('MD 13 partiel'))
+      // … sauf le manager de sa fiche, qui est au-dessus
+      await save('nord', 'Nord Un', zones('MD 59', 'MD 75-7 partiel', 'MD 48 partiel'))
+      await save('nord', 'Nord Un', zones('MD 59', 'MD 75-7 partiel'))
+      await as('admin', `update public.commerciaux set manager2 = null where id = $1`, [id])
+      await expect(save('nord', 'Nord Un', zones('MD 59', 'MD 75-7 partiel', 'MD 48 partiel'))).rejects.toThrow(/déjà occupé par Sud En Personne/)
+      await expect(save('nord', 'Sud En Personne', zones('MD 48'))).rejects.toThrow(/pas dans votre équipe/)
+
+      const carte = await rpc('sud', 'get_map_data', 'null')
+      expect((carte.managers as { nom: string; commercial_id: string | null }[]).find((m) => m.nom === 'Sud')?.commercial_id).toBe(id)
+      expect(((await rpc('sud', 'get_journal', `1, 50, null, '${id}'::uuid`)).lignes as unknown[]).length).toBeGreaterThan(0)
+    })
+
+    it('la fiche d\'un manager se note par son nom, et part avec elle', async () => {
+      const lignes = (await rpc('admin', 'get_journal', '1, 500')).lignes as { objet: string; nom: string; apres: Record<string, unknown> | null }[]
+      expect(lignes.find((l) => l.objet === 'manager' && l.nom === 'Sud' && l.apres && 'fiche' in l.apres)?.apres).toEqual({ fiche: 'Sud En Personne' })
+      await as('admin', `delete from public.commerciaux where id = $1`, [ids['Sud En Personne']])
+      expect(await as('admin', `select commercial_id from public.managers where nom = 'Sud'`)).toEqual([{ commercial_id: null }])
+    })
+
     it('le compte suit le manager : renommé, fusionné, supprimé', async () => {
       await rpc('admin', 'rename_manager', `'Sud', 'Sud-Est'`)
       expect(await rpc('sud', 'mon_manager', '')).toBe('Sud-Est')
@@ -670,7 +704,7 @@ describe('règles d\'accès', () => {
       expect(await as('admin', `select nom from public.commerciaux where id = any ($1::uuid[])`, [ids])).toEqual([])
 
       // Le journal garde ce qui part avec la fiche
-      const journal = (await rpc('admin', 'get_journal', `null, 500, '${ids[0]}'::uuid`)).lignes as { action: string; avant: Record<string, unknown> }[]
+      const journal = (await rpc('admin', 'get_journal', `1, 500, null, '${ids[0]}'::uuid`)).lignes as { action: string; avant: Record<string, unknown> }[]
       expect(journal.find((l) => l.action === 'retrait')?.avant).toMatchObject({
         chiffres: [{ structure: 'MD', annee: 2026, ca: null, objectif: 900 }],
       })
@@ -681,7 +715,7 @@ describe('règles d\'accès', () => {
 
   describe('journal (D-010)', () => {
     type Ligne = { id: number; lot: number; auteur: string; auteur_nom: string; objet: string; action: string; nom: string; structure: string | null; zone_code: string | null; annee: number | null; avant: Record<string, unknown> | null; apres: Record<string, unknown> | null }
-    const journal = async (who: Who = 'admin') => (await rpc(who, 'get_journal', 'null, 500')).lignes as Ligne[]
+    const journal = async (who: Who = 'admin') => (await rpc(who, 'get_journal', '1, 500')).lignes as Ligne[]
     /** Lignes ajoutées par une action, dans l'ordre. */
     const during = async (fn: () => Promise<unknown>) => {
       const last = (await journal())[0]?.id ?? 0
@@ -751,13 +785,33 @@ describe('règles d\'accès', () => {
       expect(mine.some((l) => ['manager', 'acces', 'reglage'].includes(l.objet))).toBe(false)
     })
 
-    it('se lit par pages, et garde un commercial supprimé avec ses zones et ses chiffres', async () => {
-      const first = await rpc('admin', 'get_journal', 'null, 3')
-      expect(first.suite).toBe(true)
-      const lignes = first.lignes as Ligne[]
-      expect(lignes.length).toBe(3)
-      const next = (await rpc('admin', 'get_journal', `${lignes[2].id}, 3`)).lignes as Ligne[]
-      expect(next[0].id).toBeLessThan(lignes[2].id)
+    it('se lit par pages d\'enregistrements entiers, avec une recherche sur tout', async () => {
+      type Page = { lignes: Ligne[]; total: number; page: number; taille: number }
+      const read = async (args: string, who: Who = 'admin') => (await rpc(who, 'get_journal', args)) as unknown as Page
+      const first = await read('1, 3')
+      expect(first).toMatchObject({ page: 1, taille: 3 })
+      expect(new Set(first.lignes.map((l) => l.lot)).size).toBe(3)
+      const second = await read('2, 3')
+      expect(second.lignes[0].id).toBeLessThan(first.lignes.at(-1)!.id)
+      expect(second.total).toBe(first.total)
+      // Toutes les pages réunies redonnent tout, sans doublon ni enregistrement coupé
+      const all = await journal()
+      const pages = await Promise.all(Array.from({ length: Math.ceil(first.total / 7) }, (_, i) => read(`${i + 1}, 7`)))
+      expect(pages.flatMap((p) => p.lignes.map((l) => l.id))).toEqual(all.map((l) => l.id))
+      expect((await read('999, 3')).lignes).toEqual([])
+
+      // Par nom, auteur, département (numéro ou nom) ; % et _ se cherchent tels quels
+      expect((await read(`1, 50, 'journal un'`)).total).toBeGreaterThan(0)
+      expect((await read(`1, 50, 'sud@exemple'`)).lignes.some((l) => l.auteur === 'sud@exemple.fr')).toBe(true)
+      expect((await read(`1, 50, 'Ille-et-Vilaine'`)).lignes.some((l) => l.zone_code === '35')).toBe(true)
+      expect((await read(`1, 50, '%'`)).total).toBe(0)
+      expect((await read(`1, 50, 'rien de tel'`))).toMatchObject({ total: 0, lignes: [] })
+      // Un manager ne retrouve pas par la recherche ce qu'il ne peut pas lire
+      expect((await read(`1, 50, 'privé'`)).total).toBeGreaterThan(0)
+      expect((await read(`1, 50, 'privé'`, 'sud')).total).toBe(0)
+    })
+
+    it('garde un commercial supprimé avec ses zones et ses chiffres', async () => {
       const removed = await during(() => as('admin', 'delete from public.commerciaux where id = $1', [id]))
       expect(removed).toHaveLength(1)
       expect(removed[0]).toMatchObject({ objet: 'commercial', action: 'retrait', nom: 'Journal Un' })

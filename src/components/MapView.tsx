@@ -11,11 +11,11 @@ import {
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type ZoomBehavior } from 'd3-zoom'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import polylabel from 'polylabel'
 import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
-import { blendWithWhite, mixColors, readableTextColor } from '../lib/colors'
+import { blendWithWhite, mixColors, readableTextColor, shade } from '../lib/colors'
 import { dashesId, dotsId, type MapModel, type SharedMode, type Stripe, type ZonePattern, type ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
@@ -189,6 +189,9 @@ function labelColors(st: ZoneStyle | undefined): { text: string; halo: string } 
   return readableTextColor(blendWithWhite(st.fill, st.fillOpacity)) === '#fff' ? { text: '#ffffff', halo: 'rgba(0,0,0,0.35)' } : dark
 }
 
+/** Taille du nom d'un groupe à recruter, en pixels écran. */
+const GROUP_LABEL = 11.5
+
 /** Largeur d'une rayure et hauteur du motif (multiple de l'écart des points et du pas des pointillés). */
 const STRIPE = 6
 const STRIPE_H = 12
@@ -229,7 +232,16 @@ export interface MapViewProps {
   onBackground: () => void
   sharedMode: SharedMode
   onSvg: (el: SVGSVGElement | null) => void
+  /**
+   * Peindre en restant appuyé (souris, ou appui long au doigt) : reçoit chaque zone traversée, `start` pour la
+   * première. Renvoie faux si la zone ne se peint pas. Une zone ne déplace alors plus la carte : le fond, le
+   * clic droit ou deux doigts le font.
+   */
+  onPaint?: (code: string, start: boolean) => boolean
 }
+
+/** Appui long avant de peindre au doigt, en ms. */
+const LONG_PRESS = 350
 
 export default function MapView({
   view,
@@ -243,6 +255,7 @@ export default function MapView({
   onBackground,
   sharedMode,
   onSvg,
+  onPaint,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const innerSvg = useRef<SVGSVGElement | null>(null)
@@ -263,6 +276,87 @@ export default function MapView({
     return () => ro.disconnect()
   }, [])
 
+  // Toujours la dernière version, sans refaire le zoom ni les écouteurs
+  const paintRef = useRef(onPaint)
+  useLayoutEffect(() => {
+    paintRef.current = onPaint
+  })
+  const canPaint = Boolean(onPaint)
+  /** Trait en cours : bouton enfoncé, première zone déjà peinte, clic à ignorer ensuite. */
+  const stroke = useRef({ down: false, started: false, skipClick: false })
+  const paintAt = (code: string) => {
+    const s = stroke.current
+    if (paintRef.current?.(code, !s.started)) s.started = s.skipClick = true
+  }
+  useEffect(() => {
+    const up = () => {
+      stroke.current.down = stroke.current.started = false
+    }
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [])
+
+  // Au doigt : un appui long peint, un glissement simple déplace la carte. Écouté avant le zoom (phase de capture).
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !canPaint) return
+    let timer = 0
+    let painting = false
+    let last: string | null = null
+    let from = { x: 0, y: 0 }
+    const zoneAt = (p: { clientX: number; clientY: number }) => document.elementFromPoint(p.clientX, p.clientY)?.closest('[data-code]')?.getAttribute('data-code') ?? null
+    const cancel = () => window.clearTimeout(timer)
+    const start = (e: TouchEvent) => {
+      cancel()
+      painting = false
+      if (e.touches.length !== 1) return
+      const touch = e.touches[0]
+      from = { x: touch.clientX, y: touch.clientY }
+      timer = window.setTimeout(() => {
+        last = zoneAt(touch)
+        if (last && paintRef.current?.(last, true)) {
+          painting = true
+          navigator.vibrate?.(12)
+        }
+      }, LONG_PRESS)
+    }
+    const move = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      if (!painting) {
+        if (Math.hypot(touch.clientX - from.x, touch.clientY - from.y) > 10) cancel()
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      const code = zoneAt(touch)
+      if (code && code !== last) {
+        last = code
+        paintRef.current?.(code, false)
+      }
+    }
+    const end = (e: TouchEvent) => {
+      cancel()
+      // Pas de clic après un trait : il effacerait la dernière zone
+      if (painting) e.preventDefault()
+      painting = false
+    }
+    el.addEventListener('touchstart', start, { capture: true, passive: true })
+    el.addEventListener('touchmove', move, { capture: true, passive: false })
+    el.addEventListener('touchend', end, { capture: true, passive: false })
+    el.addEventListener('touchcancel', cancel, { capture: true })
+    return () => {
+      cancel()
+      el.removeEventListener('touchstart', start, { capture: true })
+      el.removeEventListener('touchmove', move, { capture: true })
+      el.removeEventListener('touchend', end, { capture: true })
+      el.removeEventListener('touchcancel', cancel, { capture: true })
+    }
+  }, [canPaint])
+
   const layout = useMemo(() => (size ? computeLayout(view, geo, size.w, size.h) : null), [view, geo, size])
 
   const labelSize = view === 'paris' ? 13 : view === 'idf' ? 11 : 9.5
@@ -281,7 +375,9 @@ export default function MapView({
       .extent([[x, y], [x + w, y + h]])
       .translateExtent([[x, y], [x + w, y + h]])
       .filter((event: Event & { button?: number; target: EventTarget | null }) => {
-        if (event.button) return false
+        // En peinture, le clic droit déplace la carte, et appuyer sur une zone la peint
+        if (event.button) return canPaint && event.button === 2
+        if (canPaint && event.type === 'mousedown' && event.target instanceof Element && event.target.closest('.zone')) return false
         // Le zoom ne démarre que sur la carte principale, pas sur les encarts
         return !(event.target instanceof Element && event.target.closest('.inset'))
       })
@@ -290,6 +386,7 @@ export default function MapView({
         const t = event.transform
         layer.attr('transform', t.toString())
         layer.select('.labels').attr('font-size', labelSize / t.k)
+        layer.select('.group-labels').attr('font-size', GROUP_LABEL / t.k)
         layer.selectAll('.marker').attr('r', 5 / t.k)
       })
       .on('end', (event) => setScale(event.transform.k))
@@ -299,7 +396,7 @@ export default function MapView({
     return () => {
       svg.on('.zoom', null)
     }
-  }, [layout, view, labelSize])
+  }, [layout, view, labelSize, canPaint])
 
   const zoomBy = (k: number) => {
     if (innerSvg.current && zoomRef.current) select(innerSvg.current).call(zoomRef.current.scaleBy, k)
@@ -365,8 +462,37 @@ export default function MapView({
       onHover(code, { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height })
     },
     onPointerLeave: () => onHover(null),
-    onClick: () => onSelect(code),
+    onPointerDown: (e: React.PointerEvent) => {
+      stroke.current.skipClick = false
+      if (!canPaint || e.pointerType === 'touch' || e.button !== 0) return
+      stroke.current.down = true
+      paintAt(code)
+    },
+    onPointerEnter: (e: React.PointerEvent) => {
+      if (stroke.current.down && e.buttons & 1) paintAt(code)
+    },
+    onClick: () => {
+      if (stroke.current.skipClick) stroke.current.skipClick = false
+      else onSelect(code)
+    },
   })
+
+  // Groupes à recruter : chaque groupe visible, avec ses zones et l'ancre de son nom
+  const uid = useId().replace(/:/g, '')
+  const groups = useMemo(() => {
+    if (!layout) return []
+    return (model.groups ?? []).flatMap((g) => {
+      const shapes = layout.shapes.filter((s) => g.codes.includes(s.code) || (isParisArr(s.code) && g.codes.includes('75')))
+      const anchors = shapes.flatMap((s) => (s.anchor ? [s.anchor] : []))
+      if (!shapes.length) return []
+      const mid = { x: anchors.reduce((sum, a) => sum + a.x, 0) / anchors.length, y: anchors.reduce((sum, a) => sum + a.y, 0) / anchors.length }
+      // Le nom se pose sous le numéro de la zone la plus centrale
+      const anchor = [...anchors].sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))[0] ?? null
+      const width = Math.max(...shapes.map((s) => s.bounds.x1)) - Math.min(...shapes.map((s) => s.bounds.x0))
+      return [{ ...g, shapes, anchor, width }]
+    })
+  }, [layout, model])
+  const groupDim = (key: string) => (highlighted.size && !highlighted.has(key) ? 0.2 : 1)
 
   // Zones partagées en camemberts : rayon en pixels écran, selon la place disponible dans la zone
   const pieRadius = (s: Shape) => (s.anchor ? clamp(s.anchor.room * 0.7, 6, 11) : 0)
@@ -476,7 +602,15 @@ export default function MapView({
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
       {layout && size && (
-        <svg ref={setSvg} width={size.w} height={size.h} viewBox={`0 0 ${size.w} ${size.h}`} role="img" aria-label="Carte des secteurs commerciaux">
+        <svg
+          ref={setSvg}
+          width={size.w}
+          height={size.h}
+          viewBox={`0 0 ${size.w} ${size.h}`}
+          role="img"
+          aria-label="Carte des secteurs commerciaux"
+          onContextMenu={canPaint ? (e) => e.preventDefault() : undefined}
+        >
           <defs>
             {patterns.map((p) => {
               if (p.kind === 'dots') {
@@ -534,6 +668,23 @@ export default function MapView({
                 </Fragment>
               ))}
 
+              {/* Contour de chaque groupe à recruter : le trait de ses zones, masqué à l'intérieur du groupe */}
+              {groups.map((g, i) => (
+                <g key={g.key} pointerEvents="none" opacity={groupDim(g.key)}>
+                  <mask id={`${uid}-g${i}`} maskUnits="userSpaceOnUse" x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h}>
+                    <rect x={layout.main.x} y={layout.main.y} width={layout.main.w} height={layout.main.h} fill="#fff" />
+                    {g.shapes.map((s) => (
+                      <path key={s.code} d={s.d} fill="#000" stroke="#000" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+                    ))}
+                  </mask>
+                  <g mask={`url(#${uid}-g${i})`}>
+                    {g.shapes.map((s) => (
+                      <path key={s.code} d={s.d} fill="none" stroke={g.color} strokeWidth={5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                    ))}
+                  </g>
+                </g>
+              ))}
+
               {/* Contour de la zone sélectionnée, dessiné au-dessus des voisines */}
               {layout.shapes.filter((s) => isSelected(s.code)).map((s) => (
                 <path key={'sel-' + s.code} d={s.d} fill="none" stroke="#111" strokeWidth={2.4} vectorEffect="non-scaling-stroke" pointerEvents="none" />
@@ -581,6 +732,29 @@ export default function MapView({
               )}
 
               {layout.shapes.map((s) => badgeFor(s, k))}
+
+              {/* Nom des groupes : seulement s'il tient à peu près dans le groupe à ce niveau de zoom */}
+              <g className="group-labels" fontSize={GROUP_LABEL / k} textAnchor="middle" dominantBaseline="central">
+                {groups.map((g) =>
+                  g.anchor && g.width * k >= g.label.length * GROUP_LABEL * 0.5 ? (
+                    <text
+                      key={g.key}
+                      x={g.anchor.x}
+                      y={g.anchor.y}
+                      dy={showLabels ? '1.15em' : 0}
+                      fill={shade(g.color, 0.3)}
+                      stroke="rgba(255,255,255,0.92)"
+                      strokeWidth={3.5}
+                      opacity={groupDim(g.key)}
+                      pointerEvents="none"
+                      style={{ paintOrder: 'stroke', fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 700 }}
+                      vectorEffect="non-scaling-stroke"
+                    >
+                      {g.label}
+                    </text>
+                  ) : null,
+                )}
+              </g>
             </g>
           </g>
 

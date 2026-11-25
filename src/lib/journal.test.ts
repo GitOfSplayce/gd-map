@@ -21,8 +21,8 @@ describe('journal en clair', () => {
     expect(describeLine(line({ objet: 'reglage', action: 'modification', apres: { code: 'nouveau code d\'accès' } }))).toEqual(['Code d\'accès changé'])
     expect(describeLine(line({ objet: 'reglage', action: 'modification', avant: { manager1_actif: true }, apres: { manager1_actif: false } }))).toEqual(['Manager 1 : désactivé'])
     expect(describeLine(line({ objet: 'commercial', action: 'retrait', avant: { nom: 'X', zones: [1, 2], chiffres: [1] } }))).toEqual(['Commercial supprimé, avec 2 zones et 1 ligne de chiffres'])
-    expect(describeLine(line({ objet: 'recrutement', action: 'ajout', structure: 'MD', zone_code: '18', apres: { priorite: 1, secteur: 'Centre' } }))[0]).toMatch(/Priorité 1, secteur Centre$/)
-    expect(describeLine(line({ objet: 'recrutement', action: 'modification', structure: 'MD', zone_code: '18', avant: { secteur: 'Secteur Centre', priorite: null }, apres: { secteur: null, priorite: 1 } }))).toEqual(['MD · Cher (18), secteur : Secteur Centre → —', 'MD · Cher (18), priorité : — → 1'])
+    expect(describeLine(line({ objet: 'recrutement', action: 'ajout', structure: 'MD', zone_code: '18', apres: { priorite: 1, secteur: 'Centre' } }))[0]).toMatch(/Priorité 1, groupe Centre$/)
+    expect(describeLine(line({ objet: 'recrutement', action: 'modification', structure: 'MD', zone_code: '18', avant: { secteur: 'Secteur Centre', priorite: null }, apres: { secteur: null, priorite: 1 } }))).toEqual(['MD · Cher (18), groupe : Secteur Centre → —', 'MD · Cher (18), priorité : — → 1'])
     expect(describeLine(line({ objet: 'acces', action: 'ajout', apres: { role: 'admin' } }))).toEqual(['Nommé admin'])
   })
 

@@ -327,8 +327,10 @@ describe('manager (D-010)', () => {
     const mine = (await call('manager', 'GET', '/api/journal')).body.lignes as { nom: string; auteur: string }[]
     expect(new Set(mine.map((l) => l.nom))).toEqual(new Set(['Sud Un']))
     expect(mine[0].auteur).toBe('manager@exemple.fr')
-    expect((await call('admin', 'GET', `/api/journal?commercial=${nord}`)).body).toMatchObject({ suite: false })
-    expect((await call('admin', 'GET', '/api/journal?avant=abc')).status).toBe(400)
+    expect((await call('admin', 'GET', `/api/journal?commercial=${nord}`)).body).toMatchObject({ page: 1, taille: 20, total: 1 })
+    expect((await call('manager', 'GET', '/api/journal?recherche=Sud%20Un')).body.total).toBeGreaterThan(0)
+    expect((await call('manager', 'GET', '/api/journal?recherche=Nord%20Un')).body).toMatchObject({ total: 0, lignes: [] })
+    for (const page of ['abc', '0', '-1']) expect((await call('admin', 'GET', `/api/journal?page=${page}`)).status).toBe(400)
     expect((await call('admin', 'GET', '/api/journal?commercial=abc')).status).toBe(400)
   })
 

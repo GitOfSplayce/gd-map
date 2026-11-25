@@ -1,6 +1,7 @@
 // Départements à recruter (D-011) : un département vide d'une structure est à recruter. Une ligne de
-// `a_recruter` n'y ajoute qu'une priorité (1 à 3) ou un secteur. Paris se compte par arrondissement.
-import { manages, managersOf, type ManagerField } from './managers'
+// `a_recruter` n'y ajoute qu'une priorité (1 à 3) ou un groupe (colonne `secteur`) : les départements d'un
+// même poste. Paris se compte par arrondissement.
+import { fichesOf, manages, managersOf, type ManagerField } from './managers'
 import { nameKey } from './text'
 import type { ARecruter, Commercial, MapData, Priorite, Structure } from './types'
 import { PARIS_ARR_CODES, ZONES, compareZoneCodes, isParisArr } from './zones'
@@ -11,7 +12,7 @@ export const PRIORITES: { value: Priorite; label: string; detail: string; color:
   { value: 3, label: 'Priorité 3', detail: 'plus tard', color: '#2f8fb3' },
 ]
 
-/** À recruter, dans un secteur mais sans priorité. */
+/** À recruter, dans un groupe mais sans priorité. */
 export const NO_PRIORITY_COLOR = '#8794a6'
 export const prioriteColor = (p: Priorite | null) => PRIORITES.find((x) => x.value === p)?.color ?? NO_PRIORITY_COLOR
 export const prioriteLabel = (p: Priorite | null) => (p ? `Priorité ${p}` : 'Sans priorité')
@@ -43,12 +44,12 @@ export interface Vacancy {
   arrondissements: string[] | null
 }
 
-/** « secteur Centre » ; un nom qui dit déjà « Secteur Est » reste tel quel. */
-export const sectorLabel = (s: string) => (/^secteur\b/i.test(s) ? s : `secteur ${s}`)
+/** « groupe Centre » ; un nom qui dit déjà « Groupe Est » ou « Secteur Est » reste tel quel. */
+export const groupLabel = (s: string) => (/^(groupe|secteur)\b/i.test(s) ? s : `groupe ${s}`)
 
-/** « Priorité 1 · secteur Centre » ; « sans priorité » quand rien n'est décidé. */
+/** « Priorité 1 · groupe Centre » ; « sans priorité » quand rien n'est décidé. */
 export const vacancyText = (v: Vacancy) =>
-  [v.priorite || v.secteurs.length ? prioriteLabel(v.priorite) : null, v.secteurs.length ? v.secteurs.map(sectorLabel).join(', ') : null].filter(Boolean).join(' · ') ||
+  [v.priorite || v.secteurs.length ? prioriteLabel(v.priorite) : null, v.secteurs.length ? v.secteurs.map(groupLabel).join(', ') : null].filter(Boolean).join(' · ') ||
   'sans priorité'
 
 /** Ce qu'une structure a à recruter dans une zone, ou null si elle y est partout. */
@@ -87,13 +88,14 @@ export function blockedZones(data: MapData, commercial: Commercial, structure: S
   const own = new Set(
     data.affectations.filter((a) => a.commercial_id === commercial.id && a.structure === structure).flatMap((a) => atomsOf(a.zone_code)),
   )
+  const fiches = fichesOf(data.managers)
   const reasons = new Map<string, string>()
   for (const [atom, people] of taken) {
     if (own.has(atom)) continue
-    const other = people.find((c) => c.id !== commercial.id && !manages(manager, c, active))
+    const other = people.find((c) => c.id !== commercial.id && !manages(manager, c, active, fiches))
     if (!other) continue
-    const chief = managersOf(other, active).join(', ')
-    reasons.set(atom, `${other.nom}${chief ? ` (${chief})` : ''}`)
+    const chief = fiches.get(other.id) ?? managersOf(other, active).join(', ')
+    reasons.set(atom, `${other.nom}${chief && !fiches.has(other.id) ? ` (${chief})` : fiches.has(other.id) ? ' (manager)' : ''}`)
   }
   const paris = PARIS_ARR_CODES.filter((c) => reasons.has(c))
   if (paris.length) reasons.set('75', reasons.get(paris[0])!)
@@ -104,6 +106,6 @@ export function blockedZones(data: MapData, commercial: Commercial, structure: S
 export const isARecruter = (c: Pick<Commercial, 'nom' | 'statut'>) =>
   nameKey(c.statut).startsWith('a recruter') || nameKey(c.nom).startsWith('a recruter')
 
-/** Le secteur qu'une ancienne fiche laisse à ses départements (même règle que convertir_a_recruter() en base). */
+/** Le groupe qu'une ancienne fiche laisse à ses départements (même règle que convertir_a_recruter() en base). */
 export const sectorOf = (c: Pick<Commercial, 'nom' | 'secteur'>) =>
   c.nom.replace(/^\s*[aà]\s+recruter\s*[-–—:]?\s*/i, '').trim() || c.secteur?.trim() || null

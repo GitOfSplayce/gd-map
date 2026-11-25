@@ -11,7 +11,8 @@ export function usePopoverPosition(
   open: boolean,
   anchor: RefObject<HTMLElement | null>,
   popover: RefObject<HTMLElement | null>,
-  options: { gap?: number; width?: number } = {},
+  /** `revision` : change quand le bouton a pu changer de taille, pour replacer la fenêtre. */
+  options: { gap?: number; width?: number; revision?: unknown } = {},
 ): CSSProperties {
   const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden', top: 0, left: 0 })
   const gap = options.gap ?? 6
@@ -40,7 +41,7 @@ export function usePopoverPosition(
 
     setStyle({ ...next, width: options.width, visibility: 'visible' })
     // Recalcul à chaque ouverture ; les fenêtres se ferment au défilement et au redimensionnement
-  }, [open])
+  }, [open, options.revision])
 
   return style
 }
