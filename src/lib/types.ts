@@ -27,7 +27,7 @@ export interface Commercial {
   /** Coordonnées, visibles avec le code d'accès. */
   telephone?: string | null
   email?: string | null
-  // Champs réservés aux admins (absents des données lues avec le code d'accès)
+  // Champs réservés aux admins
   notes?: string | null
   jours_an?: number | null
   date_manager1?: string | null
@@ -59,14 +59,35 @@ export interface Manager {
   /** Coordonnées, visibles avec le code d'accès. */
   telephone?: string | null
   email?: string | null
+  /** Structures qu'il gère (reçues des admins seulement). */
+  structures?: Structure[]
+  /** Compte GD One qui lui ouvre « Mon équipe » (reçu des admins seulement). */
+  compte?: string | null
 }
 
 export interface DisplaySettings {
   default_shared_mode: 'rayures' | 'decoupage' | 'camemberts' | 'dominante'
+  /** Manager 1 et Manager 2, pour toute la carte ; il en reste toujours un. */
+  manager1_actif: boolean
+  manager2_actif: boolean
+}
+
+export type Priorite = 1 | 2 | 3
+
+/** Priorité ou secteur d'un département vide (sans ligne : à recruter, sans priorité). */
+export interface ARecruter {
+  structure: Structure
+  zone_code: string
+  priorite: Priorite | null
+  secteur: string | null
 }
 
 export interface MapData {
   admin: boolean
+  /** CA et objectifs présents : un admin, ou un manager (toutes les équipes). */
+  chiffres: boolean
+  /** Le manager connecté et les structures qu'il gère ; null pour tout autre. */
+  manager: { nom: string; structures: Structure[] } | null
   /** Réglages d'affichage choisis par les admins. */
   settings?: DisplaySettings
   /** Structures dans l'ordre choisi par les admins. */
@@ -75,6 +96,7 @@ export interface MapData {
   managers: Manager[]
   affectations: Affectation[]
   objectifs: Objectif[]
+  a_recruter: ARecruter[]
   updated_at: string | null
 }
 
@@ -85,7 +107,7 @@ export interface ZoneAssignment {
   couverture: Couverture
 }
 
-/** Données envoyées à save_commercial / apply_import. */
+/** Données envoyées à save_commercial. */
 export interface CommercialPayload {
   id?: string
   nom?: string
@@ -106,4 +128,22 @@ export interface CommercialPayload {
   email?: string | null
   affectations?: ZoneAssignment[]
   objectifs?: Omit<Objectif, 'commercial_id'>[]
+}
+
+/** Une ligne du journal : un changement, avant et après. `lot` réunit celles d'un même enregistrement. */
+export interface JournalLine {
+  id: number
+  le: string
+  lot: number
+  auteur: string | null
+  auteur_nom: string | null
+  objet: 'commercial' | 'zone' | 'chiffres' | 'manager' | 'structure' | 'recrutement' | 'acces' | 'reglage'
+  action: 'ajout' | 'modification' | 'retrait'
+  commercial_id: string | null
+  nom: string | null
+  structure: string | null
+  zone_code: string | null
+  annee: number | null
+  avant: Record<string, unknown> | null
+  apres: Record<string, unknown> | null
 }

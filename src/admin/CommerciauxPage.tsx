@@ -1,26 +1,26 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import AmountInput from '../components/AmountInput'
 import ColorPicker from '../components/ColorPicker'
 import { MissingContact } from '../components/ContactLinks'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
-import { PerfBar } from '../components/Legend'
 import Icon from '../components/Icon'
 import SearchInput from '../components/SearchInput'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { useConfirm } from '../hooks/useConfirm'
-import { formatAmountInput, parseAmountInput } from '../lib/amounts'
+import { parseAmountInput } from '../lib/amounts'
 import { emailIssue, formatPhone, normalizeEmail, phoneIssue } from '../lib/contacts'
 import { deleteCommercial, saveCommercial } from '../lib/api'
 import { isHexColor, isTooLight, managerColors, pickDistinctColor } from '../lib/colors'
-import { isARecruter } from '../lib/mapModel'
+import { activeManagers, managerLabel, managersOf } from '../lib/managers'
+import { objectifsDraft, objectifsIssue, objectifsPayload, type ObjectifsDraft } from '../lib/objectifsDraft'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
-import { availableYears, defaultYear } from '../lib/performance'
+import { isARecruter } from '../lib/recrutement'
 import { plural } from '../lib/text'
 import { statutChoices, statutNormalizer } from '../lib/statuts'
 import { structureCodes, structureName } from '../lib/structures'
 import type { Commercial, CommercialPayload, MapData, Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
+import ObjectifsEditor from './ObjectifsEditor'
 import ZoneAssistant from './ZoneAssistant'
 import ZoneInput from './ZoneInput'
 
@@ -44,23 +44,11 @@ interface Draft {
   email: string
   ordre: number
   zones: Record<Structure, string>
-  /** CA et objectifs saisis, par année puis par structure (texte tel que tapé). */
-  objectifs: Record<number, Partial<Record<Structure, { ca: string; objectif: string }>>>
+  objectifs: ObjectifsDraft
 }
 
 /** « 120k », « 1,2M », « 120 000 € » → nombre ; '' → null ; illisible → NaN. */
 const parseAmount = parseAmountInput
-const amountText = (n: number | null) => (n === null ? '' : formatAmountInput(Number(n)))
-
-const objectifsDraft = (c: Commercial, data: MapData): Draft['objectifs'] => {
-  const out: Draft['objectifs'] = {}
-  for (const o of data.objectifs.filter((x) => x.commercial_id === c.id)) {
-    out[o.annee] ??= {}
-    out[o.annee][o.structure] = { ca: amountText(o.ca), objectif: amountText(o.objectif) }
-  }
-  return out
-}
-
 const zoneTexts = (c: Commercial, data: MapData) => {
   const own = data.affectations.filter((a) => a.commercial_id === c.id)
   return Object.fromEntries(structureCodes(data.structures).map((s) => [s, formatZoneList(own.filter((a) => a.structure === s))])) as Record<
@@ -92,7 +80,7 @@ function toDraft(c: Commercial, data: MapData): Draft {
     email: c.email ?? '',
     ordre: c.ordre,
     zones: zoneTexts(c, data),
-    objectifs: objectifsDraft(c, data),
+    objectifs: objectifsDraft(c.id, data.objectifs),
   }
 }
 
@@ -120,20 +108,15 @@ function toPayload(d: Draft, codes: readonly Structure[]): CommercialPayload {
     email: normalizeEmail(d.email) || null,
     ordre: d.ordre,
     affectations,
-    // Toutes les lignes connues : une ligne vidée (CA et objectif vides) est supprimée côté serveur
-    objectifs: Object.entries(d.objectifs).flatMap(([annee, byStructure]) =>
-      Object.entries(byStructure).map(([structure, v]) => ({
-        structure: structure as Structure,
-        annee: Number(annee),
-        ca: parseAmount(v!.ca),
-        objectif: parseAmount(v!.objectif),
-      })),
-    ),
+    objectifs: objectifsPayload(d.objectifs),
   }
 }
 
 function validate(d: Draft, codes: readonly Structure[]): string | null {
   if (!d.nom.trim()) return 'Le nom est obligatoire.'
+  if (isARecruter({ nom: d.nom, statut: d.statut }) && !d.id) {
+    return 'Un poste à pourvoir n\'est plus un commercial : un département vide est à recruter (onglet Recrutement, pour sa priorité).'
+  }
   if (!isHexColor(d.couleur)) return 'Couleur invalide.'
   if (isTooLight(d.couleur)) return 'Couleur trop claire : le blanc est réservé à la part libre des zones en partiel.'
   for (const s of codes) {
@@ -144,13 +127,7 @@ function validate(d: Draft, codes: readonly Structure[]): string | null {
   const contact = phoneIssue(d.telephone) ?? emailIssue(d.email)
   if (contact) return contact
   if (d.jours_an.trim() && !Number.isFinite(Number(d.jours_an.replace(',', '.')))) return '« Nb de jour / an » doit être un nombre.'
-  for (const [annee, byStructure] of Object.entries(d.objectifs)) {
-    for (const [s, v] of Object.entries(byStructure)) {
-      if (Number.isNaN(parseAmount(v!.ca))) return `CA ${s} ${annee} : « ${v!.ca} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`
-      if (Number.isNaN(parseAmount(v!.objectif))) return `Objectif ${s} ${annee} : « ${v!.objectif} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`
-    }
-  }
-  return null
+  return objectifsIssue(d.objectifs)
 }
 
 /** Téléphone ou e-mail manquant (les postes « À recruter » n'ont personne à joindre). */
@@ -159,15 +136,15 @@ const missingContact = (c: Commercial) => !isARecruter(c) && (!c.telephone || !c
 type SortKey = 'ordre' | 'nom' | 'statut' | 'manager1' | 'manager2'
 
 const SORTS: { key: SortKey; label: string }[] = [
-  { key: 'ordre', label: 'Ordre du fichier' },
+  { key: 'ordre', label: 'Ordre d\'ajout' },
   { key: 'nom', label: 'Nom' },
   { key: 'statut', label: 'Statut' },
-  { key: 'manager1', label: 'Manager 1' },
-  { key: 'manager2', label: 'Manager 2' },
 ]
 
 export default function CommerciauxPage({ data, reload }: AdminDataProps) {
   const codes = useMemo(() => structureCodes(data.structures), [data.structures])
+  const managers = activeManagers(data.settings)
+  const sorts = [...SORTS, ...managers.map((f) => ({ key: f, label: managerLabel(f, managers) }))]
   const [search, setSearch] = useState('')
   const [structureFilter, setStructureFilter] = useState<Structure | 'ALL'>('ALL')
   const [showInactive, setShowInactive] = useState(true)
@@ -183,7 +160,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
     .filter(
       (c) =>
         (!q ||
-          [c.nom, c.statut, c.manager1, c.manager2, c.secteur, c.telephone, c.email, ...Object.values(zones.get(c.id) ?? {})]
+          [c.nom, c.statut, ...managersOf(c, managers), c.secteur, c.telephone, c.email, ...Object.values(zones.get(c.id) ?? {})]
             .join(' ')
             .toLowerCase()
             .includes(q)) &&
@@ -272,7 +249,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
             className="auto"
             ariaLabel="Trier par"
             value={sort}
-            options={SORTS.map((x) => ({ value: x.key, label: x.label }))}
+            options={sorts.map((x) => ({ value: x.key, label: x.label }))}
             onChange={(v) => setSort(v as SortKey)}
             searchable={false}
           />
@@ -292,7 +269,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
             <tr>
               <th>Commercial</th>
               <th>Statut</th>
-              <th>Managers</th>
+              <th>{managers.length > 1 ? 'Managers' : 'Manager'}</th>
               <th>Zones</th>
               <th className="col-actions">
                 <span className="sr-only">Actions</span>
@@ -328,12 +305,11 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
                     {c.statut ? <span className={'badge' + (isARecruter(c) ? ' warning' : '')}>{c.statut}</span> : <span className="muted">—</span>}
                   </td>
                   <td className="managers">
-                    <div>
-                      <span className="muted">1</span> {c.manager1 || '—'}
-                    </div>
-                    <div>
-                      <span className="muted">2</span> {c.manager2 || '—'}
-                    </div>
+                    {managers.map((f) => (
+                      <div key={f}>
+                        {managers.length > 1 && <span className="muted">{f === 'manager1' ? 1 : 2}</span>} {c[f] || '—'}
+                      </div>
+                    ))}
                   </td>
                   <td>
                     <div className="zone-summary">
@@ -366,7 +342,7 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
             {!rows.length && (
               <tr>
                 <td colSpan={5} className="muted">
-                  {data.commerciaux.length ? 'Aucun commercial ne correspond à la recherche.' : 'Aucun commercial. Ajoutez-en un ou importez le fichier Excel.'}
+                  {data.commerciaux.length ? 'Aucun commercial ne correspond à la recherche.' : 'Aucun commercial. Ajoutez-en un.'}
                 </td>
               </tr>
             )}
@@ -453,11 +429,12 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
   const statutOptions = useMemo(() => statutChoices(statuts).map((v) => ({ value: v, label: v })), [statuts])
   const normStatut = useMemo(() => statutNormalizer(statuts), [statuts])
 
+  const managers = useMemo(() => activeManagers(data.settings), [data.settings])
   const managerOptions = useMemo(() => {
     const colors = managerColors([], data.managers)
-    const count = (nom: string) => data.commerciaux.filter((c) => c.manager1 === nom || c.manager2 === nom).length
+    const count = (nom: string) => data.commerciaux.filter((c) => managersOf(c, managers).includes(nom)).length
     return data.managers.map((m) => ({ value: m.nom, label: m.nom, color: colors.get(m.nom), hint: plural(count(m.nom), 'commercial', 'commerciaux') }))
-  }, [data])
+  }, [data, managers])
 
   const usedColors = useMemo(
     () => data.commerciaux.filter((c) => c.id !== d.id).map((c) => ({ color: c.couleur, owner: c.nom })),
@@ -545,30 +522,20 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                   <span>Région (secteur)</span>
                   <input className="input" value={d.secteur} onChange={(e) => set({ secteur: e.target.value })} />
                 </label>
-                <div className="field">
-                  <span>Manager 1</span>
-                  <Select
-                    ariaLabel="Manager 1"
-                    value={d.manager1}
-                    options={managerOptions}
-                    onChange={(v) => set({ manager1: v })}
-                    emptyLabel="— Aucun —"
-                    creatable
-                    createLabel={(t) => `Nouveau manager « ${t} »`}
-                  />
-                </div>
-                <div className="field">
-                  <span>Manager 2</span>
-                  <Select
-                    ariaLabel="Manager 2"
-                    value={d.manager2}
-                    options={managerOptions}
-                    onChange={(v) => set({ manager2: v })}
-                    emptyLabel="— Aucun —"
-                    creatable
-                    createLabel={(t) => `Nouveau manager « ${t} »`}
-                  />
-                </div>
+                {managers.map((f) => (
+                  <div className={managers.length > 1 ? 'field' : 'field span-2'} key={f}>
+                    <span>{managerLabel(f, managers)}</span>
+                    <Select
+                      ariaLabel={managerLabel(f, managers)}
+                      value={d[f]}
+                      options={managerOptions}
+                      onChange={(v) => set({ [f]: v })}
+                      emptyLabel="— Aucun —"
+                      creatable
+                      createLabel={(text) => `Nouveau manager « ${text} »`}
+                    />
+                  </div>
+                ))}
                 <div className="field span-2">
                   <span>Couleur sur la carte</span>
                   <ColorPicker value={d.couleur} onChange={(c) => set({ couleur: c })} used={usedColors} ariaLabel="Couleur sur la carte" />
@@ -599,7 +566,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
             <section>
               <h3>Zones par structure</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
-                Saisie au format Excel (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
+                Saisie rapide (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
                 l'assistant.
               </p>
               <div className="stack" style={{ gap: 12 }}>
@@ -632,7 +599,13 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
 
             <section>
               <h3>CA et objectifs</h3>
-              <ObjectifsEditor d={d} data={data} structures={structures} onChange={(objectifs) => set({ objectifs })} />
+              <ObjectifsEditor
+                value={d.objectifs}
+                known={data.objectifs}
+                structures={structures}
+                onChange={(objectifs) => set({ objectifs })}
+                note="Vus des admins et des managers, jamais avec le seul code d'accès."
+              />
             </section>
 
             <section>
@@ -642,15 +615,16 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                   <span>Nb de jour / an</span>
                   <input className="input" inputMode="decimal" value={d.jours_an} onChange={(e) => set({ jours_an: e.target.value })} />
                 </label>
-                <span />
-                <label className="field">
-                  <span>Date 1</span>
-                  <input className="input" value={d.date_manager1} onChange={(e) => set({ date_manager1: e.target.value })} />
-                </label>
-                <label className="field">
-                  <span>Date 2</span>
-                  <input className="input" value={d.date_manager2} onChange={(e) => set({ date_manager2: e.target.value })} />
-                </label>
+                {managers.length > 1 && <span />}
+                {managers.map((f) => {
+                  const key = f === 'manager1' ? 'date_manager1' : 'date_manager2'
+                  return (
+                    <label className="field" key={f}>
+                      <span>{managers.length === 1 ? 'Date' : f === 'manager1' ? 'Date 1' : 'Date 2'}</span>
+                      <input className="input" value={d[key]} onChange={(e) => set({ [key]: e.target.value })} />
+                    </label>
+                  )
+                })}
                 <label className="field span-2">
                   <span>Actions</span>
                   <input className="input" value={d.actions} onChange={(e) => set({ actions: e.target.value })} />
@@ -699,86 +673,5 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
         />
       )}
     </>
-  )
-}
-
-/** Saisie du CA et de l'objectif par structure, pour l'année choisie. */
-function ObjectifsEditor({
-  d,
-  data,
-  structures,
-  onChange,
-}: {
-  d: Draft
-  data: MapData
-  structures: Structure[]
-  onChange: (objectifs: Draft['objectifs']) => void
-}) {
-  const now = new Date().getFullYear()
-  const [year, setYear] = useState(() => defaultYear(data.objectifs))
-  const years = [...new Set([now - 1, now, now + 1, ...availableYears(data.objectifs), ...Object.keys(d.objectifs).map(Number)])].sort((a, b) => b - a)
-  const rows = structures.length ? structures : []
-
-  const setValue = (s: Structure, field: 'ca' | 'objectif', value: string) => {
-    const current = d.objectifs[year]?.[s] ?? { ca: '', objectif: '' }
-    onChange({ ...d.objectifs, [year]: { ...d.objectifs[year], [s]: { ...current, [field]: value } } })
-  }
-
-  return (
-    <div className="objectifs-editor">
-      <div className="row" style={{ marginBottom: 10 }}>
-        <span className="muted small">Année</span>
-        <Select
-          className="auto year-select"
-          ariaLabel="Année des CA et objectifs"
-          value={String(year)}
-          options={years.map((y) => ({ value: String(y), label: String(y) }))}
-          onChange={(v) => setYear(Number(v))}
-          searchable={false}
-        />
-        <span className="muted small">Réservé aux admins, jamais visible avec le seul code d'accès.</span>
-      </div>
-      {!rows.length ? (
-        <p className="muted small">Cochez une structure (ou saisissez des zones) pour renseigner son CA.</p>
-      ) : (
-        <table className="obj-table">
-          <thead>
-            <tr>
-              <th>Structure</th>
-              <th>CA {year}</th>
-              <th>Objectif {year}</th>
-              <th>Atteint</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => {
-              const v = d.objectifs[year]?.[s] ?? { ca: '', objectif: '' }
-              const ca = parseAmount(v.ca)
-              const obj = parseAmount(v.objectif)
-              const valid = ca !== null && obj !== null && !Number.isNaN(ca) && !Number.isNaN(obj) && obj > 0
-              return (
-                <tr key={s}>
-                  <td>
-                    <span className="struct-tag">{s}</span>
-                  </td>
-                  <td>
-                    <AmountInput value={v.ca} onChange={(t) => setValue(s, 'ca', t)} ariaLabel={`CA ${s} ${year}`} />
-                  </td>
-                  <td>
-                    <AmountInput value={v.objectif} onChange={(t) => setValue(s, 'objectif', t)} ariaLabel={`Objectif ${s} ${year}`} />
-                  </td>
-                  <td>{valid ? <PerfBar perf={{ ca: ca!, objectif: obj!, pct: ca! / obj!, hasData: true }} /> : <span className="muted">—</span>}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      )}
-      {rows.length > 0 && (
-        <p className="muted small amount-hint">
-          Saisie rapide : <code>120k</code> = 120 000 €, <code>1,2M</code> = 1 200 000 €.
-        </p>
-      )}
-    </div>
   )
 }

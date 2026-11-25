@@ -1,4 +1,4 @@
-// Lecture des listes de zones au format du fichier Excel : "22, 35P, 52G, 75-7".
+// Lecture des listes de zones saisies en texte : "22, 35P, 52G, 75-7".
 //  - séparateurs : , . / ; et espace
 //  - suffixe P = partiel, G = gestion, GP = gestion-partiel (PG accepté), sans suffixe = propre
 //  - un code à un chiffre est complété par un 0 (9 → 09)

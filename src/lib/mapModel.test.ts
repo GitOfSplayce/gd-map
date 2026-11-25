@@ -29,6 +29,9 @@ const aff = (commercial_id: string, zone_code: string, couverture: Couverture = 
 
 const data = (affectations: Affectation[], commerciaux = ['A', 'B', 'C'].map((id) => commercial(id, ['MD', 'SP']))): MapData => ({
   admin: false,
+  chiffres: false,
+  manager: null,
+  a_recruter: [],
   structures: DEFAULT_STRUCTURES,
   commerciaux,
   managers: [],

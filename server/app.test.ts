@@ -14,7 +14,7 @@ const USERS: Record<string, SessionUser> = {
   admin: { id: '00000000-0000-0000-0000-00000000000a', email: 'admin@exemple.fr', name: 'Admin', image: null, hasAccess: true },
   reader: { id: '00000000-0000-0000-0000-00000000000b', email: 'lectrice@exemple.fr', name: 'Lectrice', image: null, hasAccess: true },
   outsider: { id: '00000000-0000-0000-0000-00000000000c', email: 'exterieur@exemple.fr', name: 'Extérieur', image: null, hasAccess: false },
-  responsable: { id: '00000000-0000-0000-0000-00000000000d', email: 'responsable@exemple.fr', name: 'Responsable', image: null, hasAccess: true },
+  manager: { id: '00000000-0000-0000-0000-00000000000d', email: 'manager@exemple.fr', name: 'Manager', image: null, hasAccess: true },
 }
 
 let pglite: PGlite
@@ -182,13 +182,8 @@ describe('administration', () => {
     expect((await call('admin', 'DELETE', '/api/admin/commerciaux/pas-un-uuid')).status).toBe(400)
   })
 
-  it('importe en une fois', async () => {
-    const res = await call('admin', 'POST', '/api/admin/import', {
-      items: [{ nom: 'Basile Fournier', structures: ['SP'], affectations: [{ structure: 'SP', zone_code: '2A', couverture: 'propre' }] }],
-      deleteIds: [],
-    })
-    expect(res).toEqual({ status: 200, body: { saved: 1, deleted: 0 } })
-    expect((await call('admin', 'POST', '/api/admin/import', { items: 'nope' })).status).toBe(400)
+  it('n\'importe plus d\'Excel (D-012)', async () => {
+    expect((await call('admin', 'POST', '/api/admin/import', { items: [], deleteIds: [] })).status).toBe(404)
   })
 
   it('gère les managers : création, couleur, coordonnées, renommage, suppression', async () => {
@@ -259,7 +254,7 @@ describe('rôles', () => {
   })
 
   it('personne ne change ni ne retire son propre rôle', async () => {
-    expect((await call('admin', 'PUT', '/api/admin/acces/admin@exemple.fr', { role: 'responsable' })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/acces/admin@exemple.fr', { role: 'admin' })).status).toBe(400)
     expect((await call('admin', 'DELETE', '/api/admin/acces/admin@exemple.fr')).status).toBe(400)
     expect((await call('admin', 'DELETE', '/api/admin/acces/inconnu@exemple.fr')).status).toBe(404)
   })
@@ -275,55 +270,97 @@ describe('rôles', () => {
   })
 })
 
-describe('responsable (D-009)', () => {
+describe('manager (D-010)', () => {
   let sud: string
   let nord: string
 
   beforeAll(async () => {
-    for (const [nom, manager1] of [['Sud Un', 'Équipe Sud'], ['Nord Un', 'Équipe Nord']]) {
-      const res = await call('admin', 'POST', '/api/admin/commerciaux', { nom, manager1, structures: ['MD'] })
+    for (const [nom, manager2, zone_code] of [['Sud Un', 'Équipe Sud', '13'], ['Nord Un', 'Équipe Nord', '59']]) {
+      const res = await call('admin', 'POST', '/api/admin/commerciaux', { nom, manager2, structures: ['MD'], affectations: [{ structure: 'MD', zone_code, couverture: 'propre' }] })
       if (nom === 'Sud Un') sud = res.body.id as string
       else nord = res.body.id as string
     }
   })
 
-  it('un admin le nomme avec au moins un manager connu', async () => {
-    const url = '/api/admin/acces/responsable@exemple.fr'
-    expect((await call('admin', 'PUT', url, { role: 'responsable' })).status).toBe(400)
-    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: 'Équipe Sud' })).status).toBe(400)
-    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Inconnu'] })).body).toMatchObject({ code: '23503' })
-    expect((await call('admin', 'PUT', url, { role: 'responsable', managers: ['Équipe Sud'] })).status).toBe(200)
-    const roles = (await call('admin', 'GET', '/api/admin/acces')).body.roles as Record<string, unknown>[]
-    expect(roles.find((r) => r.email === 'responsable@exemple.fr')).toMatchObject({ role: 'responsable', managers: ['Équipe Sud'] })
-    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: 'responsable' })
+  it('un admin le relie à son compte GD One et coche ses structures', async () => {
+    const url = `/api/admin/managers/${encodeURIComponent('Équipe Sud')}`
+    expect((await call('admin', 'PATCH', url, { compte: 'pas-un-mail' })).body).toMatchObject({ code: '23514' })
+    expect((await call('admin', 'PATCH', url, { structures: 'MD' })).status).toBe(400)
+    expect((await call('admin', 'PATCH', url, { structures: ['XX'] })).body).toMatchObject({ code: '23503' })
+    expect((await call('admin', 'PATCH', url, { compte: ' Manager@Exemple.fr ', structures: ['MD'] })).status).toBe(200)
+    expect((await call('admin', 'PATCH', `/api/admin/managers/${encodeURIComponent('Équipe Nord')}`, { compte: 'manager@exemple.fr' })).body).toMatchObject({ code: '23505' })
+    expect((await call('manager', 'GET', '/api/moi')).body).toMatchObject({ role: 'manager' })
+    expect((await call('admin', 'PUT', '/api/admin/acces/x@exemple.fr', { role: 'responsable' })).body).toMatchObject({ code: '23514' })
   })
 
-  it('ouvre la carte sans code, sans les chiffres', async () => {
-    expect((await call('responsable', 'POST', '/api/carte', {})).body).toMatchObject({ ok: true, admin: false, objectifs: [] })
+  it('ouvre la carte sans code, chiffres compris', async () => {
+    expect((await call('manager', 'POST', '/api/carte', {})).body).toMatchObject({ ok: true, admin: false, chiffres: true, manager: { nom: 'Équipe Sud', structures: ['MD'] } })
+    expect((await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' })).body).toMatchObject({ ok: true, chiffres: false, manager: null, objectifs: [] })
   })
 
-  it('lit et saisit les chiffres de son équipe, pas des autres', async () => {
-    expect((await call('anon', 'GET', '/api/equipe')).status).toBe(401)
-    expect((await call('reader', 'GET', '/api/equipe')).status).toBe(403)
-    expect((await call('admin', 'GET', '/api/equipe')).status).toBe(403)
-
+  it('modifie les départements et les chiffres de son équipe, pas des autres', async () => {
     const objectifs = [{ structure: 'MD', annee: 2026, ca: 1500, objectif: 3000 }]
-    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(200)
-    const equipe = (await call('responsable', 'GET', '/api/equipe')).body
-    expect((equipe.commerciaux as { nom: string }[]).map((c) => c.nom)).toEqual(['Sud Un'])
-    expect(equipe.objectifs).toEqual([expect.objectContaining({ commercial_id: sud, ca: 1500, objectif: 3000 })])
+    const affectations = [{ structure: 'MD', zone_code: '13', couverture: 'propre' }, { structure: 'MD', zone_code: '83', couverture: 'gestion' }]
+    expect((await call('anon', 'PUT', `/api/equipe/${sud}`, { objectifs })).status).toBe(401)
+    expect((await call('reader', 'PUT', `/api/equipe/${sud}`, { objectifs })).status).toBe(403)
+    expect((await call('admin', 'PUT', `/api/equipe/${sud}`, { objectifs })).status).toBe(403)
 
-    expect((await call('responsable', 'PUT', `/api/equipe/${nord}/objectifs`, { objectifs })).status).toBe(403)
-    expect((await call('responsable', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs: 'nope' })).status).toBe(400)
-    expect((await call('responsable', 'PUT', '/api/equipe/pas-un-uuid/objectifs', { objectifs })).status).toBe(400)
-    expect((await call('anon', 'PUT', `/api/equipe/${sud}/objectifs`, { objectifs })).status).toBe(401)
-    expect((await call('responsable', 'POST', '/api/admin/commerciaux', { nom: 'Intrus' })).status).toBe(403)
+    expect((await call('manager', 'PUT', `/api/equipe/${sud}`, { objectifs, affectations })).status).toBe(200)
+    const carte = (await call('manager', 'POST', '/api/carte', {})).body
+    expect(carte.objectifs).toContainEqual(expect.objectContaining({ commercial_id: sud, ca: 1500, objectif: 3000 }))
+    expect(carte.affectations).toContainEqual(expect.objectContaining({ commercial_id: sud, zone_code: '83', couverture: 'gestion' }))
+
+    const taken = await call('manager', 'PUT', `/api/equipe/${sud}`, { affectations: [...affectations, { structure: 'MD', zone_code: '59', couverture: 'partiel' }] })
+    expect(taken).toMatchObject({ status: 400, body: { error: expect.stringContaining('déjà occupé par Nord Un') } })
+    expect((await call('manager', 'PUT', `/api/equipe/${nord}`, { objectifs })).status).toBe(403)
+    expect((await call('manager', 'PUT', `/api/equipe/${sud}`, { objectifs: 'nope' })).status).toBe(400)
+    expect((await call('manager', 'PUT', `/api/equipe/${sud}`, { affectations: {} })).status).toBe(400)
+    expect((await call('manager', 'PUT', `/api/equipe/${sud}`, { nom: 'Autre nom' })).status).toBe(400)
+    expect((await call('manager', 'PUT', '/api/equipe/pas-un-uuid', { objectifs })).status).toBe(400)
+    expect((await call('manager', 'POST', '/api/admin/commerciaux', { nom: 'Intrus' })).status).toBe(403)
+    expect((await call('manager', 'PUT', '/api/admin/managers-actifs', { manager1: true, manager2: false })).status).toBe(403)
   })
 
-  it('redevenu sans rôle, il n\'a plus que le code', async () => {
-    expect((await call('admin', 'DELETE', '/api/admin/acces/responsable@exemple.fr')).status).toBe(200)
-    expect((await call('responsable', 'GET', '/api/moi')).body).toMatchObject({ role: null })
-    expect((await call('responsable', 'GET', '/api/equipe')).status).toBe(403)
+  it('lit le journal de son équipe ; les autres ne le lisent pas', async () => {
+    expect((await call('anon', 'GET', '/api/journal')).status).toBe(401)
+    expect((await call('reader', 'GET', '/api/journal')).status).toBe(403)
+    const mine = (await call('manager', 'GET', '/api/journal')).body.lignes as { nom: string; auteur: string }[]
+    expect(new Set(mine.map((l) => l.nom))).toEqual(new Set(['Sud Un']))
+    expect(mine[0].auteur).toBe('manager@exemple.fr')
+    expect((await call('admin', 'GET', `/api/journal?commercial=${nord}`)).body).toMatchObject({ suite: false })
+    expect((await call('admin', 'GET', '/api/journal?avant=abc')).status).toBe(400)
+    expect((await call('admin', 'GET', '/api/journal?commercial=abc')).status).toBe(400)
+  })
+
+  it('Manager 1 et Manager 2 se règlent pour toute la carte', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/managers-actifs', { manager1: false, manager2: false })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/managers-actifs', { manager1: 'non', manager2: true })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/managers-actifs', { manager1: false, manager2: true })).status).toBe(200)
+    expect((await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' })).body).toMatchObject({ settings: { manager1_actif: false, manager2_actif: true } })
+    expect((await call('admin', 'PUT', '/api/admin/managers-actifs', { manager1: true, manager2: true })).status).toBe(200)
+  })
+
+  it('délié de son compte, il n\'a plus que le code', async () => {
+    expect((await call('admin', 'PATCH', `/api/admin/managers/${encodeURIComponent('Équipe Sud')}`, { compte: null })).status).toBe(200)
+    expect((await call('manager', 'GET', '/api/moi')).body).toMatchObject({ role: null })
+    expect((await call('manager', 'PUT', `/api/equipe/${sud}`, { objectifs: [] })).status).toBe(403)
+  })
+})
+
+describe('départements à recruter (D-011)', () => {
+  it('un admin pose priorités et secteurs, et convertit les anciennes fiches', async () => {
+    expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: [{ zone_code: '18', priorite: 1, secteur: 'Centre' }] })).status).toBe(200)
+    expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: 'nope' })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: [{ zone_code: '59', priorite: 1 }] })).status).toBe(400)
+    const fiche = await call('admin', 'POST', '/api/admin/commerciaux', { nom: 'À recruter – Est', structures: ['MD'], affectations: [{ structure: 'MD', zone_code: '67', couverture: 'propre' }] })
+    expect((await call('admin', 'POST', '/api/admin/recrutement/convertir', { ids: [fiche.body.id] })).body).toEqual({ fiches: 1, zones: 1 })
+    expect((await call('admin', 'POST', '/api/admin/recrutement/convertir', { ids: 'nope' })).status).toBe(400)
+    const visitor = (await call('anon', 'POST', '/api/carte', { code: 'Carte-2026!' })).body
+    expect(visitor.a_recruter).toEqual([
+      { structure: 'MD', zone_code: '18', priorite: 1, secteur: 'Centre' },
+      { structure: 'MD', zone_code: '67', priorite: null, secteur: 'Est' },
+    ])
+    expect((await call('reader', 'PUT', '/api/admin/recrutement/MD', { zones: [] })).status).toBe(403)
   })
 })
 

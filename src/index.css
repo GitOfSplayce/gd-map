@@ -961,6 +961,11 @@ th.num .sort-btn { justify-content: flex-end; width: 100%; }
 .amount-field.invalid .input.amount { border-color: var(--danger); background: #fff6f6; }
 .amount-hint { margin: 8px 0 0; }
 .obj-table .perf-line { margin-top: 0; }
+/* Panneau d'un commercial sur mobile : la place va aux montants */
+@media (max-width: 560px) {
+  .objectifs-editor .obj-table th:last-child,
+  .objectifs-editor .obj-table td:last-child { display: none; }
+}
 .struct-block { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius); transition: border-color 0.15s, background 0.15s; }
 .struct-block.on { border-color: var(--saphir-100); background: var(--azurin-50); }
 .struct-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -971,11 +976,33 @@ th.num .sort-btn { justify-content: flex-end; width: 100%; }
 .struct-block .input { background: var(--surface); }
 input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 
-/* Managers : nom, téléphone et e-mail modifiés ensemble */
-.manager-edit { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(130px, 150px) minmax(180px, 1.2fr) auto; gap: 6px; align-items: center; }
-@media (max-width: 900px) {
-  .manager-edit { grid-template-columns: 1fr; }
-}
+/* Départements à recruter : priorités et secteurs */
+.vacancy { display: grid; grid-template-columns: 18px 1fr; gap: 9px; align-items: start; padding: 7px 0; }
+.vacancy + .vacancy { border-top: 1px solid var(--border); }
+.recruit-map { position: relative; height: min(640px, calc(100dvh - 300px)); min-height: 380px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.seg .key-swatch { width: 14px; height: 14px; }
+.recruit .seg,
+.seg.wrap { flex-wrap: wrap; }
+.zone-tile:disabled { cursor: not-allowed; background: #e3e8ee; border-color: #cdd6e0; }
+.zone-tile:disabled b { color: var(--muted); }
+.place { display: flex; flex-direction: column; gap: 9px; }
+.place h3 { margin-bottom: 0; }
+.place .seg { flex-wrap: wrap; align-self: flex-start; }
+.place .seg button { padding: 4px 8px; font-size: 12.5px; }
+.export-sheets { margin: 0; padding-left: 20px; }
+.export-sheets li + li { margin-top: 4px; }
+
+/* Journal des modifications */
+.journal-day { margin: 18px 0 8px; font-size: 13px; color: var(--muted); }
+.journal-day::first-letter { text-transform: uppercase; }
+.journal-entry { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.journal > div + div .journal-entry { margin-top: 7px; }
+.journal-entry time { font-weight: 600; color: var(--saphir); font-variant-numeric: tabular-nums; }
+.journal-entry ul { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; }
+.journal-entry li { position: relative; padding-left: 16px; overflow-wrap: anywhere; }
+.journal-entry li::before { content: '•'; position: absolute; left: 3px; color: var(--muted); }
+.journal-entry li.ajout::before { content: '+'; color: var(--success); font-weight: 700; }
+.journal-entry li.retrait::before { content: '−'; color: var(--danger); font-weight: 700; }
 
 .mode-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .mode-card {

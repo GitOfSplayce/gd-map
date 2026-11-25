@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import Icon from '../components/Icon'
 import { PerfBar } from '../components/Legend'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
-import { downloadWorkbook } from '../lib/excel'
+import { downloadExcel, pctTextColor, sheetOf } from '../lib/excelSheets'
+import { activeManagers, managerLabel } from '../lib/managers'
 import { NO_MANAGER } from '../lib/mapModel'
 import { availableYears, defaultYear, formatPct, sumPerf, type Perf } from '../lib/performance'
 import { plural } from '../lib/text'
@@ -16,12 +16,6 @@ import type { AdminDataProps } from './AdminApp'
 type GroupBy = 'commercial' | 'manager1' | 'manager2' | 'structure'
 type SortKey = 'nom' | 'ca' | 'objectif' | 'ecart' | 'pct'
 
-const GROUPS: { key: GroupBy; label: string; first: string }[] = [
-  { key: 'commercial', label: 'Commercial', first: 'Commercial' },
-  { key: 'manager1', label: 'Manager 1', first: 'Manager 1' },
-  { key: 'manager2', label: 'Manager 2', first: 'Manager 2' },
-  { key: 'structure', label: 'Structure', first: 'Structure' },
-]
 
 interface Row {
   key: string
@@ -38,6 +32,12 @@ export default function SynthesePage({ data }: AdminDataProps) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'pct', desc: true })
   const [showEmpty, setShowEmpty] = useState(false)
 
+  const managers = activeManagers(data.settings)
+  const groups: { key: GroupBy; label: string }[] = [
+    { key: 'commercial', label: 'Commercial' },
+    ...managers.map((f) => ({ key: f, label: managerLabel(f, managers) })),
+    { key: 'structure', label: 'Structure' },
+  ]
   const years = availableYears(data.objectifs)
   const codes = useMemo(() => structureCodes(data.structures), [data.structures])
   const structures = useMemo<readonly Structure[]>(() => (scope === 'ALL' ? codes : [scope]), [scope, codes])
@@ -95,7 +95,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
     { ca: 0, objectif: 0, hasData: false },
   )
   const totalPerf: Perf = { ...total, pct: total.objectif > 0 ? total.ca / total.objectif : null }
-  const groupLabel = GROUPS.find((g) => g.key === groupBy)!.first
+  const groupLabel = groups.find((g) => g.key === groupBy)!.label
 
   const header = (key: SortKey, label: string, numeric = false) => (
     <th className={numeric ? 'num' : undefined}>
@@ -110,28 +110,27 @@ export default function SynthesePage({ data }: AdminDataProps) {
     </th>
   )
 
-  const exportExcel = () => {
-    const aoa: (string | number | null)[][] = [
-      [`Synthèse CA et objectifs ${year} – ${scope === 'ALL' ? 'toutes structures' : scope} – par ${groupLabel.toLowerCase()}`],
-      [],
-      [groupLabel, 'CA', 'Objectif', 'Écart', '% atteint'],
-      ...shown.map((r) => [r.nom, r.perf.ca, r.perf.objectif || null, r.perf.objectif ? r.perf.ca - r.perf.objectif : null, r.perf.pct]),
-      ['Total', totalPerf.ca, totalPerf.objectif || null, totalPerf.objectif ? totalPerf.ca - totalPerf.objectif : null, totalPerf.pct],
-    ]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 11 }]
-    for (let r = 3; r < aoa.length; r++) {
-      for (const c of [1, 2, 3]) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c })]
-        if (cell) cell.z = '#,##0 €'
-      }
-      const pct = ws[XLSX.utils.encode_cell({ r, c: 4 })]
-      if (pct) pct.z = '0%'
-    }
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `Synthèse ${year}`)
-    downloadWorkbook(wb, `synthese-ca-${year}-${scope.toLowerCase()}-${groupBy}.xlsx`)
-  }
+  const exportExcel = () =>
+    void downloadExcel(
+      [
+        sheetOf({
+          name: `Synthèse ${year}`,
+          title: `Synthèse CA et objectifs ${year}`,
+          subtitle: `${scope === 'ALL' ? 'Toutes structures' : scope} · par ${groupLabel.toLowerCase()} · export du ${new Date().toLocaleDateString('fr-FR')}`,
+          columns: [
+            { header: groupLabel, width: 34, value: (r: Row) => r.nom, bold: true },
+            { header: 'CA', width: 16, kind: 'euros', value: (r) => r.perf.ca },
+            { header: 'Objectif', width: 16, kind: 'euros', value: (r) => r.perf.objectif || null },
+            { header: 'Écart', width: 16, kind: 'euros', value: (r) => (r.perf.objectif ? r.perf.ca - r.perf.objectif : null) },
+            { header: 'Atteint', width: 11, kind: 'percent', bold: true, value: (r) => r.perf.pct, color: (r) => pctTextColor(r.perf.pct) },
+          ],
+          rows: shown,
+          total: ['Total', totalPerf.ca, totalPerf.objectif || null, totalPerf.objectif ? totalPerf.ca - totalPerf.objectif : null, totalPerf.pct],
+          frozenColumns: 1,
+        }),
+      ],
+      `synthese-ca-${year}-${scope.toLowerCase()}-${groupBy}.xlsx`,
+    )
 
   return (
     <>
@@ -162,7 +161,7 @@ export default function SynthesePage({ data }: AdminDataProps) {
         <div className="row small muted">
           Regrouper par
           <div className="seg">
-            {GROUPS.map((g) => (
+            {groups.map((g) => (
               <button key={g.key} type="button" aria-pressed={groupBy === g.key} onClick={() => setGroupBy(g.key)}>
                 {g.label}
               </button>
@@ -181,8 +180,8 @@ export default function SynthesePage({ data }: AdminDataProps) {
         <div className="alert warning" style={{ marginBottom: 12 }}>
           <Icon name="alert" size={16} />
           <div>
-            Aucun CA ni objectif saisi pour l'instant. Renseignez-les dans le panneau d'un commercial (onglet Commerciaux), ou
-            importez un fichier Excel avec les colonnes « CA MD », « Objectif MD »…
+            Aucun CA ni objectif saisi pour l'instant. Renseignez-les dans le panneau d'un commercial (onglet Commerciaux) ; les
+            managers saisissent ceux de leur équipe.
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-// Normalisation de textes, sans dépendance (utilisable par la carte sans charger SheetJS).
+// Normalisation de textes, sans dépendance.
 
 const stripAccents = (s: unknown) =>
   String(s ?? '')
@@ -11,7 +11,7 @@ export const headerKey = (s: unknown) =>
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
 
-/** Clé de rapprochement des noms entre le fichier et la base. */
+/** Clé de rapprochement des noms (casse, accents, espaces et tirets ignorés). */
 export const nameKey = (s: unknown) =>
   stripAccents(s)
     .toLowerCase()

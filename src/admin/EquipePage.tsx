@@ -1,209 +1,326 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import AmountInput from '../components/AmountInput'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import Icon from '../components/Icon'
 import { PerfBar } from '../components/Legend'
-import Select from '../components/Select'
-import { fetchEquipe, saveObjectifsEquipe, type Equipe } from '../lib/api'
-import { formatAmountInput, parseAmountInput } from '../lib/amounts'
-import { availableYears, defaultYear } from '../lib/performance'
-import { sortStructures } from '../lib/structures'
+import SearchInput from '../components/SearchInput'
+import { useConfirm } from '../hooks/useConfirm'
+import { saveEquipe } from '../lib/api'
+import { myStructures, teamOf } from '../lib/equipe'
+import { activeManagers } from '../lib/managers'
+import { objectifsDraft, objectifsIssue, objectifsPayload } from '../lib/objectifsDraft'
+import { formatZoneList, parseZoneList } from '../lib/parseZones'
+import { defaultYear, sumPerf } from '../lib/performance'
+import { blockedZones } from '../lib/recrutement'
+import { inStructureOrder, structureCodes, structureName } from '../lib/structures'
 import { plural } from '../lib/text'
-import type { Structure } from '../lib/types'
+import type { Commercial, MapData, Structure } from '../lib/types'
+import type { AdminDataProps } from './AdminApp'
+import ObjectifsEditor from './ObjectifsEditor'
+import ZoneAssistant from './ZoneAssistant'
+import ZoneInput from './ZoneInput'
 
-// Espace d'un responsable (D-009) : le CA et l'objectif des commerciaux de ses managers, par structure
-// et par année. Rien d'autre ne se modifie ici ; la base vérifie que chaque commercial est de l'équipe.
+// Espace d'un manager (D-010) : les départements, le CA et les objectifs de ses commerciaux, dans les
+// structures qu'un admin lui a cochées. La base revérifie l'équipe, les structures et les départements libres.
 
-type Amounts = { ca: string; objectif: string }
+const zonesText = (c: Commercial, data: MapData, s: Structure) =>
+  formatZoneList(data.affectations.filter((a) => a.commercial_id === c.id && a.structure === s))
 
-const amountText = (n: number | null | undefined) => (n === null || n === undefined ? '' : formatAmountInput(Number(n)))
-const keyOf = (id: string, structure: Structure, annee: number) => `${id}|${structure}|${annee}`
-
-export default function EquipePage() {
-  const [equipe, setEquipe] = useState<Equipe | null>(null)
-  const [error, setError] = useState<string | null>(null)
+export default function EquipePage({ data, reload }: AdminDataProps) {
+  const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState<Commercial | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [year, setYear] = useState<number | null>(null)
-  const [drafts, setDrafts] = useState<Record<string, Amounts>>({})
-  const [busy, setBusy] = useState(false)
+  const codes = structureCodes(data.structures)
+  const year = defaultYear(data.objectifs)
+  const team = teamOf(data)
+  const q = search.trim().toLowerCase()
+  const rows = team.filter((c) => !q || [c.nom, c.statut, c.secteur, ...codes.map((s) => zonesText(c, data, s))].join(' ').toLowerCase().includes(q))
+  const me = data.manager!
 
-  const load = useCallback(async () => {
-    try {
-      const next = await fetchEquipe()
-      setEquipe(next)
-      setDrafts({})
-      setYear((y) => y ?? defaultYear(next.objectifs))
-      setError(null)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }, [])
-  useEffect(() => {
-    void load()
-  }, [load])
+  return (
+    <>
+      <header>
+        <h1>Mon équipe</h1>
+        <span className="muted">{plural(team.length, 'commercial', 'commerciaux')}</span>
+      </header>
 
-  /** Valeurs enregistrées, en texte (« 120 000 »), pour comparer à la saisie. */
-  const saved = useMemo(() => {
-    const out: Record<string, Amounts> = {}
-    for (const o of equipe?.objectifs ?? []) out[keyOf(o.commercial_id, o.structure, o.annee)] = { ca: amountText(o.ca), objectif: amountText(o.objectif) }
-    return out
-  }, [equipe])
+      <div className="toolbar-row">
+        <SearchInput value={search} onChange={setSearch} placeholder="Nom, département…" ariaLabel="Rechercher un commercial" />
+        <span className="muted small">
+          {me.structures.length
+            ? `Vos structures : ${inStructureOrder(me.structures, codes).map((s) => `${s} (${structureName(data.structures, s)})`).join(', ')}. Vos changements se voient aussitôt sur la carte.`
+            : 'Aucune structure ne vous est encore attribuée : demandez à un admin de les cocher.'}
+        </span>
+      </div>
 
-  const valueOf = (key: string): Amounts => drafts[key] ?? saved[key] ?? { ca: '', objectif: '' }
-  const dirtyKeys = Object.keys(drafts).filter((key) => {
-    const before = saved[key] ?? { ca: '', objectif: '' }
-    return drafts[key].ca.trim() !== before.ca.trim() || drafts[key].objectif.trim() !== before.objectif.trim()
+      {notice && (
+        <div className="alert success" style={{ marginBottom: 12 }} onClick={() => setNotice(null)}>
+          <Icon name="check" size={16} />
+          {notice}
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table className="grid list">
+          <thead>
+            <tr>
+              <th>Commercial</th>
+              <th>Départements</th>
+              <th style={{ width: 260 }}>CA et objectif {year}</th>
+              <th className="col-actions">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => {
+              const mine = myStructures(data, c)
+              const perf = sumPerf(data.objectifs, [c.id], year, codes)
+              return (
+                <tr
+                  key={c.id}
+                  className={(mine.length ? 'clickable' : '') + (c.actif ? '' : ' inactive')}
+                  onClick={() => mine.length && setEditing(c)}
+                  tabIndex={mine.length ? 0 : undefined}
+                  onKeyDown={(e) => e.key === 'Enter' && mine.length && setEditing(c)}
+                >
+                  <td>
+                    <div className="who">
+                      <span className="swatch" style={{ background: c.couleur }} />
+                      <div>
+                        <div className="who-name">{c.nom}</div>
+                        <div className="who-sub">{[c.statut, c.secteur, !c.actif && 'inactif'].filter(Boolean).join(' · ') || ' '}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="zone-summary">
+                      {codes
+                        .filter((s) => c.structures.includes(s))
+                        .map((s) => (
+                          <div key={s}>
+                            <span className="struct-tag">{s}</span>
+                            <span className={zonesText(c, data, s) ? 'zone-text' : 'zone-text muted'}>{zonesText(c, data, s) || 'aucun département'}</span>
+                            {!mine.includes(s) && <span className="muted small">(hors de vos structures)</span>}
+                          </div>
+                        ))}
+                      {!c.structures.length && <span className="muted small">Aucune structure : un admin doit la cocher.</span>}
+                    </div>
+                  </td>
+                  <td>{perf.hasData ? <PerfBar perf={perf} /> : <span className="muted">—</span>}</td>
+                  <td className="col-actions">
+                    {mine.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditing(c)
+                        }}
+                      >
+                        <Icon name="pencil" size={15} />
+                        Modifier
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+            {!rows.length && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {team.length ? 'Aucun commercial ne correspond à la recherche.' : 'Aucun commercial dans votre équipe : un admin vous les attribue.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <TeamDrawer
+          key={editing.id}
+          commercial={editing}
+          data={data}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            await reload()
+            setNotice(`${editing.nom} a été enregistré.`)
+            setEditing(null)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+interface DrawerProps {
+  commercial: Commercial
+  data: MapData
+  onClose: () => void
+  onSaved: () => Promise<void>
+}
+
+/** Panneau latéral : les départements et les chiffres d'un commercial, dans les structures du manager. */
+function TeamDrawer({ commercial: c, data, onClose, onSaved }: DrawerProps) {
+  const confirm = useConfirm()
+  const mine = useMemo(() => myStructures(data, c), [data, c])
+  const initial = useMemo(() => ({ zones: Object.fromEntries(mine.map((s) => [s, zonesText(c, data, s)])), objectifs: objectifsDraft(c.id, data.objectifs.filter((o) => mine.includes(o.structure))) }), [c, data, mine])
+  const [zones, setZones] = useState<Record<Structure, string>>(initial.zones)
+  const [objectifs, setObjectifs] = useState(initial.objectifs)
+  const [assistantFor, setAssistantFor] = useState<Structure | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const blocked = useMemo(() => {
+    const active = activeManagers(data.settings)
+    return new Map(mine.map((s) => [s, blockedZones(data, c, s, data.manager!.nom, active)]))
+  }, [data, c, mine])
+
+  const list = (s: Structure, text: string) => parseZoneList(text).zones.map((z) => ({ structure: s, zone_code: z.code, couverture: z.couverture }))
+  const zonesDirty = mine.some((s) => formatZoneList(list(s, zones[s])) !== formatZoneList(list(s, initial.zones[s])))
+  const figures = objectifsPayload(objectifs)
+  const before = new Map(objectifsPayload(initial.objectifs).map((o) => [`${o.structure}|${o.annee}`, o]))
+  const changed = figures.filter((o) => {
+    const b = before.get(`${o.structure}|${o.annee}`)
+    return o.ca !== (b?.ca ?? null) || o.objectif !== (b?.objectif ?? null)
   })
+  const dirty = zonesDirty || changed.length > 0
 
-  if (error && !equipe) return <div className="alert error">{error}</div>
-  if (!equipe || year === null) return <p className="muted">Chargement…</p>
-
-  const now = new Date().getFullYear()
-  const years = [...new Set([now - 1, now, now + 1, ...availableYears(equipe.objectifs)])].sort((a, b) => b - a)
-  const order = sortStructures(equipe.structures).map((s) => s.code)
-  const structuresOf = (list: Structure[]) => [...list].sort((a, b) => order.indexOf(a) - order.indexOf(b))
-
-  const set = (key: string, field: keyof Amounts, text: string) => {
-    setNotice(null)
-    setDrafts((d) => ({ ...d, [key]: { ...valueOf(key), [field]: text } }))
+  const close = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Abandonner les modifications ?',
+        message: 'Les changements faits sur ce commercial ne sont pas enregistrés.',
+        confirmLabel: 'Abandonner',
+        cancelLabel: 'Continuer la saisie',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    onClose()
   }
 
-  const save = async () => {
-    setError(null)
-    setNotice(null)
-    const byCommercial = new Map<string, { structure: Structure; annee: number; ca: number | null; objectif: number | null }[]>()
-    for (const key of dirtyKeys) {
-      const [id, structure, annee] = key.split('|')
-      const v = drafts[key]
-      const ca = parseAmountInput(v.ca)
-      const objectif = parseAmountInput(v.objectif)
-      const nom = equipe.commerciaux.find((c) => c.id === id)?.nom ?? id
-      if (Number.isNaN(ca)) return setError(`CA ${structure} ${annee} de ${nom} : « ${v.ca} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`)
-      if (Number.isNaN(objectif)) return setError(`Objectif ${structure} ${annee} de ${nom} : « ${v.objectif} » n'est pas un montant (ex. 120k, 1,2M ou 120 000).`)
-      const list = byCommercial.get(id) ?? []
-      list.push({ structure, annee: Number(annee), ca, objectif })
-      byCommercial.set(id, list)
+  useEffect(() => {
+    if (assistantFor) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && void close()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    for (const s of mine) {
+      const bad = parseZoneList(zones[s]).issues.filter((i) => i.level === 'error')
+      if (bad.length) return setError(`Départements ${s} : ${bad.map((i) => `« ${i.raw} »`).join(', ')} ${bad.length > 1 ? 'ne sont pas des zones connues' : 'n\'est pas une zone connue'}.`)
+      const taken = list(s, zones[s]).find((z) => blocked.get(s)!.has(z.zone_code))
+      if (taken) return setError(`Le ${taken.zone_code} (${s}) est occupé par ${blocked.get(s)!.get(taken.zone_code)}.`)
     }
-    setBusy(true)
+    const issue = objectifsIssue(objectifs)
+    if (issue) return setError(issue)
+    setSaving(true)
+    setError(null)
     try {
-      for (const [id, objectifs] of byCommercial) await saveObjectifsEquipe(id, objectifs)
-      await load()
-      setNotice(`Chiffres enregistrés pour ${plural(byCommercial.size, 'commercial', 'commerciaux')}.`)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
+      await saveEquipe(c.id, {
+        ...(zonesDirty && { affectations: mine.flatMap((s) => list(s, zones[s])) }),
+        ...(changed.length && { objectifs: changed }),
+      })
+      await onSaved()
+    } catch (err) {
+      setError((err as Error).message)
+      setSaving(false)
     }
   }
 
   return (
     <>
-      <header>
-        <h1>Chiffres de l'équipe</h1>
-      </header>
-      <div className="card stack">
-        <p className="muted" style={{ margin: 0 }}>
-          {equipe.managers.length
-            ? `Commerciaux de ${equipe.managers.join(', ')} (Manager 1 ou Manager 2) : ${plural(equipe.commerciaux.length, 'commercial', 'commerciaux')}.`
-            : 'Aucun manager dans votre périmètre : demandez à un admin de le compléter.'}{' '}
-          Le CA et l'objectif ne sont visibles que des admins et de vous, jamais avec le code d'accès.
-        </p>
-        <div className="row">
-          <span className="muted small">Année</span>
-          <Select
-            className="auto year-select"
-            ariaLabel="Année des CA et objectifs"
-            value={String(year)}
-            options={years.map((y) => ({ value: String(y), label: String(y) }))}
-            onChange={(v) => setYear(Number(v))}
-            searchable={false}
-          />
-          <span style={{ flex: 1 }} />
-          {dirtyKeys.length > 0 && (
-            <button type="button" className="btn ghost" disabled={busy} onClick={() => setDrafts({})}>
-              Annuler
+      <div className="drawer-backdrop" onClick={() => void close()} />
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label={`Modifier ${c.nom}`}>
+        <form onSubmit={submit} className="drawer-form">
+          <header className="drawer-head">
+            <span className="swatch" style={{ background: c.couleur, width: 18, height: 18 }} />
+            <h2 className="grow">{c.nom}</h2>
+            {dirty && <span className="badge warning">Non enregistré</span>}
+            <button type="button" className="btn small ghost icon" onClick={() => void close()} aria-label="Fermer" title="Fermer">
+              <Icon name="x" size={18} />
             </button>
-          )}
-          <button type="button" className="btn primary" disabled={busy || !dirtyKeys.length} onClick={() => void save()}>
-            <Icon name={busy ? 'refresh' : 'save'} size={16} className={busy ? 'spin' : undefined} />
-            {dirtyKeys.length ? `Enregistrer (${dirtyKeys.length})` : 'Enregistré'}
-          </button>
-        </div>
-        {error && (
-          <div className="alert error" role="alert">
-            <Icon name="alert" size={16} />
-            {error}
-          </div>
-        )}
-        {notice && (
-          <div className="alert success">
-            <Icon name="check" size={16} />
-            {notice}
-          </div>
-        )}
+          </header>
 
-        {equipe.commerciaux.length > 0 && (
-          <div className="table-wrap">
-            <table className="grid obj-table">
-              <thead>
-                <tr>
-                  <th style={{ minWidth: 220 }}>Commercial</th>
-                  <th>Structure</th>
-                  <th style={{ width: 200 }}>CA {year}</th>
-                  <th style={{ width: 200 }}>Objectif {year}</th>
-                  <th>Atteint</th>
-                </tr>
-              </thead>
-              <tbody>
-                {equipe.commerciaux.flatMap((c) => {
-                  const list = structuresOf(c.structures)
-                  const name = (
-                    <td rowSpan={Math.max(list.length, 1)}>
-                      <span className="swatch" style={{ background: c.couleur, verticalAlign: 'middle' }} aria-hidden="true" /> <strong>{c.nom}</strong>{' '}
-                      {!c.actif && <span className="badge warning">inactif</span>}
-                      <div className="muted small">{[c.manager1, c.manager2].filter(Boolean).join(' · ')}</div>
-                    </td>
-                  )
-                  if (!list.length) {
-                    return [
-                      <tr key={c.id}>
-                        {name}
-                        <td colSpan={4} className="muted small">
-                          Aucune structure : un admin doit la cocher pour que le CA se saisisse.
-                        </td>
-                      </tr>,
-                    ]
-                  }
-                  return list.map((s, i) => {
-                    const key = keyOf(c.id, s, year)
-                    const v = valueOf(key)
-                    const ca = parseAmountInput(v.ca)
-                    const obj = parseAmountInput(v.objectif)
-                    const valid = ca !== null && obj !== null && !Number.isNaN(ca) && !Number.isNaN(obj) && obj > 0
-                    return (
-                      <tr key={key} className={dirtyKeys.includes(key) ? 'dirty' : undefined}>
-                        {i === 0 && name}
-                        <td>
-                          <span className="struct-tag">{s}</span>
-                        </td>
-                        <td>
-                          <AmountInput value={v.ca} onChange={(t) => set(key, 'ca', t)} ariaLabel={`CA ${s} ${year} de ${c.nom}`} />
-                        </td>
-                        <td>
-                          <AmountInput value={v.objectif} onChange={(t) => set(key, 'objectif', t)} ariaLabel={`Objectif ${s} ${year} de ${c.nom}`} />
-                        </td>
-                        <td>{valid ? <PerfBar perf={{ ca: ca!, objectif: obj!, pct: ca! / obj!, hasData: true }} /> : <span className="muted">—</span>}</td>
-                      </tr>
-                    )
-                  })
-                })}
-              </tbody>
-            </table>
+          <div className="drawer-body">
+            <section>
+              <h3>Départements</h3>
+              <p className="muted small" style={{ marginTop: 0 }}>
+                Saisie rapide (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
+                l'assistant. Un département occupé par le commercial d'un autre manager ne se prend pas.
+              </p>
+              <div className="stack" style={{ gap: 12 }}>
+                {mine.map((s) => (
+                  <div key={s} className="struct-block on">
+                    <div className="struct-head">
+                      <span className="row" style={{ fontWeight: 600 }}>
+                        <span className="struct-tag">{s}</span>
+                        {structureName(data.structures, s)}
+                      </span>
+                      <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
+                        <Icon name="map" size={15} />
+                        Assistant
+                      </button>
+                    </div>
+                    <ZoneInput
+                      value={zones[s]}
+                      onChange={(v) => {
+                        setZones({ ...zones, [s]: v })
+                        setError(null)
+                      }}
+                      label={`Départements ${s}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3>CA et objectifs</h3>
+              <ObjectifsEditor
+                value={objectifs}
+                known={data.objectifs}
+                structures={mine}
+                onChange={(v) => {
+                  setObjectifs(v)
+                  setError(null)
+                }}
+                note="Vus des admins et des managers."
+              />
+            </section>
           </div>
-        )}
-        <p className="muted small amount-hint" style={{ margin: 0 }}>
-          Saisie rapide : <code>120k</code> = 120 000 €, <code>1,2M</code> = 1 200 000 €. Vider les deux cases efface la ligne.
-        </p>
-      </div>
+
+          <footer className="drawer-foot">
+            {error && (
+              <div className="alert error" role="alert">
+                <Icon name="alert" size={16} />
+                {error}
+              </div>
+            )}
+            <div className="row">
+              <span className="grow" />
+              <button type="button" className="btn ghost" onClick={() => void close()}>
+                Annuler
+              </button>
+              <button type="submit" className="btn primary" disabled={saving || !dirty}>
+                <Icon name={saving ? 'refresh' : 'save'} size={16} className={saving ? 'spin' : undefined} />
+                Enregistrer
+              </button>
+            </div>
+          </footer>
+        </form>
+      </aside>
+
+      {assistantFor && (
+        <ZoneAssistant
+          title={`Départements ${assistantFor} (${structureName(data.structures, assistantFor)}) – ${c.nom}`}
+          value={zones[assistantFor]}
+          blocked={blocked.get(assistantFor)}
+          onApply={(text) => setZones({ ...zones, [assistantFor]: text })}
+          onClose={() => setAssistantFor(null)}
+        />
+      )}
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasMapEntitlement } from './organizations.ts'
+import { ORGANIZATIONS_CLAIM, PERSONAL_ACCESS_CLAIM, hasMapAccess, hasMapEntitlement } from './organizations.ts'
 
 const membership = (entitlement: unknown) => ({ id: 'o1', slug: 'gdcom', name: 'GDCOM', parent_id: null, role: 'viewer', caps: [], entitlement })
 
@@ -15,5 +15,14 @@ describe('porte d’entrée du portail', () => {
     expect(hasMapEntitlement([{ entitlement: {} }])).toBe(false)
     // Un droit d'usage illisible vaut absent
     expect(hasMapEntitlement([membership('oui'), membership([])])).toBe(false)
+  })
+
+  it('ouvre aussi à la personne à qui le portail a donné l’accès, sans organisation (D-010)', () => {
+    expect(hasMapAccess({ [PERSONAL_ACCESS_CLAIM]: true })).toBe(true)
+    expect(hasMapAccess({ [PERSONAL_ACCESS_CLAIM]: true, [ORGANIZATIONS_CLAIM]: [membership(null)] })).toBe(true)
+    expect(hasMapAccess({ [ORGANIZATIONS_CLAIM]: [membership({})] })).toBe(true)
+    // Seul `true` compte : ni un texte, ni un nombre, ni l'absence
+    for (const value of ['true', 1, {}, null, false, undefined]) expect(hasMapAccess({ [PERSONAL_ACCESS_CLAIM]: value })).toBe(false)
+    expect(hasMapAccess({})).toBe(false)
   })
 })

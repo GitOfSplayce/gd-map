@@ -9,7 +9,7 @@ interface Props {
   label: string
 }
 
-/** Saisie au format Excel ("22, 35P, 52G, 75-7") avec aperçu en pastilles. */
+/** Saisie en texte ("22, 35P, 52G, 75-7") avec aperçu en pastilles. */
 export default function ZoneInput({ value, onChange, label }: Props) {
   const parsed = useMemo(() => parseZoneList(value), [value])
 

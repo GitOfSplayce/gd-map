@@ -16,9 +16,12 @@ interface Props {
   value: string
   onApply: (text: string) => void
   onClose: () => void
+  /** Zones qu'on ne peut pas ajouter, avec qui y est (manager). */
+  blocked?: ReadonlyMap<string, string>
 }
 
 const EMPTY = '#e4ebf2'
+const TAKEN = '#b9c3d0'
 
 /** Même rendu que sur la carte : partiel et gestion-partiel rayés avec du blanc, gestion en points. */
 function styleFor(c: Couverture | undefined, partial = false): ZoneStyle {
@@ -52,8 +55,8 @@ const tileName = (code: string) => {
   return isParisArr(code) ? nom.replace(/^Paris \d+(er|e) – /, '') : nom
 }
 
-/** Assistant de saisie des zones : carte ou liste cliquable, en plus de la saisie au format Excel. */
-export default function ZoneAssistant({ title, value, onApply, onClose }: Props) {
+/** Assistant de saisie des zones : carte ou liste cliquable, en plus de la saisie en texte. */
+export default function ZoneAssistant({ title, value, onApply, onClose, blocked }: Props) {
   const [sel, setSel] = useState<ZoneSelection>(() => selectionFromText(value))
   const [brush, setBrush] = useState<Couverture>('propre')
   const [mode, setMode] = useState<'carte' | 'liste'>('carte')
@@ -81,15 +84,21 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
       ({
         styleOf: (code: string) => {
           if (code === '75') {
-            return styleFor(sel.get('75'), PARIS_ARR_CODES.some((c) => sel.has(c)))
+            const own = sel.get('75')
+            const partial = PARIS_ARR_CODES.some((c) => sel.has(c))
+            return !own && !partial && blocked?.has('75') ? { ...styleFor(undefined), fill: TAKEN } : styleFor(own, partial)
           }
-          return styleFor(coverageIn(sel, code))
+          const c = coverageIn(sel, code)
+          return !c && blocked?.has(code) ? { ...styleFor(undefined), fill: TAKEN } : styleFor(c)
         },
       }) as unknown as MapModel,
-    [sel],
+    [sel, blocked],
   )
 
-  const toggle = (code: string) => setSel((s) => toggleZone(s, code, brush))
+  // Une zone prise par un autre manager ne s'ajoute pas ; tout Paris non plus si un arrondissement l'est
+  const locked = (s: ZoneSelection, code: string) => Boolean(blocked?.has(code)) && !coverageIn(s, code)
+  const toggle = (code: string) => setSel((s) => (locked(s, code) ? s : toggleZone(s, code, brush)))
+  const toggleAll = (codes: string[]) => setSel((s) => toggleGroup(s, codes.filter((c) => !locked(s, c)), brush))
 
   const q = search.trim().toLowerCase()
   const groups = GROUPS.map((g) => ({
@@ -103,7 +112,10 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
         <header className="assistant-head">
           <div className="grow">
             <h2>{title}</h2>
-            <p className="muted small">Cliquez sur les zones : ajout avec la couverture choisie, nouveau clic pour retirer ou changer de couverture.</p>
+            <p className="muted small">
+              Cliquez sur les zones : ajout avec la couverture choisie, nouveau clic pour retirer ou changer de couverture.
+              {blocked && blocked.size > 0 && ' En gris foncé : occupé par le commercial d\'un autre manager.'}
+            </p>
           </div>
           <button type="button" className="btn small ghost icon" onClick={onClose} aria-label="Fermer" title="Fermer">
             <Icon name="x" size={18} />
@@ -173,7 +185,12 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
                 <div className="tooltip" style={{ left: hover.x + 14, top: hover.y + 10 }}>
                   <div className="t-title">{ZONE_BY_CODE.get(hover.code)?.nom ?? hover.code}</div>
                   <div className="t-sub">
-                    {hover.code} · {coverageIn(sel, hover.code) ? COUVERTURE_LABELS[coverageIn(sel, hover.code)!] : 'non sélectionnée'}
+                    {hover.code} ·{' '}
+                    {coverageIn(sel, hover.code)
+                      ? COUVERTURE_LABELS[coverageIn(sel, hover.code)!]
+                      : locked(sel, hover.code)
+                        ? `occupé par ${blocked!.get(hover.code)}`
+                        : 'non sélectionnée'}
                   </div>
                 </div>
               )}
@@ -187,20 +204,27 @@ export default function ZoneAssistant({ title, value, onApply, onClose }: Props)
                     <div className="al-head">
                       <h3>{g.name}</h3>
                       {g.codes.length > 1 && (
-                        <button type="button" className="btn small ghost" onClick={() => setSel((s) => toggleGroup(s, g.codes, brush))}>
+                        <button type="button" className="btn small ghost" onClick={() => toggleAll(g.codes)}>
                           {allBrush ? 'Tout retirer' : `Tout en ${COUVERTURE_LABELS[brush].toLowerCase()}`}
                         </button>
                       )}
                     </div>
                     <div className="al-tiles">
                       {g.name === 'Paris par arrondissement' && (
-                        <button type="button" className={'zone-tile wide ' + (sel.get('75') ?? '')} onClick={() => toggle('75')}>
+                        <button type="button" className={'zone-tile wide ' + (sel.get('75') ?? '')} onClick={() => toggle('75')} disabled={locked(sel, '75')}>
                           <b>75</b>
                           <span>Tout Paris</span>
                         </button>
                       )}
                       {g.codes.map((code) => (
-                        <button key={code} type="button" className={'zone-tile ' + (coverageIn(sel, code) ?? '')} onClick={() => toggle(code)} title={ZONE_BY_CODE.get(code)?.nom}>
+                        <button
+                          key={code}
+                          type="button"
+                          className={'zone-tile ' + (coverageIn(sel, code) ?? '')}
+                          onClick={() => toggle(code)}
+                          disabled={locked(sel, code)}
+                          title={locked(sel, code) ? `${ZONE_BY_CODE.get(code)?.nom} : occupé par ${blocked!.get(code)}` : ZONE_BY_CODE.get(code)?.nom}
+                        >
                           <b>{tileLabel(code)}</b>
                           <span>{tileName(code)}</span>
                         </button>

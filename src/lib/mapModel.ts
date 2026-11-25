@@ -1,14 +1,15 @@
 // Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, zones partagées, couverture et légende.
 import { managerColors } from './colors'
-import { nameKey } from './text'
+import { activeManagers, managerLabel, type ManagerField } from './managers'
+import { isARecruter, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, type Vacancy } from './recrutement'
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
 import { inStructureOrder, structureCodes, type StructureDef } from './structures'
-import type { Affectation, Commercial, Couverture, Manager, MapData, Objectif, Structure } from './types'
+import type { Affectation, Commercial, Couverture, Manager, MapData, Objectif, Priorite, Structure } from './types'
 import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
 
 /**
  * `couverture` : carte de chaleur du niveau de couverture ; `performance` : taux d'atteinte des objectifs
- * (admins seulement), à la place des couleurs des commerciaux.
+ * (admins et managers), à la place des couleurs des commerciaux. Les vues Manager suivent les réglages.
  */
 export type ColorMode = 'commercial' | 'manager1' | 'manager2' | 'couverture' | 'performance'
 /** Affichage des zones partagées par plusieurs commerciaux (ou managers). */
@@ -21,7 +22,6 @@ export const SHARED_MODES: { key: SharedMode; label: string; detail: string }[] 
   { key: 'dominante', label: 'Dominante', detail: 'couleur du principal et badge « +2 »' },
 ]
 export type Tab = 'ALL' | Structure
-export type ManagerField = 'manager1' | 'manager2'
 
 export interface Filters {
   managerField: ManagerField
@@ -61,9 +61,9 @@ export interface LegendItem {
   color: string
   detail: string
   zoneCount: number
-  /** CA et objectif de l'année (admins), pour un commercial ou l'équipe d'un manager. */
+  /** CA et objectif de l'année (admins et managers), pour un commercial ou l'équipe d'un manager. */
   perf?: Perf
-  /** Postes « À recruter » : regroupés à part dans la légende et l'export PNG. */
+  /** Départements à recruter : regroupés à part dans la légende et l'export PNG. */
   group?: 'a-recruter'
   /** Libellé sous le titre du groupe (« Centre » pour « À recruter – Centre »). */
   shortLabel?: string
@@ -76,6 +76,10 @@ export function aRecruterShortLabel(nom: string): string {
   const rest = nom.replace(/^\s*[aà]\s+recruter\s*[-–—:]?\s*/i, '').trim()
   return rest || nom
 }
+
+/** Clé de légende d'un département à recruter : son secteur, ou sa priorité. */
+const sectorKey = (structure: Structure, secteur: string) => `r:${structure}|${secteur}`
+const priorityKey = (p: Priorite | null) => `r:p${p ?? 0}`
 
 /** Rendu d'une part de zone : couleur pleine (propre, partiel), trame de points (gestion), traits pointillés (gestion-partiel) ou blanc. */
 export type SliceKind = 'plein' | 'points' | 'tirets' | 'blanc'
@@ -96,7 +100,10 @@ export type ZonePattern =
   | { id: string; kind: 'stripes'; stripes: Stripe[] }
   | { id: string; kind: 'dots'; color: string }
   | { id: string; kind: 'dashes'; color: string }
+  /** Département à recruter : hachures à sa couleur de priorité, dans l'autre sens que les zones partagées. */
+  | { id: string; kind: 'hatch'; color: string }
 
+export const hatchId = (color: string) => 'hatch-' + color.slice(1)
 export const dotsId = (color: string) => 'dots-' + color.slice(1)
 export const dashesId = (color: string) => 'dashes-' + color.slice(1)
 export const stripesId = (slices: Stripe[]) => 'stripes-' + slices.map((s) => s.kind[0] + s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
@@ -161,9 +168,6 @@ export const sliceOf = (color: string, c: Couverture): Stripe => ({
 const EMPTY_FILL = '#e9ecf1'
 const BORDER = '#ffffff'
 
-export const isARecruter = (c: Commercial) =>
-  nameKey(c.statut).startsWith('a recruter') || nameKey(c.nom).startsWith('a recruter')
-
 export const strongest = (list: Couverture[]): Couverture =>
   list.reduce<Couverture>((best, c) => (COUVERTURE_RANK[c] > COUVERTURE_RANK[best] ? c : best), list[0] ?? 'propre')
 
@@ -188,6 +192,11 @@ export interface MapModel {
   /** Fiche d'un manager (couleur, téléphone, e-mail) d'après son nom. */
   managerOf: (nom: string | null | undefined) => Manager | undefined
   managers: { manager1: string[]; manager2: string[] }
+  /** Les managers actifs, et leur nom à l'écran (« Manager » quand il n'en reste qu'un). */
+  activeManagers: ManagerField[]
+  managerLabel: (field: ManagerField) => string
+  /** Ce que chaque structure de l'onglet a à recruter dans une zone (sans tenir compte des filtres). */
+  vacanciesOf: (code: string) => Vacancy[]
   statuts: string[]
   visibleCommerciaux: Commercial[]
 }
@@ -207,11 +216,13 @@ export function buildMapModel(
   const hasFigures = data.objectifs.length > 0
   const byId = new Map(data.commerciaux.map((c) => [c.id, c]))
   const active = data.commerciaux.filter((c) => c.actif)
+  const activeFields = activeManagers(data.settings)
 
   const m1 = [...new Set(active.map((c) => c.manager1 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
   const m2 = [...new Set(active.map((c) => c.manager2 || NO_MANAGER))].sort((a, b) => a.localeCompare(b, 'fr'))
   const statuts = [...new Set(active.map((c) => c.statut || '(sans statut)'))].sort((a, b) => a.localeCompare(b, 'fr'))
-  const mgrColors = managerColors([...m1, ...m2], data.managers ?? [])
+  // « (sans manager) » n'a pas de couleur à lui : il décalerait celles des autres
+  const mgrColors = managerColors([...m1, ...m2].filter((nom) => nom !== NO_MANAGER), data.managers ?? [])
   const managersByName = new Map((data.managers ?? []).map((m) => [m.nom, m]))
 
   const keyOf = (c: Commercial) =>
@@ -279,6 +290,39 @@ export function buildMapModel(
     return result
   }
 
+  // À recruter : vide pour toutes les structures de l'onglet (une seule suffit à occuper la vue globale).
+  // Un filtre sur des personnes ne montre qu'elles : le reste n'est pas « à recruter » pour autant.
+  const occupancy = occupancyOf(data)
+  const rows = data.a_recruter ?? []
+  const vacancyCache = new Map<string, Vacancy[]>()
+  const vacanciesOf = (code: string) => {
+    let list = vacancyCache.get(code)
+    if (!list) {
+      list = structs.map((s) => vacancyIn(code, s, occupancy, rows)).filter((v): v is Vacancy => v !== null)
+      vacancyCache.set(code, list)
+    }
+    return list
+  }
+  const showRecruit =
+    (colorMode === 'commercial' || colorMode === 'manager1' || colorMode === 'manager2') &&
+    !filters.hideARecruter &&
+    !filters.managers.length &&
+    !filters.commerciaux.length &&
+    !filters.couvertures.length &&
+    !filters.statuts.length
+  const recruitOf = (code: string): { priorite: Priorite | null; keys: string[] } | null => {
+    if (!showRecruit) return null
+    const list = vacanciesOf(code)
+    if (list.length < structs.length || list.some((v) => v.arrondissements)) return null
+    const known = list.filter((v) => v.priorite !== null || v.secteurs.length)
+    if (!known.length) return null
+    const priorites = known.map((v) => v.priorite).filter((p): p is Priorite => p !== null)
+    return {
+      priorite: priorites.length ? (Math.min(...priorites) as Priorite) : null,
+      keys: known.flatMap((v) => (v.secteurs.length ? v.secteurs.map((s) => sectorKey(v.structure, s)) : [priorityKey(v.priorite)])),
+    }
+  }
+
   // Légende : une ligne par commercial ou par manager, avec le nombre de zones saisies
   const legendZones = new Map<string, Set<string>>()
   const legendPeople = new Map<string, Map<string, Commercial>>()
@@ -321,21 +365,47 @@ export function buildMapModel(
     zoneCount: ZONES.filter((z) => z.type !== 'arrondissement' && coverageOf(z.code).bucket.key === b.key).length,
   }))
 
-  const legend: LegendItem[] = colorMode === 'couverture' ? heatLegend : colorMode === 'performance' ? perfLegend : [...legendZones]
+  // Une ligne par secteur à recruter, puis une par priorité pour les départements sans secteur
+  const recruits = new Map<string, { structure: Structure; secteur: string | null; priorites: Set<Priorite | null>; zones: Set<string> }>()
+  for (const r of rows) {
+    if (!structs.includes(r.structure) || !recruitOf(r.zone_code)) continue
+    const key = r.secteur ? sectorKey(r.structure, r.secteur) : priorityKey(r.priorite)
+    const group = recruits.get(key) ?? { structure: r.structure, secteur: r.secteur, priorites: new Set(), zones: new Set() }
+    recruits.set(key, group)
+    group.priorites.add(r.priorite)
+    group.zones.add(r.zone_code)
+  }
+  const recruitLegend: (LegendItem & { rank: number })[] = [...recruits].map(([key, g]) => {
+    const priorites = [...g.priorites].filter((p): p is Priorite => p !== null).sort()
+    const top = priorites[0] ?? null
+    return {
+      key,
+      rank: (g.secteur ? 0 : 10) + (top ?? 4),
+      group: 'a-recruter' as const,
+      label: g.secteur ? `À recruter – ${g.secteur}` : prioriteLabel(top),
+      shortLabel: g.secteur ? (tab === 'ALL' ? `${g.secteur} (${g.structure})` : g.secteur) : prioriteLabel(top),
+      color: prioriteColor(top),
+      detail: g.secteur ? (priorites.length ? priorites.map(prioriteLabel).join(', ') : 'sans priorité') : 'sans secteur',
+      zoneCount: g.zones.size,
+    }
+  })
+  recruitLegend.sort((a, b) => a.rank - b.rank || a.shortLabel!.localeCompare(b.shortLabel!, 'fr'))
+
+  const people: LegendItem[] = colorMode === 'couverture' ? heatLegend : colorMode === 'performance' ? perfLegend : [...legendZones]
     .map(([key, zones]) => {
-      const people = [...legendPeople.get(key)!.values()]
+      const team = [...legendPeople.get(key)!.values()]
       const isManager = key.startsWith('m:')
-      const recruit = colorMode === 'commercial' && isARecruter(people[0])
+      const recruit = colorMode === 'commercial' && isARecruter(team[0])
       return {
         key,
-        ...(recruit && { group: 'a-recruter' as const, shortLabel: aRecruterShortLabel(people[0].nom) }),
-        label: isManager ? key.slice(2) : people[0].nom,
+        ...(recruit && { group: 'a-recruter' as const, shortLabel: aRecruterShortLabel(team[0].nom) }),
+        label: isManager ? key.slice(2) : team[0].nom,
         color: colorOf(key),
         detail: isManager
-          ? `${people.length} commercia${people.length > 1 ? 'ux' : 'l'}`
-          : [!recruit && people[0].statut, structuresText(people[0])].filter(Boolean).join(' – '),
+          ? `${team.length} commercia${team.length > 1 ? 'ux' : 'l'}`
+          : [!recruit && team[0].statut, structuresText(team[0])].filter(Boolean).join(' – '),
         zoneCount: zones.size,
-        perf: hasFigures ? perfOfPeople(people.map((p) => p.id)) : undefined,
+        perf: hasFigures ? perfOfPeople(team.map((p) => p.id)) : undefined,
       }
     })
     .sort((a, b) => {
@@ -345,10 +415,12 @@ export function buildMapModel(
         a.label.localeCompare(b.label, 'fr')
       )
     })
+  const legend: LegendItem[] = [...people, ...recruitLegend.map(({ rank: _rank, ...item }) => item)]
 
   const styleCache = new Map<string, ZoneStyle>()
   const styleOf = (code: string, highlighted: Set<string>): ZoneStyle => {
     const list = entries.get(code) ?? []
+    const recruit = list.length ? null : recruitOf(code)
     const cacheKey = code + '|' + [...highlighted].join(',')
     const cached = styleCache.get(cacheKey)
     if (cached) return cached
@@ -359,6 +431,10 @@ export function buildMapModel(
       style = { fill: color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else if (colorMode === 'couverture') {
       style = { fill: coverageOf(code).bucket.color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
+    } else if (recruit) {
+      const color = prioriteColor(recruit.priorite)
+      const id = hatchId(color)
+      style = { fill: `url(#${id})`, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: { id, kind: 'hatch', color }, slices: null }
     } else if (!list.length) {
       style = { fill: EMPTY_FILL, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else {
@@ -396,7 +472,8 @@ export function buildMapModel(
         colorMode === 'couverture'
           ? highlighted.has(coverageOf(code).bucket.key)
           : (colorMode === 'performance' && list.length > 0 && highlighted.has(perfBucketOf(perfOf(code).pct).key)) ||
-            list.some((e) => highlighted.has(e.key))
+            list.some((e) => highlighted.has(e.key)) ||
+            Boolean(recruit?.keys.some((key) => highlighted.has(key)))
       style = hit
         ? { ...style, stroke: '#1b2232', strokeWidth: 1.8 }
         : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER }
@@ -436,6 +513,9 @@ export function buildMapModel(
     structures: data.structures,
     managerOf: (nom) => (nom ? managersByName.get(nom) : undefined),
     managers: { manager1: m1, manager2: m2 },
+    activeManagers: activeFields,
+    managerLabel: (field) => managerLabel(field, activeFields),
+    vacanciesOf,
     statuts,
     visibleCommerciaux,
     year,

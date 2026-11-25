@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { getAccessStatus, listAccess, removeRole, setAccessCode, setRole, type AccessStatus, type KnownUser, type Role, type RoleEntry } from '../lib/api'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { addAdmin, getAccessStatus, listAccess, removeAdmin, setAccessCode, setDefaultSharedMode, setManagersActifs, type AccessStatus, type RoleEntry } from '../lib/api'
 import Icon from '../components/Icon'
 import { useConfirm } from '../hooks/useConfirm'
 import Switch from '../components/Switch'
 import { KeySwatch } from '../components/Legend'
-import { setDefaultSharedMode } from '../lib/api'
+import { activeManagers, managersOf, type ManagerField } from '../lib/managers'
 import { SHARED_MODES, type SharedMode } from '../lib/mapModel'
-import type { Manager } from '../lib/types'
+import { plural } from '../lib/text'
 import type { AdminDataProps } from './AdminApp'
 
 const MIN_CODE = 6
@@ -84,24 +85,6 @@ function AccessCodeCard() {
   )
 }
 
-const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', responsable: 'Responsable' }
-const ROLE_HINTS: Record<Role, string> = {
-  admin: 'gère tout : commerciaux, zones, chiffres, code d\'accès et rôles',
-  responsable: 'saisit le CA et les objectifs des commerciaux de ses managers, rien d\'autre',
-}
-
-interface RoleForm {
-  email: string
-  role: Role
-  managers: string[]
-  /** Modification d'un rôle existant (adresse figée). */
-  editing: boolean
-  /** Managers cochés à la main : on ne les remplace plus par la suggestion. */
-  touched: boolean
-}
-
-const EMPTY_FORM: RoleForm = { email: '', role: 'admin', managers: [], editing: false, touched: false }
-
 /** Nom et adresse sur deux lignes ; l'adresse seule tant que le portail n'a pas transmis le nom. */
 function Person({ name, email, self = false }: { name: string | null; email: string; self?: boolean }) {
   return (
@@ -116,22 +99,18 @@ function Person({ name, email, self = false }: { name: string | null; email: str
   )
 }
 
-/**
- * Accès nominatifs (D-009). La carte se lit avec le code d'accès ; le portail GD One ne sert qu'aux
- * personnes nommées ici. Les comptes eux-mêmes vivent sur le portail.
- */
-function RolesCard({ email, managers }: { email: string; managers: Manager[] }) {
+/** Les admins de la carte. Les managers, eux, se relient à leur compte dans l'onglet Managers (D-010). */
+function AdminsCard({ email }: { email: string }) {
   const confirm = useConfirm()
-  const [state, setState] = useState<{ roles: RoleEntry[]; users: KnownUser[] } | null>(null)
+  const [roles, setRoles] = useState<RoleEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [form, setForm] = useState<RoleForm>(EMPTY_FORM)
+  const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
-  const formRef = useRef<HTMLFormElement>(null)
 
   const load = useCallback(async () => {
     try {
-      setState(await listAccess())
+      setRoles((await listAccess()).roles)
       setError(null)
     } catch (e) {
       setError((e as Error).message)
@@ -158,52 +137,19 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
     }
   }
 
-  // Un manager qui a la même adresse e-mail est sans doute la personne : coché d'office pour un responsable
-  const suggested = (mail: string) => {
-    const target = mail.trim().toLowerCase()
-    return target ? managers.filter((m) => m.email?.toLowerCase() === target).map((m) => m.nom) : []
-  }
-
-  const edit = (next: Partial<RoleForm>) =>
-    setForm((f) => {
-      const merged = { ...f, ...next }
-      if (merged.role === 'responsable' && !merged.touched) merged.managers = suggested(merged.email)
-      return merged
-    })
-
-  const start = (next: RoleForm) => {
-    setForm(next)
-    setNotice(null)
-    setError(null)
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
-  const toggleManager = (nom: string) =>
-    setForm((f) => ({ ...f, touched: true, managers: f.managers.includes(nom) ? f.managers.filter((m) => m !== nom) : [...f.managers, nom] }))
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    const target = form.email.trim().toLowerCase()
-    if (form.role === 'responsable' && !form.managers.length) return setError('Cochez au moins un manager : ses commerciaux forment l\'équipe du responsable.')
-    const success =
-      form.role === 'admin'
-        ? `${target} est admin : l'administration lui est ouverte dès sa connexion par le portail.`
-        : `${target} est responsable de ${form.managers.join(', ')} : la saisie de leurs chiffres lui est ouverte dès sa connexion par le portail.`
-    const ok = await run(() => setRole(target, form.role, form.managers), success)
-    if (ok) setForm(EMPTY_FORM)
+    const mail = target.trim().toLowerCase()
+    if (await run(() => addAdmin(mail), `${mail} est admin : l'administration lui est ouverte dès sa connexion par le portail.`)) setTarget('')
   }
-
-  const known = new Set(state?.roles.map((r) => r.email))
-  const others = state?.users.filter((u) => !known.has(u.email)) ?? []
-  const managerNames = managers.map((m) => m.nom)
 
   return (
     <div className="card stack">
-      <h2>Admins et responsables</h2>
+      <h2>Admins</h2>
       <p className="muted" style={{ margin: 0 }}>
-        La carte se consulte avec le code d'accès. La connexion par le portail GD One ne sert qu'aux personnes nommées ici : les <strong>admins</strong>{' '}
-        gèrent tout ; un <strong>responsable</strong> saisit le CA et les objectifs des commerciaux de ses managers (Manager 1 ou Manager 2). Les autres
-        comptes du portail passent par le code, comme tout le monde.
+        Un admin gère tout : commerciaux, départements, chiffres, managers, structures, code d'accès et réglages. Un <strong>manager</strong> gère
+        seulement son équipe : il se relie à son compte GD One dans l'onglet <Link to="/admin/managers">Managers</Link>. Tous les autres consultent
+        la carte avec le code d'accès.
       </p>
       {error && (
         <div className="alert error">
@@ -223,8 +169,6 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
           <thead>
             <tr>
               <th>Personne</th>
-              <th>Rôle</th>
-              <th>Périmètre</th>
               <th>Dernière connexion</th>
               <th className="col-actions">
                 <span className="sr-only">Actions</span>
@@ -232,51 +176,30 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
             </tr>
           </thead>
           <tbody>
-            {state?.roles.map((r) => (
+            {roles?.map((r) => (
               <tr key={r.email}>
                 <td>
                   <Person name={r.name} email={r.email} self={r.email === email} />
                 </td>
-                <td>{ROLE_LABELS[r.role]}</td>
-                <td>
-                  {r.role === 'admin' ? (
-                    <span className="muted">Toute la carte</span>
-                  ) : r.managers.length ? (
-                    r.managers.join(', ')
-                  ) : (
-                    <span className="badge warning">aucun manager</span>
-                  )}
-                </td>
                 <td className="nowrap">{r.last_sign_in_at ? formatDate(r.last_sign_in_at) : <span className="muted">Jamais</span>}</td>
                 <td className="col-actions">
                   {r.email !== email && (
-                    <div className="row" style={{ flexWrap: 'nowrap', justifyContent: 'flex-end', gap: 6 }}>
-                      <button
-                        type="button"
-                        className="btn small"
-                        disabled={busy}
-                        onClick={() => start({ email: r.email, role: r.role, managers: r.managers, editing: true, touched: true })}
-                      >
-                        <Icon name="pencil" size={15} />
-                        Modifier
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small danger"
-                        disabled={busy}
-                        onClick={() => {
-                          void confirm({
-                            title: `Retirer le rôle de ${r.email} ?`,
-                            message: 'Son compte reste sur le portail ; la carte lui reste ouverte avec le code d\'accès, comme à tout le monde.',
-                            confirmLabel: 'Retirer',
-                            danger: true,
-                          }).then((ok) => ok && run(() => removeRole(r.email), `${r.email} n'est plus ${ROLE_LABELS[r.role].toLowerCase()}.`))
-                        }}
-                      >
-                        <Icon name="trash" size={15} />
-                        Retirer
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      disabled={busy}
+                      onClick={() => {
+                        void confirm({
+                          title: `Retirer ${r.email} des admins ?`,
+                          message: 'Son compte reste sur le portail ; la carte lui reste ouverte avec le code d\'accès, ou comme manager si son compte est relié.',
+                          confirmLabel: 'Retirer',
+                          danger: true,
+                        }).then((ok) => ok && run(() => removeAdmin(r.email), `${r.email} n'est plus admin.`))
+                      }}
+                    >
+                      <Icon name="trash" size={15} />
+                      Retirer
+                    </button>
                   )}
                 </td>
               </tr>
@@ -285,111 +208,83 @@ function RolesCard({ email, managers }: { email: string; managers: Manager[] }) 
         </table>
       </div>
 
-      <form ref={formRef} className="stack" onSubmit={submit} style={{ maxWidth: 680, marginTop: 12 }}>
-        <h3 style={{ margin: 0 }}>{form.editing ? `Modifier le rôle de ${form.email}` : 'Nommer une personne'}</h3>
-        <label className="field">
+      <form className="row" onSubmit={submit} style={{ alignItems: 'flex-end' }}>
+        <label className="field" style={{ width: 'min(380px, 100%)' }}>
           <span>E-mail de son compte GD One</span>
-          <input
-            className="input"
-            type="email"
-            required
-            readOnly={form.editing}
-            value={form.email}
-            onChange={(e) => edit({ email: e.target.value })}
-          />
+          <input className="input" type="email" required value={target} onChange={(e) => setTarget(e.target.value)} />
         </label>
-        <div className="field">
-          <span>Rôle</span>
-          <div className="row">
-            <div className="seg" role="radiogroup" aria-label="Rôle">
-              {(['admin', 'responsable'] as const).map((r) => (
-                <button key={r} type="button" role="radio" aria-checked={form.role === r} aria-pressed={form.role === r} onClick={() => edit({ role: r })}>
-                  {ROLE_LABELS[r]}
-                </button>
-              ))}
-            </div>
-            <span className="muted small">{ROLE_HINTS[form.role]}</span>
-          </div>
-        </div>
-        {form.role === 'responsable' && (
-          <div className="field">
-            <span>Ses managers</span>
-            {managerNames.length ? (
-              <div className="row" style={{ gap: '6px 16px' }}>
-                {managers.map((m) => (
-                  <label key={m.nom} className="check">
-                    <input type="checkbox" checked={form.managers.includes(m.nom)} onChange={() => toggleManager(m.nom)} />
-                    <span>{m.nom}</span>
-                    {m.email && m.email.toLowerCase() === form.email.trim().toLowerCase() && <span className="badge">même adresse</span>}
-                  </label>
-                ))}
-              </div>
-            ) : (
-              <p className="muted small" style={{ margin: 0 }}>
-                Aucun manager pour l'instant : créez-les dans l'onglet Managers.
-              </p>
-            )}
-            <p className="muted small" style={{ margin: 0 }}>
-              Son équipe : les commerciaux dont le Manager 1 ou le Manager 2 est coché. Un manager qui a la même adresse e-mail est coché d'office.
-            </p>
-          </div>
-        )}
-        <div className="row">
-          <button type="submit" className="btn primary" disabled={busy}>
-            <Icon name={form.editing ? 'save' : 'plus'} size={16} />
-            {form.editing ? 'Enregistrer' : 'Nommer'}
-          </button>
-          {(form.editing || form.email) && (
-            <button type="button" className="btn ghost" disabled={busy} onClick={() => setForm(EMPTY_FORM)}>
-              Annuler
-            </button>
-          )}
-        </div>
+        <button type="submit" className="btn primary" disabled={busy || !target.trim()}>
+          <Icon name="plus" size={16} />
+          Nommer admin
+        </button>
       </form>
+    </div>
+  )
+}
 
-      {others.length > 0 && (
-        <>
-          <h3 style={{ margin: '12px 0 0' }}>Venus par le portail, sans rôle</h3>
-          <p className="muted small" style={{ margin: 0 }}>
-            Ces comptes se sont déjà connectés : sans rôle, ils n'ont que le code d'accès. Pour en nommer un, sans retaper son adresse :
-          </p>
-          <div className="table-wrap">
-            <table className="grid list">
-              <thead>
-                <tr>
-                  <th>Personne</th>
-                  <th>Portail</th>
-                  <th>Dernière connexion</th>
-                  <th className="col-actions">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {others.map((u) => (
-                  <tr key={u.email}>
-                    <td>
-                      <Person name={u.name} email={u.email} />
-                    </td>
-                    <td>{u.has_access ? 'Droit d\'usage de la carte' : <span className="muted">Sans droit d'usage : un rôle ne lui donnerait rien</span>}</td>
-                    <td className="nowrap">{formatDate(u.last_sign_in_at)}</td>
-                    <td className="col-actions">
-                      <button
-                        type="button"
-                        className="btn small"
-                        disabled={busy}
-                        onClick={() => start({ ...EMPTY_FORM, email: u.email, role: 'responsable', managers: suggested(u.email) })}
-                      >
-                        <Icon name="key" size={15} />
-                        Nommer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+/** Manager 1 et Manager 2, pour toute la carte. */
+function ManagersCard({ data, reload }: AdminDataProps) {
+  const confirm = useConfirm()
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const active = activeManagers(data.settings)
+  const on = { manager1: active.includes('manager1'), manager2: active.includes('manager2') }
+
+  const toggle = async (field: ManagerField, value: boolean) => {
+    const next = { ...on, [field]: value }
+    const name = field === 'manager1' ? 'Manager 1' : 'Manager 2'
+    if (!value) {
+      const left = (['manager1', 'manager2'] as const).filter((f) => next[f])
+      const orphans = data.commerciaux.filter((c) => c.actif && managersOf(c, active).length && !managersOf(c, left).length)
+      const ok = await confirm({
+        title: `Désactiver ${name} ?`,
+        message: `Il disparaît de la carte, des filtres, des fiches et de l'export, et ne donne plus de droits. Rien n'est effacé : le réactiver le remet comme avant. ${
+          orphans.length
+            ? `${plural(orphans.length, 'commercial se retrouve', 'commerciaux se retrouvent')} sans manager (${orphans.slice(0, 5).map((c) => c.nom).join(', ')}${orphans.length > 5 ? '…' : ''}) : seul un admin pourra les modifier.`
+            : 'Aucun commercial ne se retrouve sans manager.'
+        }`,
+        confirmLabel: 'Désactiver',
+        danger: orphans.length > 0,
+      })
+      if (!ok) return
+    }
+    setBusy(true)
+    setMessage(null)
+    try {
+      await setManagersActifs(next.manager1, next.manager2)
+      await reload()
+      setMessage({ kind: 'success', text: `${name} ${value ? 'activé' : 'désactivé'} pour toute la carte.` })
+    } catch (e) {
+      setMessage({ kind: 'error', text: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <h2>Manager 1 et Manager 2</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        Un manager désactivé n'a plus de vue sur la carte, de filtre ni de droits, pour personne. Il en reste toujours un : quand il est seul, la
+        carte l'appelle simplement « Manager ».
+      </p>
+      {(['manager1', 'manager2'] as const).map((f) => {
+        const last = on[f] && active.length === 1
+        return (
+          <div className="row" key={f}>
+            <Switch checked={on[f]} onChange={(v) => !busy && !last && void toggle(f, v)} label={f === 'manager1' ? 'Manager 1' : 'Manager 2'} />
+            <span className="muted small">
+              {on[f] ? `actif, ${plural(data.commerciaux.filter((c) => c.actif && c[f]).length, 'commercial', 'commerciaux')}` : 'désactivé'}
+              {last && ' · le dernier actif ne se désactive pas'}
+            </span>
           </div>
-        </>
+        )
+      })}
+      {message && (
+        <div className={`alert ${message.kind}`}>
+          <Icon name={message.kind === 'success' ? 'check' : 'alert'} size={16} />
+          {message.text}
+        </div>
       )}
     </div>
   )
@@ -481,7 +376,8 @@ export default function SettingsPage({ email, portalUrl, data, reload }: { email
       <div className="stack" style={{ gap: 20 }}>
         <AccessCodeCard />
         <DisplayCard data={data} reload={reload} />
-        <RolesCard email={email} managers={data.managers} />
+        <ManagersCard data={data} reload={reload} />
+        <AdminsCard email={email} />
         <PortalAccountCard portalUrl={portalUrl} />
       </div>
     </>

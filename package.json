@@ -15,7 +15,6 @@
     "lint": "oxlint src scripts server db",
     "build:geo": "node scripts/build-geo.mjs",
     "gen:zones-sql": "node scripts/gen-zones-sql.ts",
-    "sample:excel": "node scripts/make-sample-excel.mjs",
     "auth:schema": "npx --yes auth@1.7.5 generate --config server/auth-schema.ts --output better-auth.generated.sql --yes"
   },
   "dependencies": {
@@ -30,7 +29,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

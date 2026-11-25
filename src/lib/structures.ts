@@ -1,9 +1,8 @@
 // Structures du groupe (MD, SP…) : gérées dans l'admin, lues avec les données de la carte.
-import { BASE_ALIASES } from './excelHeaders'
 import { headerKey } from './text'
 
 export interface StructureDef {
-  /** Code court, en majuscules : onglet de la carte et colonnes Excel (« DPT MD », « CA MD »…). */
+  /** Code court, en majuscules : onglet de la carte. */
   code: string
   nom: string
   ordre: number
@@ -34,31 +33,12 @@ export function inStructureOrder(codes: readonly string[], order: readonly strin
 /** Format d'un code : 2 à 6 lettres ou chiffres, commençant par une lettre (comme en base). */
 export const STRUCTURE_CODE_PATTERN = /^[A-Z][A-Z0-9]{1,5}$/
 
-/** En-têtes du fichier Excel qu'un code de structure ne doit pas imiter (colonne « MD », « DPT MD », « CA MD »…). */
-const RESERVED_HEADERS = [...Object.values(BASE_ALIASES).flat(), 'all']
-
-/** En-têtes Excel propres à une structure (sans espaces ni accents, comme headerKey). */
-export function structureHeaderKeys(code: string): string[] {
-  const k = code.toLowerCase()
-  return [k, `dpt${k}`, `dept${k}`, `departements${k}`, `zones${k}`, `ca${k}`, `objectif${k}`, `obj${k}`]
-}
-
-/**
- * Problème d'un code de structure proposé, ou null s'il convient.
- * Vérifie le format et qu'aucune colonne du fichier Excel ne deviendrait ambiguë.
- */
+/** Problème d'un code de structure proposé, ou null s'il convient. « ALL » est l'onglet de la vue globale. */
 export function structureCodeIssue(code: string, others: readonly string[]): string | null {
   if (!code) return 'Le code est obligatoire.'
   if (!STRUCTURE_CODE_PATTERN.test(code)) return 'Le code fait 2 à 6 caractères (lettres majuscules et chiffres), en commençant par une lettre.'
   if (others.includes(code)) return `Le code ${code} est déjà utilisé.`
-  const mine = structureHeaderKeys(code)
-  if (mine.some((k) => RESERVED_HEADERS.includes(k))) return `« ${code} » est déjà le nom d'une colonne du fichier Excel.`
-  const taken = new Set(others.flatMap(structureHeaderKeys))
-  const clash = mine.find((k) => taken.has(k))
-  if (clash) {
-    const owner = others.find((o) => structureHeaderKeys(o).includes(clash))
-    return `Les colonnes Excel de ${code} se confondraient avec celles de ${owner}.`
-  }
+  if (code === 'ALL') return '« ALL » est réservé à la vue globale.'
   return null
 }
 

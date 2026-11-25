@@ -37,13 +37,15 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
       </div>
 
       <h3>Manager</h3>
-      <div className="seg" style={{ marginBottom: 6 }}>
-        {(['manager1', 'manager2'] as const).map((m) => (
-          <button key={m} type="button" aria-pressed={filters.managerField === m} onClick={() => set({ managerField: m, managers: [] })}>
-            {m === 'manager1' ? 'Manager 1' : 'Manager 2'}
-          </button>
-        ))}
-      </div>
+      {model.activeManagers.length > 1 && (
+        <div className="seg" style={{ marginBottom: 6 }}>
+          {model.activeManagers.map((m) => (
+            <button key={m} type="button" aria-pressed={filters.managerField === m} onClick={() => set({ managerField: m, managers: [] })}>
+              {model.managerLabel(m)}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="pick-list">
         {managers.map((m) => (
           <label key={m}>
@@ -77,9 +79,6 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
       </div>
 
       <h3>Statut</h3>
-      <div style={{ marginBottom: 8 }}>
-        <Switch checked={filters.hideARecruter} onChange={(on) => set({ hideARecruter: on })} label="Masquer les « À recruter »" />
-      </div>
       <div className="pick-list">
         {model.statuts.map((s) => (
           <label key={s}>
@@ -88,6 +87,8 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
           </label>
         ))}
       </div>
+      <h3>À recruter</h3>
+      <Switch checked={filters.hideARecruter} onChange={(on) => set({ hideARecruter: on })} label="Masquer les départements à recruter" />
       <p className="muted small" style={{ marginBottom: 0 }}>
         Sans case cochée, tout est affiché.
       </p>

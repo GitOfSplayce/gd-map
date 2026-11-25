@@ -34,8 +34,6 @@ COPY package.json ./
 # Node exécute le serveur en .ts tel quel (types effacés, Node ≥ 22.18) : rien à compiler
 COPY server ./server
 COPY db/migrations ./db/migrations
-# Reprise des données de Supabase, lancée une fois depuis le conteneur (MIGRATION.md)
-COPY scripts/import-supabase.ts ./scripts/import-supabase.ts
 COPY --from=builder /app/dist ./dist
 RUN rm -f server/*.test.ts server/auth-schema.ts
 

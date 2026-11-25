@@ -488,6 +488,16 @@ export default function MapView({
                   </pattern>
                 )
               }
+              if (p.kind === 'hatch') {
+                // À recruter : hachures fines, inclinées à l'inverse des rayures des zones partagées
+                return (
+                  <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={5} height={5} patternTransform="rotate(-45)">
+                    <rect width={5} height={5} fill="#ffffff" />
+                    <rect width={5} height={5} fill={p.color} fillOpacity={0.14} />
+                    <line x1={2.5} y1={0} x2={2.5} y2={5} stroke={p.color} strokeWidth={1.4} />
+                  </pattern>
+                )
+              }
               if (p.kind === 'dashes') {
                 // Gestion-partiel : traits en pointillés sur fond blanc, inclinés comme les rayures
                 return (

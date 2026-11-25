@@ -1,7 +1,9 @@
+import { Fragment, type ReactNode } from 'react'
 import type { MapModel } from '../lib/mapModel'
 import ContactLinks from './ContactLinks'
 import Icon from './Icon'
 import { PerfBar } from './Legend'
+import VacancyList from './VacancyList'
 import { perfBucketOf, perfText } from '../lib/performance'
 import { structureCodes, structureName } from '../lib/structures'
 import { COUVERTURE_LABELS } from '../lib/types'
@@ -12,16 +14,21 @@ import type { MapViewMode } from './MapView'
 interface Props {
   code: string
   model: MapModel
+  /** Onglet d'une seule structure. */
+  single: boolean
+  /** Sous le détail : placer un de ses commerciaux (manager). */
+  children?: ReactNode
   view: MapViewMode
   highlighted: Set<string>
   onToggleHighlight: (key: string) => void
   onChangeView: (view: MapViewMode) => void
 }
 
-export default function ZonePanel({ code, model, view, highlighted, onToggleHighlight, onChangeView }: Props) {
+export default function ZonePanel({ code, model, single, children, view, highlighted, onToggleHighlight, onChangeView }: Props) {
   const { title, subtitle } = zoneTitle(code)
   const people = zonePeople(code, model)
   const zone = ZONE_BY_CODE.get(code)
+  const vacancies = model.vacanciesOf(code)
 
   return (
     <div className="zone-panel">
@@ -58,7 +65,7 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
         </button>
       )}
 
-      {!people.length && <p className="muted">Aucun commercial sur cette zone avec les filtres actuels.</p>}
+      {!people.length && <p className="muted">Aucun commercial sur cette zone{vacancies.length ? '' : ' avec les filtres actuels'}.</p>}
 
       {structureCodes(model.structures).filter((s) => people.some((p) => p.structure === s)).map((s) => (
         <div className="zp-section" key={s}>
@@ -95,18 +102,17 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
                     )}
                     <dt>Statut</dt>
                     <dd>{c.statut || '—'}</dd>
-                    <dt>Manager 1</dt>
-                    <dd>
-                      {c.manager1 || '—'}
-                      <ContactLinks telephone={model.managerOf(c.manager1)?.telephone} email={model.managerOf(c.manager1)?.email} />
-                    </dd>
-                    <dt>Manager 2</dt>
-                    <dd>
-                      {c.manager2 || '—'}
-                      {c.manager2 !== c.manager1 && (
-                        <ContactLinks telephone={model.managerOf(c.manager2)?.telephone} email={model.managerOf(c.manager2)?.email} />
-                      )}
-                    </dd>
+                    {model.activeManagers.map((f, i) => (
+                      <Fragment key={f}>
+                        <dt>{model.managerLabel(f)}</dt>
+                        <dd>
+                          {c[f] || '—'}
+                          {(i === 0 || c[f] !== c[model.activeManagers[0]]) && (
+                            <ContactLinks telephone={model.managerOf(c[f])?.telephone} email={model.managerOf(c[f])?.email} />
+                          )}
+                        </dd>
+                      </Fragment>
+                    ))}
                     {c.secteur && (
                       <>
                         <dt>Secteur</dt>
@@ -147,6 +153,9 @@ export default function ZonePanel({ code, model, view, highlighted, onToggleHigh
             })}
         </div>
       ))}
+
+      <VacancyList vacancies={vacancies} structures={model.structures} single={single} />
+      {children}
     </div>
   )
 }

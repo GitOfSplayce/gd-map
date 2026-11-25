@@ -190,3 +190,46 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 - Un responsable lit et écrit ses chiffres par `get_equipe()` et `save_objectifs_equipe()`, qui vérifient en base que chaque commercial est de son équipe. Il n'a aucun accès direct aux tables, ni aux fonctions d'admin. Sur la carte, il ne voit pas le CA ni la vue Performance (réservés aux admins, comme avant).
 - Pour qu'un responsable d'une autre entité puisse se connecter, l'organisation de son entité reçoit le droit d'usage `gd-map` sur le portail (Support → Organisations). Sans rôle dans la carte, ce droit ne donne rien de plus que le code.
 - Un compte venu par le portail sans rôle voit l'écran du code, avec un message qui le dit.
+
+## D-010 — Les managers gèrent leur équipe avec leur compte GD One ; Manager 1 et Manager 2 se désactivent ; journal (2026-11-25)
+
+**Décision (validée par l'équipe).** Elle remplace le rôle « Responsable » de D-009 et la table des rôles qui va avec.
+
+| Qui | Droits |
+|---|---|
+| Tout le monde, avec le code | la carte, sans CA ni objectifs |
+| Manager, relié à son compte GD One | toute la carte sans code, **CA et objectifs de toutes les équipes** compris ; il modifie les **départements, CA et objectifs** de ses commerciaux, rien d'autre |
+| Admin | tout, sans les limites ci-dessous |
+
+- **Un manager, un compte.** `managers.compte` est distinct de l'e-mail de contact : changer un contact ne donne ni ne retire d'accès. Les admins restent dans `acces`. Un admin aussi manager est admin.
+- **Son équipe** : les commerciaux dont il est le Manager 1 ou le Manager 2, **parmi ceux activés** dans *Paramètres*. Désactivé, un manager n'a plus de vue, de filtre, de colonne ni de droits ; rien n'est effacé, et il en reste toujours un (« Manager » à l'écran quand il est seul).
+- **Ses structures**, cochées par un admin dans l'onglet *Managers* (au départ : celles de ses commerciaux). Il n'ajoute pas un commercial à une structure.
+- **Un département, dans une structure, est à un seul manager**, quel que soit le type (propre, partiel, gestion, gestion-partiel). Il le partage entre ses commerciaux, pas avec ceux d'un autre. Un commercial sans manager actif garde son département : seul un admin y touche. Les partages décidés par un admin restent. Un commercial inactif n'occupe rien. Paris se compare par arrondissement.
+- **Publication immédiate**, et un **journal** : qui, quand, avant, après. Tout pour un admin ; pour un manager, son équipe, sans les champs réservés aux admins.
+- **Le portail ouvre la carte** par une organisation qui a le droit d'usage, ou par un accès donné à la personne (claim `urn:gdcom:personal_access`, gdcom-portail D-046).
+
+**Pourquoi.** Ce sont les managers qui tiennent les secteurs et les chiffres. Bientôt, seul Manager 2 restera sur la carte. Certains managers sont dans plusieurs organisations du portail : l'accès par personne évite d'ouvrir la carte à toute une organisation.
+
+**Conséquences.**
+
+- `save_equipe()` écrit pour un manager, sous verrou : deux managers qui prennent le même département passent l'un après l'autre. Elle revérifie l'équipe, les structures et les départements libres.
+- Le journal s'écrit par déclencheurs, sans accès direct à sa table. `save_commercial` n'écrit plus que ce qui change. Les suites automatiques (structure renommée, manager supprimé…) n'ajoutent pas de lignes. La valeur du code d'accès n'est jamais notée.
+- Reprise : un responsable d'un seul manager devient ce manager ; les autres repassent au code.
+
+## D-011 — Un département vide est à recruter : priorités et secteurs à la place des fiches « À recruter » (2026-11-25)
+
+**Décision (validée par l'équipe).**
+
+- Plus de faux commerciaux « À recruter ». Un département **vide** d'une structure est à recruter ; n'importe quel manager de cette structure peut le prendre.
+- Les admins seuls lui donnent une **priorité** de 1 à 3, en couleur sur la carte, et un **secteur**, qui réunit les départements d'un même poste. Sans priorité ni secteur, rien n'est écrit et il reste gris.
+- Pourvu, il perd priorité et secteur. Si tout Paris était à recruter et qu'un arrondissement est pourvu, les autres le restent.
+- Sur l'onglet Globale, un département n'est à recruter que si aucune structure n'y a quelqu'un ; son détail dit lesquelles manquent.
+- Les fiches existantes se suppriment depuis l'onglet *Recrutement*, après les avoir listées et proposé un export : leurs départements vides prennent leur nom pour secteur, leurs CA et objectifs partent avec elles (le journal en garde la trace). Pas de suppression automatique par la migration.
+
+**Pourquoi.** Ces fiches occupaient des départements, comptaient comme des commerciaux, et auraient empêché les managers de les prendre.
+
+## D-012 — La carte est la source des données : plus d'import Excel, un export mis en forme (2026-11-25)
+
+**Décision (validée par l'équipe).** L'import Excel est retiré. Il effaçait, même en « Fusionner », les CA de l'année et les zones quand leurs colonnes manquaient : il aurait écrasé la saisie des managers. L'export reste, réservé aux admins : quatre feuilles (Commerciaux, Départements, CA et objectifs, Managers), avec titres, couleurs, filtres et volets figés.
+
+**Conséquences.** SheetJS, qui n'écrit pas de mise en forme dans sa version libre, laisse la place à `write-excel-file`, chargée seulement à l'export. Les données de démonstration sont figées dans `src/lib/demoData.json`. `scripts/import-supabase.ts` est retiré : le relancer effacerait ce que la carte a reçu depuis la reprise.

@@ -99,7 +99,7 @@ export default function CodeGate({ error, busy, onSubmit, onPortal, deniedEmail,
             <Icon name={leaving ? 'refresh' : 'user'} size={16} className={leaving ? 'spin' : undefined} />
             {leaving ? 'Redirection…' : 'Se connecter avec GD One'}
           </button>
-          <p className="gate-note">Pour les admins et les responsables nommés dans la carte.</p>
+          <p className="gate-note">Pour les admins et les managers.</p>
         </>
       )}
 
