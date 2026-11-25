@@ -129,10 +129,10 @@ describe('carte : départements à recruter', () => {
   const model = (tab: string, filters = DEFAULT_FILTERS, mode: 'commercial' | 'couverture' = 'commercial') => buildMapModel(data, tab, filters, mode)
   const none = new Set<string>()
 
-  it('se hachurent à la couleur de leur priorité ; sans priorité ni secteur, ils restent gris', () => {
+  it('se hachurent à la couleur de leur priorité ; sans priorité, ils restent gris, groupe ou pas', () => {
     const m = model('MD')
     expect(m.styleOf('18', none).pattern).toMatchObject({ kind: 'hatch', color: '#c4320a' })
-    expect(m.styleOf('36', none).pattern).toMatchObject({ kind: 'hatch', color: '#8794a6' })
+    expect(m.styleOf('36', none)).toMatchObject({ pattern: null, fill: m.styleOf('22', none).fill })
     expect(m.styleOf('22', none).pattern).toBeNull()
   })
 

@@ -50,6 +50,13 @@ export function toggleZone(sel: ZoneSelection, code: string, brush: Couverture):
   return next
 }
 
+/** Cette zone est-elle déjà peinte ainsi ? « 75 » : tout Paris d'un bloc. */
+export const isPainted = (sel: ZoneSelection, code: string, brush: Couverture) => (code === '75' ? sel.get('75') : coverageIn(sel, code)) === brush
+
+/** Un trait de pinceau sur une zone : pose la couverture, ou la retire ; jamais l'inverse de ce que fait le trait. */
+export const paintZone = (sel: ZoneSelection, code: string, brush: Couverture, removing: boolean): ZoneSelection =>
+  isPainted(sel, code, brush) === removing ? toggleZone(sel, code, brush) : sel
+
 /** Ajoute (ou retire, si toutes y sont déjà avec ce pinceau) un groupe de zones d'un coup. */
 export function toggleGroup(sel: ZoneSelection, codes: string[], brush: Couverture): ZoneSelection {
   const all = codes.every((c) => coverageIn(sel, c) === brush)

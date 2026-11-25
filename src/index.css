@@ -1119,6 +1119,24 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
   animation: pop-in 0.12s ease-out;
 }
 .select-search { margin-bottom: 6px; }
+
+/* Options de l'export PNG */
+.export-pop {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: pop-in 0.12s ease-out;
+}
+.export-pop p { margin: 0; line-height: 1.45; }
+.export-pop .btn { justify-content: center; margin-top: 4px; min-height: 34px; }
+
 .select-search .input { min-height: 32px; padding-top: 4px; padding-bottom: 4px; }
 .select-pop ul { list-style: none; margin: 0; padding: 0; overflow: auto; }
 .select-pop li { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 7px; cursor: pointer; }

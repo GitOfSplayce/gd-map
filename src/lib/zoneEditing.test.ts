@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverageIn, selectionFromText, selectionToText, toggleGroup, toggleZone } from './zoneEditing'
+import { coverageIn, isPainted, paintZone, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from './zoneEditing'
 import { PARIS_ARR_CODES } from './zones'
 
 const text = (t: string, ...steps: [string, 'propre' | 'partiel' | 'gestion'][]) =>
@@ -43,5 +43,29 @@ describe('assistant de saisie des zones', () => {
     const once = toggleGroup(selectionFromText('22'), bretagne, 'propre')
     expect(selectionToText(once)).toBe('22, 29, 35, 56')
     expect(selectionToText(toggleGroup(once, bretagne, 'propre'))).toBe('')
+  })
+})
+
+describe('trait de pinceau', () => {
+  const stroke = (t: string, brush: 'propre' | 'partiel', ...codes: string[]) => {
+    const start = selectionFromText(t)
+    const removing = isPainted(start, codes[0], brush)
+    return selectionToText(codes.reduce<ZoneSelection>((sel, code) => paintZone(sel, code, brush, removing), start))
+  }
+
+  it('pose la couverture sur tout le trait, sans retirer ce qui l\'a déjà', () => {
+    expect(stroke('22, 35P', 'propre', '29', '22', '35')).toBe('22, 29, 35')
+    expect(stroke('', 'partiel', '13', '83', '13')).toBe('13P, 83P')
+  })
+
+  it('commencé sur une zone déjà peinte ainsi, retire celles-là seulement', () => {
+    expect(stroke('22, 29, 35P', 'propre', '22', '35', '29', '56')).toBe('35P')
+  })
+
+  it('tout Paris se peint d\'un bloc, un arrondissement se détaille', () => {
+    expect(stroke('', 'propre', '75')).toBe('75')
+    expect(stroke('75', 'propre', '75')).toBe('')
+    expect(selectionFromText(stroke('75', 'propre', '75-7')).has('75-7')).toBe(false)
+    expect(stroke('75-1', 'propre', '75')).toBe('75')
   })
 })

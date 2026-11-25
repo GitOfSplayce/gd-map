@@ -245,3 +245,11 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 - **Peindre** : sur la carte de *Recrutement*, rester appuyé pose une priorité ou un groupe sur tous les départements traversés (appui long au doigt). Un trait commencé sur un département déjà peint ainsi l'efface. La carte se déplace alors par le fond, le clic droit ou deux doigts.
 
 **Pourquoi.** Les personnes rattachées à la direction sont en général les managers des autres : leurs départements comptaient pour elle, et elles ne pouvaient pas les modifier. Les groupes sans priorité se confondaient sur la carte.
+
+## D-014 — Rayé : une priorité ; entouré : un groupe ; gris : à recruter sans priorité (2026-11-25)
+
+**Décision.** Sur la carte, chaque signe ne dit qu'une chose. Les rayures disent une **priorité**, le contour et le nom disent un **groupe**, le gris dit « à recruter, sans priorité ». Un groupe sans priorité n'est donc plus rayé de gris : ses départements restent gris, entourés ensemble. Le nom d'un groupe se pose dans ses départements sans cacher un numéro ; s'il n'y tient pas, il attend qu'on zoome.
+
+**Pourquoi.** Deux départements vides, sans priorité tous les deux, se dessinaient différemment selon qu'ils avaient un groupe ou non : les rayures semblaient dire une priorité.
+
+**Conséquences.** L'export PNG reprend ces signes dans sa légende : il n'explique que les motifs présents sur l'image, et peut lister les départements de chacun. Il ne porte aucun CA.

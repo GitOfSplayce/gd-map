@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
+import ExportMenu from '../components/ExportMenu'
 import FiltersPanel from '../components/FiltersPanel'
 import Icon from '../components/Icon'
 import Legend from '../components/Legend'
@@ -14,10 +15,10 @@ import ZoneTooltip from '../components/ZoneTooltip'
 import { useGeo } from '../hooks/useGeo'
 import { useMapAccess } from '../hooks/useMapAccess'
 import { useSession } from '../hooks/useSession'
-import { exportMapPng } from '../lib/exportPng'
+import { exportLegend } from '../lib/exportLegend'
+import { exportMapPng, visibleZones } from '../lib/exportPng'
 import {
   DEFAULT_FILTERS,
-  LEGEND_GROUP_TITLES,
   SHARED_MODES,
   activeFilterCount,
   buildMapModel,
@@ -47,6 +48,12 @@ const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'performance', label: 'Performance' },
 ]
 const SHARED_MODE_KEYS = SHARED_MODES.map((m) => m.key)
+
+/** Le jour de l'export : « 25/11/2026 » dans l'image, « 2026-11-25 » dans le nom du fichier. */
+const exportDay = () => {
+  const now = new Date()
+  return { text: now.toLocaleDateString('fr-FR'), file: now.toISOString().slice(0, 10) }
+}
 
 export default function MapPage() {
   const session = useSession()
@@ -132,7 +139,6 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [hover, setHover] = useState<{ code: string; x: number; y: number; w: number; h: number } | null>(null)
-  const [exporting, setExporting] = useState(false)
   const [reloading, setReloading] = useState(false)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const { geo, error: geoError } = useGeo()
@@ -178,28 +184,22 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
     }
   }
 
-  const exportPng = async () => {
-    if (!svgRef.current) return
-    setExporting(true)
-    try {
-      const legend = model.legend
-        .filter((l) => !highlighted.size || highlighted.has(l.key))
-        .map((l) => ({ label: l.shortLabel ?? l.label, color: l.color, group: l.group && LEGEND_GROUP_TITLES[l.group] }))
-      const parts = [
-        VIEWS.find((v) => v.key === view)!.label,
-        `couleur : ${colorModes.find((c) => c.key === colorMode)!.label}`,
-        filterCount ? `${plural(filterCount, 'filtre actif', 'filtres actifs')}` : null,
-        `export du ${new Date().toLocaleDateString('fr-FR')}`,
-      ]
-      await exportMapPng(svgRef.current, {
-        title: `Carte commerciale – ${tab === 'ALL' ? 'Vue globale' : `${tab} (${tabInfo.sub})`}`,
-        subtitle: parts.filter(Boolean).join(' · '),
-        legend,
-        filename: `carte-${tab.toLowerCase()}-${view}-${new Date().toISOString().slice(0, 10)}.png`,
-      })
-    } finally {
-      setExporting(false)
-    }
+  const exportPng = async ({ withZones }: { withZones: boolean }) => {
+    const svg = svgRef.current
+    if (!svg) return
+    const day = exportDay()
+    const parts = [
+      VIEWS.find((v) => v.key === view)!.label,
+      `couleur : ${colorModes.find((c) => c.key === colorMode)!.label}`,
+      filterCount ? `${plural(filterCount, 'filtre actif', 'filtres actifs')}` : null,
+      `export du ${day.text}`,
+    ]
+    await exportMapPng(svg, {
+      title: `Carte commerciale – ${tab === 'ALL' ? 'Vue globale' : `${tab} (${tabInfo.sub})`}`,
+      subtitle: parts.filter(Boolean).join(' · '),
+      legend: exportLegend(model, { shown: visibleZones(svg), sharedMode, highlighted, withZones }),
+      filename: `carte-${tab.toLowerCase()}-${view}-${day.file}.png`,
+    })
   }
 
   return (
@@ -305,10 +305,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
             Filtres
             {filterCount > 0 && <span className="count-dot">{filterCount}</span>}
           </button>
-          <button type="button" className="btn small" onClick={exportPng} disabled={exporting || !geo}>
-            <Icon name="image" size={16} className={exporting ? 'spin' : undefined} />
-            {exporting ? 'Export…' : 'Export PNG'}
-          </button>
+          <ExportMenu disabled={!geo} levels={colorMode === 'couverture' || colorMode === 'performance'} onExport={exportPng} />
           <Switch
             checked={showLabels}
             onChange={(on) => setParam('codes', on ? '1' : '0', '1')}

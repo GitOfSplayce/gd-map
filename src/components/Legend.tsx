@@ -3,7 +3,7 @@ import { BRAND } from '../lib/colors'
 import SearchInput from './SearchInput'
 import { COUVERTURE_OPACITY, LEGEND_GROUP_TITLES, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
-import { PRIORITES } from '../lib/recrutement'
+import { NO_PRIORITY_COLOR, PRIORITES } from '../lib/recrutement'
 import { plural } from '../lib/text'
 import type { Couverture } from '../lib/types'
 
@@ -72,8 +72,15 @@ export function KeySwatch({ kind }: { kind: SwatchKind }) {
   )
 }
 
-/** Pastille d'un département à recruter : hachures à sa couleur de priorité, comme sur la carte. */
+/** Pastille d'un département à recruter, comme sur la carte : rayée à la couleur de sa priorité, grise sans priorité. */
 export function HatchSwatch({ color }: { color: string }) {
+  if (color === NO_PRIORITY_COLOR) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
+        <rect x="0.75" y="0.75" width="16.5" height="16.5" rx="4" fill="#e9ecf1" stroke="#b4c0cf" strokeWidth="1.5" />
+      </svg>
+    )
+  }
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
       <defs>
@@ -118,6 +125,9 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
           <HatchSwatch color={p.color} /> À recruter, priorité {p.value}
         </div>
       ))}
+      <div>
+        <HatchSwatch color={NO_PRIORITY_COLOR} /> À recruter
+      </div>
       {onSharedMode && (
         <div className="shared-mode">
           <span>Zones partagées</span>
