@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from '../components/Icon'
 import { KeySwatch } from '../components/Legend'
 import SearchInput from '../components/SearchInput'
@@ -8,7 +8,7 @@ import { BRAND } from '../lib/colors'
 import { NEUTRAL_SLICE, dotsId, sliceOf, stripesId, type MapModel, type ZoneStyle } from '../lib/mapModel'
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS, COUVERTURES, type Couverture } from '../lib/types'
-import { coverageIn, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from '../lib/zoneEditing'
+import { coverageIn, isPainted, paintZone, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from '../lib/zoneEditing'
 import Sliding from '../components/Sliding'
 import { DROM_CODES, PARIS_ARR_CODES, ZONES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
@@ -99,6 +99,15 @@ export default function ZoneAssistant({ title, value, onApply, onClose, blocked 
   // Une zone prise par un autre manager ne s'ajoute pas ; tout Paris non plus si un arrondissement l'est
   const locked = (s: ZoneSelection, code: string) => Boolean(blocked?.has(code)) && !coverageIn(s, code)
   const toggle = (code: string) => setSel((s) => (locked(s, code) ? s : toggleZone(s, code, brush)))
+  // Rester appuyé peint les zones traversées. Un trait commencé sur une zone déjà peinte ainsi les retire.
+  const removing = useRef(false)
+  const paint = (code: string, start: boolean) => {
+    if (locked(sel, code)) return false
+    if (start) removing.current = isPainted(sel, code, brush)
+    const remove = removing.current
+    setSel((s) => paintZone(s, code, brush, remove))
+    return true
+  }
   const toggleAll = (codes: string[]) => setSel((s) => toggleGroup(s, codes.filter((c) => !locked(s, c)), brush))
 
   const q = search.trim().toLowerCase()
@@ -114,7 +123,9 @@ export default function ZoneAssistant({ title, value, onApply, onClose, blocked 
           <div className="grow">
             <h2>{title}</h2>
             <p className="muted small">
-              Cliquez sur les zones : ajout avec la couverture choisie, nouveau clic pour retirer ou changer de couverture.
+              Cliquez sur les zones : ajout avec la couverture choisie, nouveau clic pour retirer ou changer de couverture.{' '}
+              <span className="hide-mobile">Restez appuyé pour en peindre plusieurs ; clic droit ou fond de carte pour déplacer.</span>
+              <span className="show-mobile">Appui long puis glissez pour en peindre plusieurs.</span>
               {blocked && blocked.size > 0 && ' En gris foncé : occupé par le commercial d\'un autre manager.'}
             </p>
           </div>
@@ -176,6 +187,7 @@ export default function ZoneAssistant({ title, value, onApply, onClose, blocked 
                   sharedMode="rayures"
                   onHover={(code, pos) => setHover(code && pos ? { code, ...pos } : null)}
                   onSelect={toggle}
+                  onPaint={paint}
                   onBackground={() => undefined}
                   onSvg={() => undefined}
                 />

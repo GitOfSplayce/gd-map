@@ -47,7 +47,10 @@ export default function HelpPage() {
               <strong>Filtres</strong> : manager, commercial, couverture, statut, et « masquer les départements à recruter ».
             </li>
             <li>
-              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende (dont les départements à recruter).
+              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende (motifs présents, personnes,
+              départements à recruter). En option, les départements de chacun sous son nom : <strong>22, 35P, 52G</strong>{' '}
+              (P : partiel, G : gestion, GP : gestion-partiel, sans lettre : propre). Après un zoom, la légende ne garde que
+              ce qui se voit.
             </li>
             <li>
               L'adresse de la page garde l'onglet, la vue et le mode de couleur : on peut la copier pour partager une vue
@@ -93,7 +96,7 @@ export default function HelpPage() {
           <p>
             Un département <strong>vide</strong> dans une structure est <strong>à recruter</strong>. Les admins lui donnent une{' '}
             <strong>priorité</strong> de 1 à 3, qui le hachure en couleur sur la carte, et un <strong>groupe</strong>, qui réunit les
-            départements d'un même poste : il est entouré et nommé sur la carte. Sans priorité, il reste gris clair. Dès qu'un commercial y est placé, il n'est plus à recruter.
+            départements d'un même poste : il est entouré et nommé sur la carte. Sans priorité, il reste gris clair, groupe ou pas. Dès qu'un commercial y est placé, il n'est plus à recruter.
           </p>
           <ul>
             <li>L'onglet d'une structure montre ce que cette structure a à recruter.</li>
@@ -180,7 +183,8 @@ export default function HelpPage() {
             </tbody>
           </table>
           <p>
-            Séparateurs acceptés : virgule, point, barre oblique, point-virgule et espace. Toute valeur inconnue est signalée
+            L'<em>Assistant</em> les choisit sur une carte : un clic en pose un, rester appuyé en peint plusieurs (appui long au doigt).
+            Séparateurs acceptés en texte : virgule, point, barre oblique, point-virgule et espace. Toute valeur inconnue est signalée
             avant l'enregistrement.
           </p>
         </section>

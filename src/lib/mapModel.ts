@@ -5,7 +5,7 @@ import { isARecruter, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, type
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
 import { inStructureOrder, structureCodes, type StructureDef } from './structures'
 import type { Affectation, Commercial, Couverture, Manager, MapData, Objectif, Priorite, Structure } from './types'
-import { PARIS_ARR_CODES, ZONES, isParisArr } from './zones'
+import { PARIS_ARR_CODES, ZONES, compareZoneCodes, isParisArr } from './zones'
 
 /**
  * `couverture` : carte de chaleur du niveau de couverture ; `performance` : taux d'atteinte des objectifs
@@ -55,12 +55,20 @@ export interface ZoneEntry {
   key: string
 }
 
+/** Une zone saisie et sa couverture la plus forte ; null quand personne ne l'a (à recruter). */
+export interface ZoneRef {
+  code: string
+  couverture: Couverture | null
+}
+
 export interface LegendItem {
   key: string
   label: string
   color: string
   detail: string
   zoneCount: number
+  /** Ses zones, dans l'ordre (vide pour un niveau de couverture ou de performance). */
+  zones: ZoneRef[]
   /** CA et objectif de l'année (admins et managers), pour un commercial ou l'équipe d'un manager. */
   perf?: Perf
   /** Départements à recruter : regroupés à part dans la légende et l'export PNG. */
@@ -111,7 +119,7 @@ export type ZonePattern =
   | { id: string; kind: 'stripes'; stripes: Stripe[] }
   | { id: string; kind: 'dots'; color: string }
   | { id: string; kind: 'dashes'; color: string }
-  /** Département à recruter : hachures à sa couleur de priorité, dans l'autre sens que les zones partagées. */
+  /** Département à recruter avec une priorité : hachures à sa couleur, dans l'autre sens que les zones partagées. */
   | { id: string; kind: 'hatch'; color: string }
 
 export const hatchId = (color: string) => 'hatch-' + color.slice(1)
@@ -208,6 +216,8 @@ export interface MapModel {
   managerLabel: (field: ManagerField) => string
   /** Groupes de départements à recruter, à entourer sur la carte. */
   groups: MapGroup[]
+  /** Vrai si une zone vide se lit « à recruter » (un filtre sur des personnes ne le dit plus). */
+  showsRecruit: boolean
   /** Ce que chaque structure de l'onglet a à recruter dans une zone (sans tenir compte des filtres). */
   vacanciesOf: (code: string) => Vacancy[]
   statuts: string[]
@@ -340,15 +350,16 @@ export function buildMapModel(
   }
 
   // Légende : une ligne par commercial ou par manager, avec le nombre de zones saisies
-  const legendZones = new Map<string, Set<string>>()
+  const legendZones = new Map<string, Map<string, Couverture[]>>()
   const legendPeople = new Map<string, Map<string, Commercial>>()
   for (const [code, list] of bySource) {
     for (const e of list) {
       if (!legendZones.has(e.key)) {
-        legendZones.set(e.key, new Set())
+        legendZones.set(e.key, new Map())
         legendPeople.set(e.key, new Map())
       }
-      legendZones.get(e.key)!.add(code)
+      const zones = legendZones.get(e.key)!
+      zones.set(code, [...(zones.get(code) ?? []), e.affectation.couverture])
       legendPeople.get(e.key)!.set(e.commercial.id, e.commercial)
     }
   }
@@ -370,6 +381,7 @@ export function buildMapModel(
     color: b.color,
     detail: b.detail,
     zoneCount: franceZones.filter((z) => (entries.get(z.code)?.length ?? 0) > 0 && perfBucketOf(perfOf(z.code).pct).key === b.key).length,
+    zones: [],
   }))
 
   // En mode couverture : un niveau par ligne, compté sur les départements, DROM et Monaco
@@ -379,6 +391,7 @@ export function buildMapModel(
     color: b.color,
     detail: b.detail,
     zoneCount: ZONES.filter((z) => z.type !== 'arrondissement' && coverageOf(z.code).bucket.key === b.key).length,
+    zones: [],
   }))
 
   // Une ligne par groupe à recruter, puis une par priorité pour les départements sans groupe
@@ -403,6 +416,7 @@ export function buildMapModel(
       color: prioriteColor(top),
       detail: g.secteur ? (priorites.length ? priorites.map(prioriteLabel).join(', ') : 'sans priorité') : 'sans groupe',
       zoneCount: g.zones.size,
+      zones: [...g.zones].sort(compareZoneCodes).map((code) => ({ code, couverture: null })),
     }
   })
   const groups: MapGroup[] = [...recruits].flatMap(([key, g]) => {
@@ -426,6 +440,7 @@ export function buildMapModel(
           ? `${team.length} commercia${team.length > 1 ? 'ux' : 'l'}`
           : [!recruit && team[0].statut, structuresText(team[0])].filter(Boolean).join(' – '),
         zoneCount: zones.size,
+        zones: [...zones].map(([code, list]) => ({ code, couverture: strongest(list) })).sort((a, b) => compareZoneCodes(a.code, b.code)),
         perf: hasFigures ? perfOfPeople(team.map((p) => p.id)) : undefined,
       }
     })
@@ -452,7 +467,8 @@ export function buildMapModel(
       style = { fill: color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else if (colorMode === 'couverture') {
       style = { fill: coverageOf(code).bucket.color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
-    } else if (recruit) {
+    } else if (recruit?.priorite) {
+      // Rayé : une priorité. Sans priorité, le département reste gris ; son groupe, s'il en a un, l'entoure.
       const color = prioriteColor(recruit.priorite)
       const id = hatchId(color)
       style = { fill: `url(#${id})`, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: { id, kind: 'hatch', color }, slices: null }
@@ -520,6 +536,7 @@ export function buildMapModel(
       color: perfBucketOf(perf.pct).color,
       detail: [c.statut, structuresText(c)].filter(Boolean).join(' – '),
       zoneCount: new Set(data.affectations.filter((a) => a.commercial_id === c.id).map((a) => a.zone_code)).size,
+      zones: [],
       perf,
     }))
 
@@ -538,6 +555,7 @@ export function buildMapModel(
     managerLabel: (field) => managerLabel(field, activeFields),
     vacanciesOf,
     groups,
+    showsRecruit: showRecruit,
     statuts,
     visibleCommerciaux,
     year,

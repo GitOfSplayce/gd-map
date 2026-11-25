@@ -16,6 +16,7 @@ import polylabel from 'polylabel'
 import Icon from './Icon'
 import type { GeoData } from '../hooks/useGeo'
 import { blendWithWhite, mixColors, readableTextColor, shade } from '../lib/colors'
+import { placeName, rasterOf } from '../lib/labelPlacement'
 import { dashesId, dotsId, type MapModel, type SharedMode, type Stripe, type ZonePattern, type ZoneStyle } from '../lib/mapModel'
 import { DROM_CODES, IDF_CODES, MONACO_CODE, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
@@ -189,8 +190,9 @@ function labelColors(st: ZoneStyle | undefined): { text: string; halo: string } 
   return readableTextColor(blendWithWhite(st.fill, st.fillOpacity)) === '#fff' ? { text: '#ffffff', halo: 'rgba(0,0,0,0.35)' } : dark
 }
 
-/** Taille du nom d'un groupe à recruter, en pixels écran. */
+/** Taille du nom d'un groupe à recruter, en pixels écran ; la plus petite quand le groupe est étroit. */
 const GROUP_LABEL = 11.5
+const GROUP_FONTS = [GROUP_LABEL, 9.5]
 
 /** Largeur d'une rayure et hauteur du motif (multiple de l'écart des points et du pas des pointillés). */
 const STRIPE = 6
@@ -477,21 +479,56 @@ export default function MapView({
     },
   })
 
-  // Groupes à recruter : chaque groupe visible, avec ses zones et l'ancre de son nom
+  // Groupes à recruter : chaque groupe visible, avec ses zones et leur emprise
   const uid = useId().replace(/:/g, '')
   const groups = useMemo(() => {
     if (!layout) return []
     return (model.groups ?? []).flatMap((g) => {
       const shapes = layout.shapes.filter((s) => g.codes.includes(s.code) || (isParisArr(s.code) && g.codes.includes('75')))
-      const anchors = shapes.flatMap((s) => (s.anchor ? [s.anchor] : []))
       if (!shapes.length) return []
-      const mid = { x: anchors.reduce((sum, a) => sum + a.x, 0) / anchors.length, y: anchors.reduce((sum, a) => sum + a.y, 0) / anchors.length }
-      // Le nom se pose sous le numéro de la zone la plus centrale
-      const anchor = [...anchors].sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))[0] ?? null
-      const width = Math.max(...shapes.map((s) => s.bounds.x1)) - Math.min(...shapes.map((s) => s.bounds.x0))
-      return [{ ...g, shapes, anchor, width }]
+      const { x, y, w, h } = layout.main
+      const x0 = Math.max(x, Math.min(...shapes.map((s) => s.bounds.x0)))
+      const y0 = Math.max(y, Math.min(...shapes.map((s) => s.bounds.y0)))
+      const box = { x0, y0, w: Math.min(x + w, Math.max(...shapes.map((s) => s.bounds.x1))) - x0, h: Math.min(y + h, Math.max(...shapes.map((s) => s.bounds.y1))) - y0 }
+      return box.w > 0 && box.h > 0 ? [{ ...g, shapes, box }] : []
     })
   }, [layout, model])
+  // Le nom de chaque groupe, à la meilleure place pour ce niveau de zoom ; absent s'il n'y tient pas
+  const groupNames = useMemo(() => {
+    if (!layout || !groups.length) return []
+    const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+    if (!ctx) return []
+    const codes = showLabels ? layout.shapes.filter(fits) : []
+    return groups.flatMap((g) => {
+      const { x0, y0 } = g.box
+      const s = Math.min(6, 150 / Math.max(g.box.w, g.box.h))
+      const w = Math.max(1, Math.ceil(g.box.w * s))
+      const h = Math.max(1, Math.ceil(g.box.h * s))
+      ctx.canvas.width = w
+      ctx.canvas.height = h
+      const bits = (draw: () => void) => {
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.clearRect(0, 0, w, h)
+        ctx.setTransform(s, 0, 0, s, -x0 * s, -y0 * s)
+        draw()
+        const { data } = ctx.getImageData(0, 0, w, h)
+        return Array.from({ length: w * h }, (_, i) => data[i * 4 + 3] > 127)
+      }
+      const inside = bits(() => g.shapes.forEach((shape) => ctx.fill(new Path2D(shape.d))))
+      const up = (labelSize * 0.55) / scale
+      const taken = bits(() => {
+        for (const c of codes) {
+          const half = (c.label.length * labelSize * 0.34 + 1) / scale
+          ctx.fillRect(c.anchor!.x - half, c.anchor!.y - up, half * 2, up * 2)
+        }
+      })
+      // Un numéro de deux chiffres, en points de l'image
+      const mark = ((2 * labelSize * 0.34 + 1) / scale) * 2 * s * (up * 2 * s)
+      const spot = placeName(rasterOf(inside, taken, w, h, mark), g.label, GROUP_FONTS, s / scale)
+      return spot ? [{ key: g.key, color: g.color, lines: spot.lines, font: spot.font, x: x0 + spot.x / s, y: y0 + spot.y / s }] : []
+    })
+    // `fits` ne dépend que de l'échelle et de la taille des numéros
+  }, [layout, groups, scale, showLabels, labelSize])
   const groupDim = (key: string) => (highlighted.size && !highlighted.has(key) ? 0.2 : 1)
 
   // Zones partagées en camemberts : rayon en pixels écran, selon la place disponible dans la zone
@@ -679,7 +716,7 @@ export default function MapView({
                   </mask>
                   <g mask={`url(#${uid}-g${i})`}>
                     {g.shapes.map((s) => (
-                      <path key={s.code} d={s.d} fill="none" stroke={g.color} strokeWidth={5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                      <path key={s.code} d={s.d} fill="none" stroke={g.color} strokeWidth={4.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                     ))}
                   </g>
                 </g>
@@ -733,27 +770,30 @@ export default function MapView({
 
               {layout.shapes.map((s) => badgeFor(s, k))}
 
-              {/* Nom des groupes : seulement s'il tient à peu près dans le groupe à ce niveau de zoom */}
+              {/* Nom des groupes, sur une ou deux lignes */}
               <g className="group-labels" fontSize={GROUP_LABEL / k} textAnchor="middle" dominantBaseline="central">
-                {groups.map((g) =>
-                  g.anchor && g.width * k >= g.label.length * GROUP_LABEL * 0.5 ? (
-                    <text
-                      key={g.key}
-                      x={g.anchor.x}
-                      y={g.anchor.y}
-                      dy={showLabels ? '1.15em' : 0}
-                      fill={shade(g.color, 0.3)}
-                      stroke="rgba(255,255,255,0.92)"
-                      strokeWidth={3.5}
-                      opacity={groupDim(g.key)}
-                      pointerEvents="none"
-                      style={{ paintOrder: 'stroke', fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 700 }}
-                      vectorEffect="non-scaling-stroke"
-                    >
-                      {g.label}
-                    </text>
-                  ) : null,
-                )}
+                {groupNames.map((g) => (
+                  <text
+                    key={g.key}
+                    x={g.x}
+                    y={g.y}
+                    fontSize={`${g.font / GROUP_LABEL}em`}
+                    fill={shade(g.color, 0.3)}
+                    stroke="rgba(255,255,255,0.92)"
+                    strokeWidth={3.5}
+                    strokeLinejoin="round"
+                    opacity={groupDim(g.key)}
+                    pointerEvents="none"
+                    style={{ paintOrder: 'stroke', fontFamily: 'Montserrat, system-ui, sans-serif', fontWeight: 700 }}
+                  >
+                    {/* vector-effect ne s'hérite pas : sans lui sur chaque ligne, le halo grossirait au zoom */}
+                    {g.lines.map((line, i) => (
+                      <tspan key={i} vectorEffect="non-scaling-stroke" x={g.x} dy={i === 0 ? `${-(g.lines.length - 1) * 0.575}em` : '1.15em'}>
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+                ))}
               </g>
             </g>
           </g>

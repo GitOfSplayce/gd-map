@@ -55,7 +55,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, gestion-partiel = ⅛, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
 - Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail, avec le téléphone et l'e-mail du commercial et de ses managers (liens d'appel et d'envoi).
-- Filtres (manager, commercial, couverture, statut, « masquer les départements à recruter »), légende cliquable, export PNG.
+- Filtres (manager, commercial, couverture, statut, « masquer les départements à recruter »), légende cliquable, export PNG (légende par parties : motifs, personnes, à recruter ; départements de chacun en option, « 22, 35P, 52G »).
 - L'adresse garde l'onglet, la vue, le mode de couleur et l'affichage des zones partagées (`?onglet=MD&vue=paris&couleur=couverture&partage=camemberts`).
 - Charte graphique GDCom 2023 : couleurs, Montserrat (auto-hébergée), logotype officiel.
 

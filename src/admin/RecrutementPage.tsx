@@ -251,8 +251,9 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
           if (!codes.length || !codes.some((c) => open.has(c))) return TAKEN
           const rows = codes.map(rowOf)
           const priorites = rows.map((r) => r.priorite).filter((p): p is Priorite => p !== null)
-          if (!priorites.length && !rows.some((r) => r.secteur)) return EMPTY
-          const color = prioriteColor(priorites.length ? (Math.min(...priorites) as Priorite) : null)
+          // Rayé : une priorité. Le groupe, lui, est entouré.
+          if (!priorites.length) return EMPTY
+          const color = prioriteColor(Math.min(...priorites) as Priorite)
           return { ...EMPTY, fill: `url(#${hatchId(color)})`, stroke: '#ffffff', pattern: { id: hatchId(color), kind: 'hatch', color } }
         },
       }) as unknown as MapModel,
