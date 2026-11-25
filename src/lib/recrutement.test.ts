@@ -34,21 +34,21 @@ describe('managers actifs', () => {
 })
 
 describe('fiche d\'un manager (D-013)', () => {
-  const elise = person('E', { nom: 'PERRIN Manon', manager2: 'Direction' })
+  const manon = person('E', { nom: 'PERRIN Manon', manager2: 'Direction' })
   const fiches = fichesOf([{ nom: 'Manon', commercial_id: 'E' }, { nom: 'Direction', commercial_id: null }])
 
   it('est à elle et à son manager, et compte dans sa propre équipe', () => {
-    expect(manages('Manon', elise, ['manager2'], fiches)).toBe(true)
-    expect(manages('Direction', elise, ['manager2'], fiches)).toBe(true)
-    expect(manages('Sud', elise, ['manager2'], fiches)).toBe(false)
-    expect(teamManager(elise, 'manager2', fiches)).toBe('Manon')
+    expect(manages('Manon', manon, ['manager2'], fiches)).toBe(true)
+    expect(manages('Direction', manon, ['manager2'], fiches)).toBe(true)
+    expect(manages('Sud', manon, ['manager2'], fiches)).toBe(false)
+    expect(teamManager(manon, 'manager2', fiches)).toBe('Manon')
     expect(teamManager(person('Z', { manager2: 'Direction' }), 'manager2', fiches)).toBe('Direction')
   })
 
   it('prend la couleur de son équipe en vue Manager, et ses départements bloquent les autres', () => {
-    const data = { ...map([elise, person('Z', { manager2: 'Direction' })], [aff('E', '35'), aff('Z', '22')]), managers: [{ nom: 'Manon', couleur: '#112233', commercial_id: 'E' }, { nom: 'Direction', couleur: '#445566' }] }
+    const data = { ...map([manon, person('Z', { manager2: 'Direction' })], [aff('E', '35'), aff('Z', '22')]), managers: [{ nom: 'Manon', couleur: '#112233', commercial_id: 'E' }, { nom: 'Direction', couleur: '#445566' }] }
     const m = buildMapModel(data, 'MD', DEFAULT_FILTERS, 'manager2')
-    expect(m.legend.map((l) => [l.label, l.zoneCount])).toEqual([['Manon', 1], ['Direction', 1]])
+    expect(m.legend.map((l) => [l.label, l.zoneCount])).toEqual([['Direction', 1], ['Manon', 1]])
     expect(m.styleOf('35', new Set()).fill).toBe('#112233')
     const only = buildMapModel(data, 'MD', { ...DEFAULT_FILTERS, managerField: 'manager2', managers: ['Manon'] }, 'commercial')
     expect(only.legend.map((l) => l.label)).toEqual(['PERRIN Manon'])
