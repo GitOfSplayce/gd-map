@@ -103,13 +103,7 @@ export default function StructuresPage({ data, reload }: AdminDataProps) {
       const ok = await confirm({
         title: `Remplacer le code ${code} par ${next.code} ?`,
         message: (
-          <>
-            Zones, CA et commerciaux suivent automatiquement. Dans le fichier Excel, les colonnes deviennent{' '}
-            <strong>
-              {next.code}, DPT {next.code}, CA {next.code}, Objectif {next.code}
-            </strong>{' '}
-            : renommez-les dans votre fichier avant le prochain import, ou repartez d'un export.
-          </>
+          'Zones, CA, commerciaux et managers suivent automatiquement.'
         ),
         confirmLabel: 'Changer le code',
       })
@@ -184,8 +178,8 @@ export default function StructuresPage({ data, reload }: AdminDataProps) {
           </button>
         )}
         <span className="muted small">
-          Chaque structure a son onglet sur la carte et ses colonnes dans l'Excel (MD, DPT MD, CA MD, Objectif MD). L'ordre ci-dessous
-          est celui des onglets et de l'export.
+          Chaque structure a son onglet sur la carte. L'ordre ci-dessous est celui des onglets et de l'export. Les managers se rattachent à
+          leurs structures dans l'onglet Managers.
         </span>
       </div>
 

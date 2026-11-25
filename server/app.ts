@@ -7,15 +7,15 @@ import type { Db, Queryable, Visitor } from './db.ts'
 // L'API de la carte. Chaque route fait une requête SQL avec les droits du visiteur (server/db.ts) :
 // les règles RLS et les fonctions SQL, testées dans db/tests, décident de ce qui est permis. Les
 // routes /api/admin/* vérifient en plus le rôle admin, pour répondre 401 ou 403 plutôt qu'une erreur SQL.
-// Rôles (D-009) : la carte se lit avec le code ; seuls les admins et les responsables nommés dans
-// `acces` l'ouvrent par le portail.
+// Rôles (D-010) : la carte se lit avec le code ; seuls les admins (`acces`) et les managers reliés à leur
+// compte (`managers.compte`) l'ouvrent par le portail.
 
 export interface SessionUser {
   id: string
   email: string
   name: string
   image: string | null
-  /** Une organisation de la personne a le droit d'usage `gd-map` sur le portail (nécessaire, pas suffisant : D-009). */
+  /** Le portail ouvre la carte à la personne, par une organisation ou par elle-même (nécessaire, pas suffisant : D-010). */
   hasAccess: boolean
 }
 
@@ -120,8 +120,8 @@ export function createApp(deps: AppDependencies) {
     }
   })
 
-  // Un import Excel complet tient largement dans 5 Mo
-  app.use('/api/*', bodyLimit({ maxSize: 5 * 1024 * 1024, onError: (c) => c.json({ error: 'Requête trop volumineuse' }, 413) }))
+  // Les plus grosses requêtes (toutes les zones d'un commercial, un journal de saisie) tiennent largement dans 1 Mo
+  app.use('/api/*', bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: 'Requête trop volumineuse' }, 413) }))
 
   app.use('/api/*', async (c, next) => {
     const user = await deps.getUser(c.req.raw.headers)
@@ -138,14 +138,14 @@ export function createApp(deps: AppDependencies) {
     as(c, async (q) => (await q.query<{ r: T }>(sql, params)).rows[0]?.r as T)
 
   /**
-   * Qui est connecté, et ce qu'il peut faire (D-009) : admin, responsable, ou rien. Sans rôle (ou sans
-   * droit d'usage sur le portail), la carte s'ouvre avec le code d'accès, comme pour tout le monde.
+   * Qui est connecté, et ce qu'il peut faire (D-010) : admin, manager, ou rien. Sans rôle (ou sans
+   * accès sur le portail), la carte s'ouvre avec le code, comme pour tout le monde.
    */
   app.get('/api/moi', async (c) => {
     const user = c.get('user')
     const portalUrl = deps.portalUrl ?? null
     if (!user) return c.json({ user: null, role: null, portalUrl })
-    const role = await one<'admin' | 'responsable' | null>(c, 'select public.map_role() as r')
+    const role = await one<'admin' | 'manager' | null>(c, 'select public.map_role() as r')
     return c.json({
       user: { email: user.email, name: user.name, image: user.image },
       role: role ?? null,
@@ -188,25 +188,36 @@ export function createApp(deps: AppDependencies) {
     return c.json(await one(c, 'select public.get_map_data($1) as r', [code]))
   })
 
-  // ---------- Responsable : les chiffres de son équipe (D-009) ----------
+  // ---------- Manager : les départements, le CA et les objectifs de son équipe (D-010) ----------
 
-  // Connecté, sinon 401 ; le rôle de responsable et l'équipe, la base les vérifie (42501 → 403).
+  // Connecté, sinon 401 ; le rôle, l'équipe et les départements libres, la base les vérifie (42501 → 403).
   const signedIn = (c: Context<Env>) => {
     if (!c.get('user')) throw new HttpError(401, 'Non connecté')
   }
 
-  app.get('/api/equipe', async (c) => {
-    signedIn(c)
-    return c.json(await one(c, 'select public.get_equipe() as r'))
-  })
-
-  /** CA et objectifs d'un commercial de son équipe : seules les lignes envoyées changent. */
-  app.put('/api/equipe/:id/objectifs', async (c) => {
+  /** `affectations` : ses zones dans les structures du manager, en entier ; `objectifs` : les seules lignes qui changent. */
+  app.put('/api/equipe/:id', async (c) => {
     signedIn(c)
     const body = await jsonBody(c)
-    if (!Array.isArray(body.objectifs)) throw new HttpError(400, 'Liste de CA et objectifs illisible')
-    await as(c, (q) => q.query('select public.save_objectifs_equipe($1::uuid, $2::jsonb)', [c.req.param('id'), JSON.stringify(body.objectifs)]))
+    const patch: Record<string, unknown> = {}
+    for (const key of ['affectations', 'objectifs'] as const) {
+      if (!(key in body)) continue
+      if (!Array.isArray(body[key])) throw new HttpError(400, key === 'affectations' ? 'Liste de zones illisible' : 'Liste de CA et objectifs illisible')
+      patch[key] = body[key]
+    }
+    if (!Object.keys(patch).length) throw new HttpError(400, 'Rien à modifier')
+    await as(c, (q) => q.query('select public.save_equipe($1::uuid, $2::jsonb)', [c.req.param('id'), JSON.stringify(patch)]))
     return c.json({ ok: true })
+  })
+
+  // ---------- Journal : tout pour un admin, son équipe pour un manager ----------
+
+  app.get('/api/journal', async (c) => {
+    signedIn(c)
+    const avant = c.req.query('avant')
+    if (avant !== undefined && !/^\d{1,18}$/.test(avant)) throw new HttpError(400, 'Page illisible')
+    const commercial = c.req.query('commercial') ?? null
+    return c.json(await one(c, 'select public.get_journal($1::bigint, 200, $2::uuid) as r', [avant ?? null, commercial]))
   })
 
   app.use('/api/admin/*', async (c, next) => {
@@ -227,11 +238,21 @@ export function createApp(deps: AppDependencies) {
     return c.json({ ok: true })
   })
 
-  app.post('/api/admin/import', async (c) => {
+  // ---------- Départements à recruter (D-011) ----------
+
+  /** Priorité (1 à 3) et secteur de départements vides ; ni l'un ni l'autre : à recruter, sans priorité. */
+  app.put('/api/admin/recrutement/:structure', async (c) => {
     const body = await jsonBody(c)
-    if (!Array.isArray(body.items) || !Array.isArray(body.deleteIds)) throw new HttpError(400, 'Import illisible')
-    const res = await one(c, 'select public.apply_import($1::jsonb, $2::uuid[]) as r', [JSON.stringify(body.items), body.deleteIds])
-    return c.json(res)
+    if (!Array.isArray(body.zones)) throw new HttpError(400, 'Liste de départements illisible')
+    await as(c, (q) => q.query('select public.set_recrutement($1, $2::jsonb)', [c.req.param('structure'), JSON.stringify(body.zones)]))
+    return c.json({ ok: true })
+  })
+
+  /** Supprime des fiches « À recruter » ; leurs départements vides prennent leur nom pour secteur. */
+  app.post('/api/admin/recrutement/convertir', async (c) => {
+    const body = await jsonBody(c)
+    if (!Array.isArray(body.ids) || !body.ids.every((id) => typeof id === 'string')) throw new HttpError(400, 'Liste de fiches illisible')
+    return c.json(await one(c, 'select public.convertir_a_recruter($1::uuid[]) as r', [body.ids]))
   })
 
   // ---------- Managers ----------
@@ -244,15 +265,21 @@ export function createApp(deps: AppDependencies) {
     return c.json({ ok: true })
   })
 
-  /** Couleur, ou coordonnées : seules les clés envoyées changent. */
+  /** Couleur, coordonnées, compte GD One, structures : seules les clés envoyées changent. */
   app.patch('/api/admin/managers/:nom', async (c) => {
     const body = await jsonBody(c)
-    const fields = (['couleur', 'telephone', 'email'] as const).filter((key) => key in body)
+    const fields = (['couleur', 'telephone', 'email', 'compte', 'structures'] as const).filter((key) => key in body)
     if (!fields.length) throw new HttpError(400, 'Rien à modifier')
+    const values = fields.map((key) => {
+      if (key !== 'structures') {
+        const value = optionalText(body[key], key)
+        return key === 'compte' ? value?.trim().toLowerCase() || null : value
+      }
+      if (!Array.isArray(body.structures) || !body.structures.every((s) => typeof s === 'string')) throw new HttpError(400, 'Liste de structures illisible')
+      return body.structures
+    })
     const sets = fields.map((key, i) => `${key} = $${i + 2}`).join(', ')
-    await as(c, (q) =>
-      q.query(`update public.managers set ${sets} where nom = $1`, [c.req.param('nom'), ...fields.map((key) => optionalText(body[key], key))]),
-    )
+    await as(c, (q) => q.query(`update public.managers set ${sets} where nom = $1`, [c.req.param('nom'), ...values]))
     return c.json({ ok: true })
   })
 
@@ -307,6 +334,14 @@ export function createApp(deps: AppDependencies) {
     return c.json({ ok: true })
   })
 
+  /** Manager 1 et Manager 2, pour toute la carte : il en reste toujours un. */
+  app.put('/api/admin/managers-actifs', async (c) => {
+    const body = await jsonBody(c)
+    if (typeof body.manager1 !== 'boolean' || typeof body.manager2 !== 'boolean') throw new HttpError(400, 'Réglage illisible')
+    await as(c, (q) => q.query('select public.set_managers_actifs($1, $2)', [body.manager1, body.manager2]))
+    return c.json({ ok: true })
+  })
+
   app.get('/api/admin/code', async (c) => c.json(await one(c, 'select public.get_access_status() as r')))
 
   app.put('/api/admin/code', async (c) => {
@@ -319,25 +354,19 @@ export function createApp(deps: AppDependencies) {
 
   app.get('/api/admin/acces', async (c) => c.json(await one(c, 'select public.list_acces() as r')))
 
-  /**
-   * Donne (ou change) le rôle d'une adresse, avec le périmètre d'un responsable (ses managers). Son
-   * propre rôle ne se change pas (règle RLS).
-   */
+  /** Nomme un admin. Un manager, lui, se relie à son compte dans l'onglet Managers. Son propre rôle ne se change pas (règle RLS). */
   app.put('/api/admin/acces/:email', async (c) => {
     const body = await jsonBody(c)
     const role = text(body.role, 'role')
-    const managers = body.managers ?? []
-    if (!Array.isArray(managers) || !managers.every((m) => typeof m === 'string')) throw new HttpError(400, 'Liste de managers illisible')
-    if (role === 'responsable' && !managers.length) throw new HttpError(400, 'Choisissez au moins un manager pour un responsable')
     if (c.req.param('email').trim().toLowerCase() === c.get('user')?.email.toLowerCase()) {
       throw new HttpError(400, 'Vous ne pouvez pas changer votre propre rôle')
     }
     const rows = await as(c, async (q) => {
       const { rows } = await q.query<{ email: string }>(
-        `insert into public.acces (email, role, managers, created_by) values (lower(btrim($1)), $2, $3::text[], public.current_email())
-         on conflict (email) do update set role = excluded.role, managers = excluded.managers
+        `insert into public.acces (email, role, created_by) values (lower(btrim($1)), $2, public.current_email())
+         on conflict (email) do update set role = excluded.role
          returning email`,
-        [c.req.param('email'), role, role === 'responsable' ? managers : []],
+        [c.req.param('email'), role],
       )
       return rows
     })

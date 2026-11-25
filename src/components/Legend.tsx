@@ -3,6 +3,7 @@ import { BRAND } from '../lib/colors'
 import SearchInput from './SearchInput'
 import { COUVERTURE_OPACITY, LEGEND_GROUP_TITLES, SHARED_MODES, type ColorMode, type LegendItem, type SharedMode } from '../lib/mapModel'
 import { formatPct, perfBucketOf, perfText, type Perf } from '../lib/performance'
+import { PRIORITES } from '../lib/recrutement'
 import { plural } from '../lib/text'
 import type { Couverture } from '../lib/types'
 
@@ -71,6 +72,27 @@ export function KeySwatch({ kind }: { kind: SwatchKind }) {
   )
 }
 
+/** Pastille d'un département à recruter : hachures à sa couleur de priorité, comme sur la carte. */
+export function HatchSwatch({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
+      <defs>
+        <clipPath id={`hs-${color.slice(1)}`}>
+          <rect width="18" height="18" rx="4.5" />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#hs-${color.slice(1)})`}>
+        <rect width="18" height="18" fill="#ffffff" />
+        <rect width="18" height="18" fill={color} fillOpacity={0.14} />
+        {[-12, -6, 0, 6, 12].map((o) => (
+          <path key={o} d={`M${o},0 L${o + 18},18`} stroke={color} strokeWidth={1.8} fill="none" />
+        ))}
+      </g>
+      <rect x="0.5" y="0.5" width="17" height="17" rx="4" fill="none" stroke="rgb(0 0 0 / 12%)" />
+    </svg>
+  )
+}
+
 interface KeyProps {
   sharedMode?: SharedMode
   onSharedMode?: (mode: SharedMode) => void
@@ -91,6 +113,11 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
       <div>
         <KeySwatch kind="gestion_partiel" /> Gestion-partiel
       </div>
+      {PRIORITES.map((p) => (
+        <div key={p.value}>
+          <HatchSwatch color={p.color} /> À recruter, priorité {p.value}
+        </div>
+      ))}
       {onSharedMode && (
         <div className="shared-mode">
           <span>Zones partagées</span>
@@ -151,6 +178,8 @@ interface Props {
   ranking: LegendItem[]
   year: number
   colorMode: ColorMode
+  /** Ce que la recherche parcourt : « commercial », « Manager »… */
+  what: string
   highlighted: Set<string>
   onToggle: (key: string) => void
   onClear: () => void
@@ -158,13 +187,12 @@ interface Props {
   onSharedMode: (mode: SharedMode) => void
 }
 
-export default function Legend({ items, ranking, year, colorMode, highlighted, onToggle, onClear, sharedMode, onSharedMode }: Props) {
+export default function Legend({ items, ranking, year, colorMode, what, highlighted, onToggle, onClear, sharedMode, onSharedMode }: Props) {
   const [search, setSearch] = useState('')
   const perfMode = colorMode === 'performance'
   const heat = colorMode === 'couverture' || perfMode
   const q = search.trim().toLowerCase()
   const visible = q && !heat ? items.filter((it) => it.label.toLowerCase().includes(q) || it.detail.toLowerCase().includes(q)) : items
-  const what = colorMode === 'commercial' ? 'commercial' : colorMode === 'manager1' ? 'Manager 1' : 'Manager 2'
 
   return (
     <>
@@ -197,7 +225,7 @@ export default function Legend({ items, ranking, year, colorMode, highlighted, o
                 onClick={() => onToggle(it.key)}
                 title={heat ? 'Cliquer pour isoler les zones de ce niveau' : 'Cliquer pour mettre ses zones en évidence'}
               >
-                <span className="swatch" style={{ background: it.color }} />
+                {it.key.startsWith('r:') ? <HatchSwatch color={it.color} /> : <span className="swatch" style={{ background: it.color }} />}
                 <span style={{ minWidth: 0 }}>
                   <span className="l-name">{it.shortLabel ?? it.label}</span>
                   {it.detail && <span className="l-detail">{it.detail}</span>}

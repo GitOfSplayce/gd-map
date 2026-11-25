@@ -3,6 +3,7 @@ import { formatPct, perfBucketOf, perfText } from '../lib/performance'
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS } from '../lib/types'
 import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
+import { prioriteColor, vacancyText } from '../lib/recrutement'
 
 interface Props {
   code: string
@@ -17,10 +18,12 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
   const { title, subtitle } = zoneTitle(code)
   const people = zonePeople(code, model)
   const shown = people.slice(0, 8)
+  const vacancies = model.vacanciesOf(code)
+  const known = vacancies.filter((v) => v.priorite !== null || v.secteurs.length).slice(0, 3)
 
   // Placement : à droite du curseur, ou à gauche s'il n'y a pas la place
   const left = x + 360 > containerWidth ? Math.max(8, x - 350) : x + 16
-  const top = Math.min(y + 12, Math.max(8, containerHeight - 60 - shown.length * 54))
+  const top = Math.min(y + 12, Math.max(8, containerHeight - 60 - shown.length * 54 - known.length * 22))
 
   return (
     <div className="tooltip" style={{ left, top }} role="tooltip">
@@ -38,7 +41,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
           {coverageText(code, model)}
         </div>
       )}
-      {!people.length && <div className="t-empty">Aucun commercial sur cette zone</div>}
+      {!people.length && <div className="t-empty">{vacancies.length ? 'À recruter' : 'Aucun commercial sur cette zone'}</div>}
       {shown.map((p) => (
         <div className="t-row" key={p.commercial.id + p.structure}>
           <span className="swatch" style={{ background: model.colorOf(p.key) }} />
@@ -46,9 +49,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
             <div className="t-name">
               {p.commercial.nom} <span className="t-meta">· {p.structure} · {COUVERTURE_LABELS[p.couverture]}</span>
             </div>
-            <div className="t-meta">
-              Manager 1 : {p.commercial.manager1 || '—'} · Manager 2 : {p.commercial.manager2 || '—'}
-            </div>
+            <div className="t-meta">{model.activeManagers.map((f) => `${model.managerLabel(f)} : ${p.commercial[f] || '—'}`).join(' · ')}</div>
             {p.scope && <div className="t-meta">{p.scope}</div>}
             {p.objectif && (p.objectif.ca !== null || p.objectif.objectif !== null) && (
               <div className="t-meta">
@@ -60,6 +61,14 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
         </div>
       ))}
       {people.length > shown.length && <div className="t-meta">… et {plural(people.length - shown.length, 'autre')}, cliquez pour le détail</div>}
+      {known.map((v) => (
+        <div className="t-row" key={v.structure}>
+          <span className="swatch" style={{ background: prioriteColor(v.priorite) }} />
+          <div className="t-meta">
+            {v.structure} à recruter : {vacancyText(v)}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

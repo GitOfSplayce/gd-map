@@ -1,4 +1,4 @@
-// Édition des zones d'un commercial par l'assistant (carte ou liste) : même résultat que la saisie au format Excel.
+// Édition des zones d'un commercial par l'assistant (carte ou liste) : même résultat que la saisie en texte.
 import { formatZoneList, parseZoneList } from './parseZones'
 import type { Couverture } from './types'
 import { PARIS_ARR_CODES, isParisArr } from './zones'
@@ -9,7 +9,7 @@ export function selectionFromText(text: string): ZoneSelection {
   return new Map(parseZoneList(text).zones.map((z) => [z.code, z.couverture]))
 }
 
-/** Texte au format Excel ; les 20 arrondissements de même couverture redeviennent « 75 ». */
+/** Texte (« 22, 35P ») ; les 20 arrondissements de même couverture redeviennent « 75 ». */
 export function selectionToText(sel: ZoneSelection): string {
   const compact = new Map(sel)
   const arrs = PARIS_ARR_CODES.map((c) => compact.get(c))

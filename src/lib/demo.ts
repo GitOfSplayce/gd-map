@@ -1,60 +1,41 @@
-// Mode démo (npm run demo) : la carte fonctionne sans serveur ni base, avec le fichier d'exemple fictif.
+// Mode démo (npm run demo) : la carte fonctionne sans serveur ni base, avec des données fictives.
 // Absent du build de production : n'est importé que si VITE_DEMO=1.
-import sampleUrl from '../../exemples/exemple-import.xlsx?url'
-import { parseSheet, readWorkbook } from './excel'
-import { planImport, type ImportPlan } from './importDiff'
-import { DEFAULT_STRUCTURES, structureCodes, type StructureDef } from './structures'
-import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData } from './types'
+import sample from './demoData.json'
+import { DEFAULT_STRUCTURES, type StructureDef } from './structures'
+import type { ARecruter, Commercial, CommercialPayload, DisplaySettings, Manager, MapData, Objectif, ZoneAssignment } from './types'
 
 // Coordonnées fictives de quelques managers (numéros réservés à la fiction par l'ARCEP)
-const DEMO_MANAGER_CONTACTS: Record<string, Partial<Manager>> = {
-  Hélène: { telephone: '06 39 98 00 51', email: 'helene.martin@example.com' },
+const DEMO_MANAGERS: Record<string, Partial<Manager>> = {
+  Hélène: { telephone: '06 39 98 00 51', email: 'helene.martin@example.com', compte: 'helene.martin@example.com' },
   Inès: { telephone: '06 39 98 00 52', email: 'ines.garnier@example.com' },
 }
 
-/** Données telles qu'elles seraient en base après l'import du plan (identifiants fictifs). */
-export function planToMapData(plan: ImportPlan, structures: StructureDef[] = DEFAULT_STRUCTURES): MapData {
-  const commerciaux = plan.payload.map((p, i) => ({
-    id: `demo-${i}`,
-    nom: p.nom!,
-    statut: p.statut ?? null,
-    manager1: p.manager1 ?? null,
-    manager2: p.manager2 ?? null,
-    couleur: p.couleur!,
-    actif: p.actif ?? true,
-    notes: p.notes ?? null,
-    structures: p.structures!,
-    secteur: p.secteur ?? null,
-    jours_an: p.jours_an ?? null,
-    date_manager1: p.date_manager1 ?? null,
-    date_manager2: p.date_manager2 ?? null,
-    actions: p.actions ?? null,
-    ordre: p.ordre!,
-    telephone: p.telephone ?? null,
-    email: p.email ?? null,
-  }))
+/** Les données d'exemple, telles qu'elles seraient en base (identifiants fictifs). */
+export function demoData(): MapData {
+  const payloads = sample.commerciaux as unknown as CommercialPayload[]
+  const commerciaux = payloads.map(({ affectations: _a, objectifs: _o, ...p }, i) => ({ actif: true, notes: null, ...p, id: `demo-${i}` }) as Commercial)
   const managers: Manager[] = [...new Set(commerciaux.flatMap((c) => [c.manager1, c.manager2]).filter(Boolean) as string[])]
     .sort((a, b) => a.localeCompare(b, 'fr'))
-    .map((nom) => ({ nom, couleur: null, ...DEMO_MANAGER_CONTACTS[nom] }))
+    .map((nom) => ({
+      nom,
+      couleur: null,
+      structures: [...new Set(commerciaux.filter((c) => c.manager1 === nom || c.manager2 === nom).flatMap((c) => c.structures))].sort(),
+      compte: null,
+      ...DEMO_MANAGERS[nom],
+    }))
   return {
-    admin: false,
-    structures,
+    admin: true,
+    chiffres: true,
+    manager: null,
+    settings: { default_shared_mode: 'rayures', manager1_actif: true, manager2_actif: true },
+    structures: DEFAULT_STRUCTURES,
     commerciaux,
     managers,
-    affectations: plan.payload.flatMap((p, i) => p.affectations!.map((a, j) => ({ ...a, id: `demo-${i}-${j}`, commercial_id: `demo-${i}` }))),
-    objectifs: plan.payload.flatMap((p, i) =>
-      p.objectifs!.filter((o) => o.ca !== null || o.objectif !== null).map((o) => ({ ...o, commercial_id: `demo-${i}` })),
-    ),
+    affectations: payloads.flatMap((p, i) => p.affectations!.map((a, j) => ({ ...a, id: `demo-${i}-${j}`, commercial_id: `demo-${i}` }))),
+    objectifs: payloads.flatMap((p, i) => p.objectifs!.map((o) => ({ ...o, commercial_id: `demo-${i}` }))),
+    a_recruter: sample.a_recruter as ARecruter[],
     updated_at: new Date().toISOString(),
   }
-}
-
-export async function loadDemoData(): Promise<MapData> {
-  const buf = await (await fetch(sampleUrl)).arrayBuffer()
-  const { rows } = parseSheet(readWorkbook(buf), 'V3', structureCodes(DEFAULT_STRUCTURES))
-  const empty = { structures: DEFAULT_STRUCTURES, commerciaux: [], affectations: [], objectifs: [] }
-  const plan = planImport(rows, empty, 'replace', new Date().getFullYear())
-  return planToMapData(plan)
 }
 
 // --- Admin en mémoire (mode démo) : les modifications sont perdues au rechargement de la page
@@ -62,7 +43,7 @@ export async function loadDemoData(): Promise<MapData> {
 let store: MapData | null = null
 
 async function getStore(): Promise<MapData> {
-  store ??= { ...(await loadDemoData()), admin: true, settings: { default_shared_mode: 'rayures' } }
+  store ??= demoData()
   return store
 }
 
@@ -73,10 +54,22 @@ export async function demoMapData(): Promise<MapData> {
   return data
 }
 
+/** Un département pourvu n'est plus à recruter (comme le déclencheur en base, sans le détail de Paris). */
+function fill(s: MapData, zones: ZoneAssignment[]) {
+  s.a_recruter = s.a_recruter.filter((r) => !zones.some((z) => z.structure === r.structure && z.zone_code === r.zone_code))
+}
+
+function writeFigures(s: MapData, id: string, objectifs: Omit<Objectif, 'commercial_id'>[]) {
+  s.objectifs = [
+    ...s.objectifs.filter((o) => o.commercial_id !== id || !objectifs.some((n) => n.structure === o.structure && n.annee === o.annee)),
+    ...objectifs.filter((o) => o.ca !== null || o.objectif !== null).map((o) => ({ ...o, commercial_id: id })),
+  ]
+}
+
 export async function demoSave(p: CommercialPayload): Promise<string> {
   const s = await getStore()
   for (const nom of [p.manager1, p.manager2]) {
-    if (nom?.trim() && !s.managers.some((m) => m.nom === nom.trim())) s.managers.push({ nom: nom.trim(), couleur: null })
+    if (nom?.trim() && !s.managers.some((m) => m.nom === nom.trim())) s.managers.push({ nom: nom.trim(), couleur: null, structures: [], compte: null })
   }
   const id = p.id ?? `demo-${crypto.randomUUID()}`
   const existing = s.commerciaux.find((c) => c.id === id)
@@ -85,15 +78,15 @@ export async function demoSave(p: CommercialPayload): Promise<string> {
   else s.commerciaux.push({ actif: true, statut: null, manager1: null, manager2: null, couleur: '#4363d8', structures: [], secteur: null, ordre: s.commerciaux.length + 1, ...fields, id, nom: p.nom ?? '' } as Commercial)
   if (affectations) {
     s.affectations = [...s.affectations.filter((a) => a.commercial_id !== id), ...affectations.map((a, i) => ({ ...a, id: `${id}-${i}`, commercial_id: id }))]
+    fill(s, affectations)
   }
-  if (objectifs) {
-    s.objectifs = [
-      ...s.objectifs.filter((o) => o.commercial_id !== id || !objectifs.some((n) => n.structure === o.structure && n.annee === o.annee)),
-      ...objectifs.filter((o) => o.ca !== null || o.objectif !== null).map((o) => ({ ...o, commercial_id: id })),
-    ]
-  }
+  if (objectifs) writeFigures(s, id, objectifs)
   s.updated_at = new Date().toISOString()
   return id
+}
+
+export async function demoSaveEquipe(id: string, patch: { affectations?: ZoneAssignment[]; objectifs?: Omit<Objectif, 'commercial_id'>[] }) {
+  await demoSave({ id, ...patch })
 }
 
 export async function demoDelete(id: string) {
@@ -103,16 +96,18 @@ export async function demoDelete(id: string) {
   s.objectifs = s.objectifs.filter((o) => o.commercial_id !== id)
 }
 
-export async function demoApplyImport(items: CommercialPayload[], deleteIds: string[]) {
-  for (const id of deleteIds) await demoDelete(id)
-  for (const item of items) await demoSave(item)
-  return { saved: items.length, deleted: deleteIds.length }
+export async function demoSetRecrutement(structure: string, zones: Omit<ARecruter, 'structure'>[]) {
+  const s = await getStore()
+  s.a_recruter = [
+    ...s.a_recruter.filter((r) => r.structure !== structure || !zones.some((z) => z.zone_code === r.zone_code)),
+    ...zones.filter((z) => z.priorite !== null || z.secteur).map((z) => ({ ...z, structure })),
+  ]
 }
 
-export async function demoCreateManager(m: Manager) {
+export async function demoCreateManager(m: Pick<Manager, 'nom' | 'couleur'>) {
   const s = await getStore()
   if (s.managers.some((x) => x.nom === m.nom.trim())) throw new Error('Un manager porte déjà ce nom.')
-  s.managers.push({ nom: m.nom.trim(), couleur: m.couleur })
+  s.managers.push({ nom: m.nom.trim(), couleur: m.couleur, structures: [], compte: null })
 }
 
 export async function demoSetManagerColor(nom: string, couleur: string) {
@@ -121,10 +116,10 @@ export async function demoSetManagerColor(nom: string, couleur: string) {
   if (m) m.couleur = couleur
 }
 
-export async function demoSetManagerContact(nom: string, contact: { telephone: string | null; email: string | null }) {
+export async function demoUpdateManager(nom: string, patch: Partial<Manager>) {
   const s = await getStore()
   const m = s.managers.find((x) => x.nom === nom)
-  if (m) Object.assign(m, contact)
+  if (m) Object.assign(m, patch)
 }
 
 export async function demoRenameManager(oldName: string, newName: string) {
@@ -158,17 +153,20 @@ export async function demoUpdateStructure(code: string, patch: { code: string; n
   if (patch.code !== code && s.structures.some((x) => x.code === patch.code)) throw new Error('Une structure porte déjà ce code.')
   s.structures = s.structures.map((x) => (x.code === code ? { ...x, ...patch } : x))
   if (patch.code === code) return
-  for (const c of s.commerciaux) c.structures = c.structures.map((x) => (x === code ? patch.code : x))
-  for (const a of s.affectations) if (a.structure === code) a.structure = patch.code
-  for (const o of s.objectifs) if (o.structure === code) o.structure = patch.code
+  const rename = (list: string[] = []) => list.map((x) => (x === code ? patch.code : x))
+  for (const c of s.commerciaux) c.structures = rename(c.structures)
+  for (const m of s.managers) m.structures = rename(m.structures)
+  for (const list of [s.affectations, s.objectifs, s.a_recruter]) for (const x of list) if (x.structure === code) x.structure = patch.code
 }
 
 export async function demoDeleteStructure(code: string) {
   const s = await getStore()
   s.structures = s.structures.filter((x) => x.code !== code)
   for (const c of s.commerciaux) c.structures = c.structures.filter((x) => x !== code)
+  for (const m of s.managers) m.structures = m.structures?.filter((x) => x !== code)
   s.affectations = s.affectations.filter((a) => a.structure !== code)
   s.objectifs = s.objectifs.filter((o) => o.structure !== code)
+  s.a_recruter = s.a_recruter.filter((r) => r.structure !== code)
 }
 
 export async function demoReorderStructures(codes: string[]) {
@@ -178,5 +176,11 @@ export async function demoReorderStructures(codes: string[]) {
 
 export async function demoSetDefaultSharedMode(mode: DisplaySettings['default_shared_mode']) {
   const s = await getStore()
-  s.settings = { default_shared_mode: mode }
+  s.settings = { ...s.settings!, default_shared_mode: mode }
+}
+
+export async function demoSetManagersActifs(manager1: boolean, manager2: boolean) {
+  if (!manager1 && !manager2) throw new Error('Manager 1 ou Manager 2 doit rester actif')
+  const s = await getStore()
+  s.settings = { ...s.settings!, manager1_actif: manager1, manager2_actif: manager2 }
 }

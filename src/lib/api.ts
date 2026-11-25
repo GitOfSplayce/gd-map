@@ -1,5 +1,5 @@
 import type { StructureDef } from './structures'
-import type { Commercial, CommercialPayload, DisplaySettings, Manager, MapData, Objectif } from './types'
+import type { CommercialPayload, DisplaySettings, JournalLine, Manager, MapData, Objectif, Priorite, ZoneAssignment } from './types'
 
 // Appels à l'API de la carte (server/app.ts), sur la même origine que le site : le cookie de session
 // part de lui-même. Les droits sont vérifiés côté serveur et en base, jamais ici.
@@ -62,12 +62,15 @@ export async function fetchMapData(code: string | null): Promise<{ data: MapData
   return {
     data: {
       admin: res.admin,
+      chiffres: res.chiffres,
+      manager: res.manager,
       commerciaux: res.commerciaux,
       managers: res.managers ?? [],
       settings: res.settings,
       structures: res.structures ?? [],
       affectations: res.affectations,
       objectifs: res.objectifs,
+      a_recruter: res.a_recruter,
       updated_at: res.updated_at,
     },
   }
@@ -100,14 +103,9 @@ export async function deleteCommercial(id: string): Promise<void> {
   await guarded(() => api('DELETE', `/admin/commerciaux/${seg(id)}`))
 }
 
-export async function applyImport(items: CommercialPayload[], deleteIds: string[]) {
-  if (DEMO) return (await demo()).demoApplyImport(items, deleteIds)
-  return guarded(() => api<{ saved: number; deleted: number }>('POST', '/admin/import', { items, deleteIds }))
-}
-
 // ---------- Managers ----------
 
-export async function createManager(m: Manager): Promise<void> {
+export async function createManager(m: Pick<Manager, 'nom' | 'couleur'>): Promise<void> {
   if (DEMO) return (await demo()).demoCreateManager(m)
   await guarded(
     () => api('POST', '/admin/managers', { nom: m.nom.trim(), couleur: m.couleur }),
@@ -123,13 +121,14 @@ export async function setManagerColor(nom: string, couleur: string): Promise<voi
   await guarded(() => api('PATCH', `/admin/managers/${seg(nom)}`, { couleur }))
 }
 
-/** Téléphone et e-mail d'un manager (null pour effacer). */
-export async function setManagerContact(nom: string, contact: { telephone: string | null; email: string | null }): Promise<void> {
-  if (DEMO) return (await demo()).demoSetManagerContact(nom, contact)
+/** Coordonnées, compte GD One (null pour effacer) et structures d'un manager : seules les clés envoyées changent. */
+export async function updateManager(nom: string, patch: Partial<Pick<Manager, 'telephone' | 'email' | 'compte' | 'structures'>>): Promise<void> {
+  if (DEMO) return (await demo()).demoUpdateManager(nom, patch)
   await guarded(
-    () => api('PATCH', `/admin/managers/${seg(nom)}`, contact),
+    () => api('PATCH', `/admin/managers/${seg(nom)}`, patch),
     (error) => {
       if (error instanceof ApiError && error.code === '23514') throw new Error('Téléphone ou e-mail illisible.')
+      if (error instanceof ApiError && error.code === '23505') throw new Error('Ce compte GD One est déjà relié à un autre manager.')
       fail(error)
     },
   )
@@ -201,35 +200,46 @@ export async function setAccessCode(code: string): Promise<void> {
   await guarded(() => api('PUT', '/admin/code', { code }))
 }
 
-// ---------- Responsable : les chiffres de son équipe (D-009) ----------
-
-export interface Equipe {
-  /** Les managers de son périmètre : leurs commerciaux (Manager 1 ou 2) forment l'équipe. */
-  managers: string[]
-  commerciaux: Pick<Commercial, 'id' | 'nom' | 'statut' | 'manager1' | 'manager2' | 'couleur' | 'actif' | 'structures'>[]
-  objectifs: Objectif[]
-  structures: StructureDef[]
+/** Manager 1 et Manager 2, pour toute la carte (il en reste toujours un). */
+export async function setManagersActifs(manager1: boolean, manager2: boolean): Promise<void> {
+  if (DEMO) return (await demo()).demoSetManagersActifs(manager1, manager2)
+  await guarded(() => api('PUT', '/admin/managers-actifs', { manager1, manager2 }))
 }
 
-export async function fetchEquipe(): Promise<Equipe> {
-  if (DEMO) return { managers: [], commerciaux: [], objectifs: [], structures: [] }
-  return guarded(() => api<Equipe>('GET', '/equipe'))
+// ---------- Manager : son équipe (D-010) ----------
+
+/** Zones (dans ses structures, en entier) et chiffres (les seules lignes qui changent) d'un commercial de son équipe. */
+export async function saveEquipe(id: string, patch: { affectations?: ZoneAssignment[]; objectifs?: Omit<Objectif, 'commercial_id'>[] }): Promise<void> {
+  if (DEMO) return (await demo()).demoSaveEquipe(id, patch)
+  await guarded(() => api('PUT', `/equipe/${seg(id)}`, patch))
 }
 
-/** CA et objectifs d'un commercial de l'équipe : seules les lignes envoyées changent (vides : effacées). */
-export async function saveObjectifsEquipe(id: string, objectifs: Omit<Objectif, 'commercial_id'>[]): Promise<void> {
+// ---------- Départements à recruter (D-011) ----------
+
+export async function setRecrutement(structure: string, zones: { zone_code: string; priorite: Priorite | null; secteur: string | null }[]): Promise<void> {
+  if (DEMO) return (await demo()).demoSetRecrutement(structure, zones)
+  await guarded(() => api('PUT', `/admin/recrutement/${seg(structure)}`, { zones }))
+}
+
+/** Supprime des fiches « À recruter » : leurs départements vides prennent leur nom pour secteur. */
+export async function convertirARecruter(ids: string[]): Promise<{ fiches: number; zones: number }> {
   if (DEMO) throw new Error('Indisponible en mode démo.')
-  await guarded(() => api('PUT', `/equipe/${seg(id)}/objectifs`, { objectifs }))
+  return guarded(() => api<{ fiches: number; zones: number }>('POST', '/admin/recrutement/convertir', { ids }))
 }
 
-// ---------- Rôles (D-002, D-009) ----------
+// ---------- Journal (D-010) ----------
 
-export type Role = 'admin' | 'responsable'
+/** Du plus récent au plus ancien ; `avant` : l'identifiant de la dernière ligne déjà reçue. */
+export async function fetchJournal(avant?: number): Promise<{ lignes: JournalLine[]; suite: boolean }> {
+  if (DEMO) return { lignes: [], suite: false }
+  return guarded(() => api('GET', `/journal${avant ? `?avant=${avant}` : ''}`))
+}
+
+// ---------- Rôles (D-010) : les admins ici, les managers par leur compte (onglet Managers) ----------
 
 export interface RoleEntry {
   email: string
-  role: Role
-  managers: string[]
+  role: 'admin'
   created_at: string
   created_by: string | null
   /** Nom transmis par le portail, une fois la personne venue au moins une fois. */
@@ -240,7 +250,7 @@ export interface RoleEntry {
 export interface KnownUser {
   email: string
   name: string
-  /** Droit d'usage `gd-map` sur le portail, lu à sa dernière connexion. */
+  /** Accès à la carte sur le portail (par une organisation ou par elle-même), lu à sa dernière connexion. */
   has_access: boolean
   last_sign_in_at: string | null
 }
@@ -248,18 +258,18 @@ export interface KnownUser {
 export async function listAccess(): Promise<{ roles: RoleEntry[]; users: KnownUser[] }> {
   if (DEMO) {
     return {
-      roles: [{ email: 'demo@exemple.fr', role: 'admin', managers: [], created_at: new Date().toISOString(), created_by: null, name: 'Démo', last_sign_in_at: null }],
+      roles: [{ email: 'demo@exemple.fr', role: 'admin', created_at: new Date().toISOString(), created_by: null, name: 'Démo', last_sign_in_at: null }],
       users: [],
     }
   }
   return guarded(() => api('GET', '/admin/acces'))
 }
 
-/** Donne ou change un rôle ; `managers` : le périmètre d'un responsable (au moins un). */
-export async function setRole(email: string, role: Role, managers: string[] = []): Promise<void> {
+/** Nomme un admin. */
+export async function addAdmin(email: string): Promise<void> {
   if (DEMO) throw new Error('Indisponible en mode démo.')
   await guarded(
-    () => api('PUT', `/admin/acces/${seg(email.trim().toLowerCase())}`, { role, managers: role === 'responsable' ? managers : [] }),
+    () => api('PUT', `/admin/acces/${seg(email.trim().toLowerCase())}`, { role: 'admin' }),
     (error) => {
       if (error instanceof ApiError && error.code === '23514') throw new Error('Adresse e-mail illisible.')
       fail(error)
@@ -267,7 +277,7 @@ export async function setRole(email: string, role: Role, managers: string[] = []
   )
 }
 
-export async function removeRole(email: string): Promise<void> {
+export async function removeAdmin(email: string): Promise<void> {
   if (DEMO) throw new Error('Indisponible en mode démo.')
   await guarded(() => api('DELETE', `/admin/acces/${seg(email)}`))
 }

@@ -10,12 +10,11 @@ dist-ssr
 .env.*
 !.env.example
 
-# Données réelles : jamais dans le dépôt (seul le fichier d'exemple fictif est versionné)
+# Données réelles : jamais dans le dépôt
 *.xlsx
 *.xls
 *.xlsm
 ~$*
-!exemples/exemple-import.xlsx
 
 # Supabase CLI
 supabase/.temp

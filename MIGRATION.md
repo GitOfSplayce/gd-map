@@ -33,7 +33,7 @@ Pas de Cloudflare devant, et on n'en ajoute pas (D-008).
    - Type : **web**, **confidentiel**.
    - Adresse de retour : `https://carte.gdone.fr/api/auth/callback/gdcom`.
    - Noter l'**identifiant** et le **secret**. Le secret n'est affiché qu'une fois.
-4. Les membres de l'organisation GDCOM ont le droit d'usage d'office. Une **autre** organisation du groupe dont un membre sera admin ou responsable reçoit le droit d'usage `gd-map` (Support → Organisations). Ce droit ne donne rien d'autre : la lecture passe par le code, et les rôles se donnent dans la carte (D-009).
+4. Les membres de l'organisation GDCOM ont le droit d'usage d'office. Une **autre** organisation du groupe dont un membre sera admin ou manager reçoit le droit d'usage `gd-map` (Support → Organisations). Ce droit ne donne rien d'autre : la lecture passe par le code, et les rôles se donnent dans la carte (D-010).
 
 ## 3. Dokploy : la base
 
@@ -91,7 +91,7 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
    - Tout est copié en une transaction : structures, managers, commerciaux, zones attribuées, CA et objectifs, code d'accès et affichage.
    - Les admins Supabase deviennent admins par leur adresse e-mail.
    - Le script recompte les lignes après la copie.
-   - On peut le relancer autant de fois que nécessaire : il vide la nouvelle base, puis recopie tout.
+   - Fait le 2026-11-20. Le script a été retiré le 2026-11-25 : le relancer effacerait ce que la carte a reçu depuis (D-012).
 5. **Vérifier** :
    - la carte s'ouvre avec le **code d'accès actuel**, qui ne change pas ;
    - l'admin montre les mêmes commerciaux ;
@@ -105,7 +105,7 @@ Sur le Dokploy central, serveur **gdconnect-vps** :
 
    - Puis, onglet **Backups** de cette base → **Restore Backup** : destination OVH, fichier `carte-commerciale-db-…/carte-commerciale/<date>.sql.gz`, base `gd_map`.
    - Fait le 2026-11-20 dans une base jetable : mêmes nombres de lignes, 15 migrations, code d'accès présent, et la carte répond à un visiteur anonyme.
-7. **Rôles** (D-009), dans *Paramètres → Admins et responsables* : nommer le patron **admin**, puis chaque **responsable** avec ses managers. Leur organisation doit avoir le droit d'usage `gd-map` sur le portail (étape 2).
+7. **Rôles** (D-010) : nommer le patron **admin** dans *Paramètres → Admins* ; relier chaque **manager** à son compte GD One dans l'onglet *Managers*, et cocher ses structures. Le portail doit leur ouvrir la carte : par leur organisation (étape 2), ou par un accès donné à la personne (gdcom-portail, D-046).
 
 ## 6. Contrôles de sécurité, depuis l'extérieur
 

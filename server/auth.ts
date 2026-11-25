@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import type pg from 'pg'
 import type { OidcConfig } from './env.ts'
-import { ORGANIZATIONS_CLAIM, hasMapEntitlement } from './organizations.ts'
+import { hasMapAccess } from './organizations.ts'
 
 // Connexion par le portail GDCOM (D-002), construite comme celle de la flotte (gdcom-flotte,
 // src/lib/auth/options.ts) : Better Auth en client OIDC `genericOAuth`, code + PKCE, ID token vérifié.
@@ -72,8 +72,8 @@ export function createAuth(deps: AuthDependencies) {
         /** Claim `sub` du portail : l'identité de la personne chez lui. */
         idpUserId: { type: 'string', required: false, input: true },
         /**
-         * Une de ses organisations a le droit d'usage `gd-map` : relu à chaque connexion. Sans lui, la
-         * personne n'est ni admin ni responsable, même avec un rôle dans `acces` (D-009).
+         * Une de ses organisations a le droit d'usage `gd-map`, ou le portail lui a donné l'accès à elle :
+         * relu à chaque connexion. Sans lui, la personne n'est ni admin ni manager (D-010).
          */
         hasAccess: { type: 'boolean', required: false, defaultValue: false, input: true },
       },
@@ -124,7 +124,7 @@ export function createAuth(deps: AuthDependencies) {
                   const sub = profile.sub
                   return {
                     idpUserId: typeof sub === 'string' ? sub : typeof sub === 'number' ? String(sub) : undefined,
-                    hasAccess: hasMapEntitlement(profile[ORGANIZATIONS_CLAIM]),
+                    hasAccess: hasMapAccess(profile),
                   }
                 },
               },

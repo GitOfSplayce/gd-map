@@ -46,32 +46,24 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 ### Carte
 
 - Onglets **Globale** puis un par structure (MD, SP, MC, BK…, dans l'ordre choisi dans l'admin) ; vues **France** (Corse, DROM et Monaco en encarts), **Île-de-France**, **Paris** par arrondissement.
-- Couleur par **commercial**, **Manager 1** ou **Manager 2**. Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
+- Couleur par **commercial** ou par manager (**Manager 1**, **Manager 2**, selon ceux que les admins ont activés dans *Paramètres*, D-010). Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
 - **Propre** = plein, **Gestion** (G) = trame de points, **Partiel** (P) = rayé comme une zone partagée, avec du **blanc** s'il est seul sur la zone, **Gestion-partiel** (GP) = traits pointillés (avec du blanc s'il est seul). Une zone partagée montre chaque part avec son motif (bande en points pour une gestion…). Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
-- **CA et objectifs** (admins connectés uniquement, et responsables pour leur équipe) : saisie par structure et par année dans le panneau d'un commercial (raccourcis `120k`, `1,2M`) ou par l'Excel ; un responsable les saisit pour les commerciaux de ses managers dans *Chiffres de l'équipe* (D-009) ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
+- **CA et objectifs** (admins et managers connectés) : saisie par structure et par année (raccourcis `120k`, `1,2M`), par un admin dans le panneau d'un commercial ou par un manager pour son équipe ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
+- **À recruter** (D-011) : un département vide d'une structure. Les admins lui donnent une priorité de 1 à 3 (hachures de couleur) et un secteur (onglet *Recrutement*) ; pourvu, il en sort tout seul.
+- **Espace manager** (D-010) : *Mon équipe* (départements, CA et objectifs de ses commerciaux dans ses structures), saisie en tableau, journal de son équipe ; sur la carte, *Placer un de mes commerciaux* dans un département libre.
+- **Journal** : qui a modifié quoi, quand, avant et après ; tout pour un admin, son équipe pour un manager.
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, gestion-partiel = ⅛, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.
 - Survol : zone et commerciaux (structure, couverture, managers, CA/objectif s'ils sont saisis). Clic : panneau de détail, avec le téléphone et l'e-mail du commercial et de ses managers (liens d'appel et d'envoi).
-- Filtres (manager, commercial, couverture, statut, « masquer les À recruter »), légende cliquable, export PNG.
+- Filtres (manager, commercial, couverture, statut, « masquer les départements à recruter »), légende cliquable, export PNG.
 - L'adresse garde l'onglet, la vue, le mode de couleur et l'affichage des zones partagées (`?onglet=MD&vue=paris&couleur=couverture&partage=camemberts`).
 - Charte graphique GDCom 2023 : couleurs, Montserrat (auto-hébergée), logotype officiel.
 
-### Format Excel
+### Export Excel
 
-Onglet `V3` par défaut, en-têtes en ligne 3. Les colonnes sont **repérées par le nom de l'en-tête**, pas par leur position :
+La carte est la source des données : elle n'importe plus d'Excel (D-012). L'onglet *Export* (admins) produit un classeur mis en forme, avec filtres et volets figés : **Commerciaux**, **Départements** (une ligne par structure, département et commercial, ou « à recruter » avec priorité et secteur), **CA et objectifs**, **Managers**.
 
-| Colonne | Contenu |
-|---|---|
-| `Nom` | nom du commercial (vide = ligne ignorée) |
-| une colonne par structure : `MD`, `SP`, `MC`, `BK`… | « X » = appartient à la structure |
-| `Statut`, `Manager 1`, `Manager 2` | texte |
-| `DPT MD`, `DPT SP`… (une par structure) | liste de zones |
-| `CA MD`, `Objectif MD`… (par structure) | nombres, facultatifs (année choisie à l'import) |
-| `Nb de jour / an`, `Date 1`, `Date 2`, `Actions`, `Région` | facultatifs, conservés pour l'export |
-| `Téléphone`, `E-mail` | facultatifs ; numéros français remis au format `06 12 34 56 78`, valeur illisible ignorée avec un avertissement ; sans ces colonnes, les coordonnées existantes ne bougent pas |
-| `Couleur`, `Actif`, `Notes` | facultatifs, ajoutés par l'export |
-
-Les colonnes d'une structure sont celles de son code (onglet *Structures* de l'admin) : une structure créée dans l'admin est lue à l'import et ajoutée à l'export. Une colonne `DPT XY` dont la structure n'existe pas est ignorée et signalée dans l'aperçu.
+### Saisie des départements
 
 Lecture des listes de zones (`src/lib/parseZones.ts`) :
 
@@ -79,22 +71,20 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 - suffixe `P` = partiel, `G` = gestion, `GP` = gestion-partiel (`PG` accepté), sans suffixe = propre ;
 - `9` → `09` ; `20` ou `2AB` → `2A` + `2B` ;
 - `75-7` = Paris 7e (`75007` accepté), `75` = tout Paris ;
-- `?` est ignoré ; toute valeur inconnue est signalée dans l'aperçu.
-
-**Fusionner** ajoute ou met à jour les commerciaux du fichier, sans toucher aux autres. **Remplacer tout** supprime en plus ceux qui sont absents du fichier. Les commerciaux sont reconnus par leur nom (sans tenir compte de la casse ni des accents). Leurs couleurs et leurs notes sont conservées. L'import est appliqué en une seule transaction.
+- `?` est ignoré ; toute valeur inconnue est signalée avant l'enregistrement.
 
 ## Sécurité
 
 | Qui | Peut |
 |---|---|
 | Anonyme | rien, sauf ouvrir la carte avec le code (`POST /api/carte`) |
-| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Le CA, les objectifs, les notes, actions, dates et jours/an restent réservés aux admins. |
-| Venu par le portail **sans rôle** dans la carte (avec ou sans droit d'usage) | comme un anonyme : le code, comme tout le monde (D-009) |
-| Responsable (rôle dans `acces` avec ses managers, et droit d'usage sur le portail) | lire la carte sans code, comme avec le code ; saisir le **CA et les objectifs** des commerciaux de ses managers (Manager 1 ou 2), rien d'autre |
-| Admin (rôle dans `acces`, et droit d'usage sur le portail) | lire et modifier les données, changer le code, nommer les admins et les responsables, régler l'affichage par défaut |
+| Avec le bon code | lire la carte : commerciaux **actifs**, managers et zones, **avec leur téléphone et leur e-mail** (choix validé). Ni CA, ni objectifs, ni notes, actions, dates et jours/an. |
+| Venu par le portail **sans rôle** dans la carte (avec ou sans droit d'usage) | comme un anonyme : le code, comme tout le monde |
+| Manager (`managers.compte` = son compte GD One, et accès sur le portail) | lire toute la carte sans code, **CA et objectifs de toutes les équipes** compris (pas les notes) ; modifier les **départements, CA et objectifs** de ses commerciaux (Manager 1 ou 2, selon ceux activés), dans ses structures, sans prendre un département occupé par le commercial d'un autre manager ; lire le journal de son équipe |
+| Admin (table `acces`, et accès sur le portail) | tout : données, code, admins, comptes et structures des managers, réglages, journal, export |
 
 - **Entrée par le portail** : la tuile de GD One ouvre `/api/connexion`, qui mène à la carte déjà connecté (D-007) ; le bouton « Se connecter avec GD One » passe par la même entrée.
-- **Le portail dit qui est la personne et si son organisation a droit à la carte**, d'après le claim `urn:gdcom:organizations` relu à chaque connexion ; **les rôles de la carte sont dans gd-map** (table `acces`), relus à chaque requête : un rôle retiré cesse aussitôt (D-002, D-009).
+- **Le portail dit qui est la personne et si elle a droit à la carte**, par une de ses organisations (claim `urn:gdcom:organizations`) ou par elle-même (`urn:gdcom:personal_access`), relu à chaque connexion ; **les rôles sont dans gd-map** (`acces`, `managers.compte`), relus à chaque requête : un rôle retiré cesse aussitôt (D-002, D-010).
 - Le serveur exécute chaque requête avec les droits du visiteur (rôle `anon` ou `authenticated`, utilisateur de la session) : les règles RLS et les fonctions SQL décident, testées dans `db/tests`. Les tables de connexion ne sont lisibles par aucun rôle de l'API.
 - Personne ne modifie son profil ni ne se donne l'accès : les routes de modification de compte de Better Auth sont fermées, et le droit d'usage ne s'écrit qu'au retour du portail. Les jetons du portail sont chiffrés en base, l'ID token n'est pas gardé.
 - Le code est stocké en **bcrypt** (`settings.access_code_hash`), illisible même par un admin.
@@ -106,16 +96,16 @@ Lecture des listes de zones (`src/lib/parseZones.ts`) :
 src/
   pages/        MapPage (carte), CodeGate (code d'accès ou portail), HelpPage (/aide)
   components/   MapView (D3 : projections, encarts, zones partagées, zoom), légende, filtres, infobulle, panneau
-  admin/        connexion, commerciaux, managers, structures, synthèse, import/export Excel, paramètres
-  lib/          parseZones (listes de zones), excel (lecture/écriture), importDiff (aperçu),
-                mapModel (couleurs, zones partagées, filtres), zones (référentiel), api (appels au serveur), session
+  admin/        connexion ; admins : commerciaux, managers, structures, recrutement, synthèse, journal, export, paramètres ;
+                managers : mon équipe, CA et objectifs, journal
+  lib/          parseZones (listes de zones), mapModel (couleurs, zones partagées, filtres), managers (managers actifs),
+                recrutement (départements vides), exportExcel, journal, zones (référentiel), api (appels au serveur), session
 server/         serveur Hono : API (app.ts), connexion par le portail (auth.ts), base (db.ts), migrations
 db/
   migrations/   socle, schéma, RLS, fonctions, zones, connexion par le portail et rôles
   tests/        tests des règles d'accès (PGlite)
 public/geo/     contours GeoJSON : départements + DROM, détail Île-de-France, arrondissements, Monaco
-scripts/        contours, migration des zones, fichier d'exemple, reprise des données de Supabase
-exemples/       exemple-import.xlsx (données fictives)
+scripts/        contours, migration des zones
 ```
 
 ## Scripts
@@ -126,15 +116,14 @@ exemples/       exemple-import.xlsx (données fictives)
 | `npm run dev:server` | serveur de développement, relancé à chaque modification (lit `.env.local`) |
 | `npm run demo` | front avec les données d'exemple, sans serveur |
 | `npm start` | serveur de production (`node server/index.ts`) |
-| `npm test` | tests : listes de zones, Excel, règles d'accès SQL, API |
+| `npm test` | tests : listes de zones, carte, journal, export Excel, règles d'accès SQL, API |
 | `npm run build` | types, puis build du front dans `dist/` |
 | `npm run lint` | oxlint |
 | `npm run auth:schema` | réécrit les tables de Better Auth en SQL, à reporter dans une migration |
 | `npm run build:geo` | retélécharge et simplifie les contours (`public/geo/`) |
 | `npm run gen:zones-sql` | régénère la migration des zones depuis `src/lib/zones.ts` |
-| `npm run sample:excel` | régénère `exemples/exemple-import.xlsx` |
 
-Les tests SQL et ceux de l'API jouent toutes les migrations dans [PGlite](https://pglite.dev) (Postgres en WebAssembly), puis chaque requête passe avec le rôle, l'utilisateur et l'IP que pose le serveur. Si `Classeur V3.xlsx` est présent à la racine (non versionné), un test vérifie aussi qu'il se lit sans valeur inconnue.
+Les tests SQL et ceux de l'API jouent toutes les migrations dans [PGlite](https://pglite.dev) (Postgres en WebAssembly), puis chaque requête passe avec le rôle, l'utilisateur et l'IP que pose le serveur.
 
 ## Sources des contours
 

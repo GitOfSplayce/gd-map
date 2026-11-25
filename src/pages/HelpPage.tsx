@@ -31,8 +31,8 @@ export default function HelpPage() {
               arrondissement. Molette, pincement ou boutons + / − pour zoomer.
             </li>
             <li>
-              <strong>Couleur</strong> : par commercial (par défaut), par Manager 1, par Manager 2, ou{' '}
-              <strong>Couverture</strong> (carte de chaleur, voir plus bas).
+              <strong>Couleur</strong> : par commercial (par défaut), par manager (Manager 1 et Manager 2, selon ceux que les admins ont
+              activés), ou <strong>Couverture</strong> (carte de chaleur, voir plus bas).
             </li>
             <li>
               <strong>Survol</strong> d'une zone : nom, code et commerciaux présents. <strong>Clic</strong> : détail dans le
@@ -41,13 +41,13 @@ export default function HelpPage() {
             </li>
             <li>
               <strong>Légende</strong> : un clic sur un nom met ses zones en évidence. Plusieurs noms peuvent être
-              sélectionnés. Les postes « À recruter » sont regroupés à part, en fin de liste, avec leur couleur.
+              sélectionnés. Les départements à recruter sont regroupés à part, en fin de liste, par secteur ou par priorité.
             </li>
             <li>
-              <strong>Filtres</strong> : manager, commercial, couverture, statut (dont « masquer les À recruter »).
+              <strong>Filtres</strong> : manager, commercial, couverture, statut, et « masquer les départements à recruter ».
             </li>
             <li>
-              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende (dont la section « À recruter »).
+              <strong>Export PNG</strong> : image de la vue actuelle, avec sa légende (dont les départements à recruter).
             </li>
             <li>
               L'adresse de la page garde l'onglet, la vue et le mode de couleur : on peut la copier pour partager une vue
@@ -89,6 +89,22 @@ export default function HelpPage() {
         </section>
 
         <section>
+          <h2>Départements à recruter</h2>
+          <p>
+            Un département <strong>vide</strong> dans une structure est <strong>à recruter</strong>. Les admins lui donnent une{' '}
+            <strong>priorité</strong> de 1 à 3, qui le hachure en couleur sur la carte, et un <strong>secteur</strong>, qui réunit les
+            départements d'un même poste. Sans priorité, il reste gris clair. Dès qu'un commercial y est placé, il n'est plus à recruter.
+          </p>
+          <ul>
+            <li>L'onglet d'une structure montre ce que cette structure a à recruter.</li>
+            <li>
+              Sur l'onglet <em>Globale</em>, un département n'est à recruter que si aucune structure n'y a quelqu'un ; son détail dit
+              lesquelles y manquent.
+            </li>
+          </ul>
+        </section>
+
+        <section>
           <h2>Vue « Couverture »</h2>
           <p>
             Dans <strong>Couleur → Couverture</strong>, chaque zone est colorée selon un score : chaque commercial présent
@@ -104,13 +120,11 @@ export default function HelpPage() {
         </section>
 
         <section>
-          <h2>CA et objectifs (admins et responsables)</h2>
+          <h2>CA et objectifs (admins et managers)</h2>
           <p>
-            Le CA et l'objectif de chaque commercial se saisissent par structure et par année, dans son panneau (onglet{' '}
-            <em>Commerciaux</em> de l'admin ; raccourcis <code>120k</code> et <code>1,2M</code> acceptés), ou par l'import Excel
-            (colonnes <code>CA MD</code>, <code>Objectif MD</code>…).
-            Ils ne sont <strong>jamais visibles avec le seul code d'accès</strong> : il faut être connecté en admin. Un{' '}
-            <strong>responsable</strong>, nommé par un admin, saisit ceux des commerciaux de ses managers dans <em>Chiffres de l'équipe</em>.
+            Le CA et l'objectif de chaque commercial se saisissent par structure et par année (raccourcis <code>120k</code> et{' '}
+            <code>1,2M</code> acceptés). Ils ne sont <strong>jamais visibles avec le seul code d'accès</strong> : il faut être connecté en
+            admin ou en manager.
           </p>
           <ul>
             <li>
@@ -128,7 +142,7 @@ export default function HelpPage() {
         </section>
 
         <section>
-          <h2>Saisir les zones (admin et fichier Excel)</h2>
+          <h2>Saisir les départements</h2>
           <table>
             <tbody>
               <tr>
@@ -172,29 +186,28 @@ export default function HelpPage() {
         </section>
 
         <section>
-          <h2>Import Excel</h2>
+          <h2>Espace manager</h2>
           <p>
-            Onglet <code>V3</code> par défaut, en-têtes en ligne 3. Les colonnes sont reconnues par leur nom :{' '}
-            <code>Nom</code>, une colonne par structure (<code>MD</code>, <code>SP</code>… : « X » = appartient à la
-            structure), <code>Statut</code>, <code>Manager 1</code>, <code>Manager 2</code>, <code>DPT MD</code>,{' '}
-            <code>DPT SP</code>…, et en option <code>Nb de jour / an</code>, <code>Date 1</code>, <code>Date 2</code>,{' '}
-            <code>Actions</code>, <code>Région</code>, <code>CA MD</code>, <code>Objectif MD</code>…, <code>Téléphone</code>,{' '}
-            <code>E-mail</code>. Une ligne sans nom est ignorée. Pour une nouvelle structure, créez-la d'abord dans l'admin (onglet <em>Structures</em>) : ses colonnes
-            sont ensuite lues à l'import et ajoutées à l'export.
+            Un manager relié à son compte GD One ouvre la carte sans code. Il y voit tout, chiffres compris, et modifie seulement les{' '}
+            <strong>départements</strong>, le <strong>CA</strong> et les <strong>objectifs</strong> de ses commerciaux, dans ses structures :
           </p>
           <ul>
             <li>
-              <strong>Fusionner</strong> : ajoute les nouveaux commerciaux et met à jour ceux du fichier ; les autres ne
-              bougent pas.
+              dans <em>Mon équipe</em>, ou depuis la carte en cliquant sur un département (<em>Placer un de mes commerciaux</em>) ;
             </li>
             <li>
-              <strong>Remplacer tout</strong> : le fichier devient la référence ; les commerciaux absents du fichier sont
-              supprimés.
+              un département, dans une structure, est à un seul manager, quel que soit le type (propre, partiel, gestion). Il peut le partager
+              entre plusieurs de ses commerciaux ; celui d'un autre manager ne se prend pas. Un admin n'a pas cette limite ;
             </li>
+            <li>tout changement se voit aussitôt sur la carte, et le journal garde qui a modifié quoi.</li>
           </ul>
+        </section>
+
+        <section>
+          <h2>Admin : export Excel et journal</h2>
           <p>
-            Les commerciaux sont reconnus par leur nom (sans tenir compte des majuscules ni des accents). Leur couleur et
-            leurs notes sont conservées.
+            La carte est la source des données. L'onglet <em>Export</em> en fait un classeur mis en forme : commerciaux, départements (dont
+            ceux à recruter), CA et objectifs, managers. Le <em>Journal</em> garde chaque modification, avant et après.
           </p>
         </section>
       </main>

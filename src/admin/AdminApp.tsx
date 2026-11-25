@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, NavLink, Route, Routes } from 'react-router-dom'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import GateLayout from '../components/GateLayout'
 import Icon from '../components/Icon'
@@ -7,10 +7,13 @@ import { useSession } from '../hooks/useSession'
 import { fetchMapData, MAP_DATA_ERRORS } from '../lib/api'
 import { signIn, signInFailed, signOut } from '../lib/session'
 import type { MapData } from '../lib/types'
+import ChiffresPage from './ChiffresPage'
 import CommerciauxPage from './CommerciauxPage'
 import EquipePage from './EquipePage'
-import ImportExportPage from './ImportExportPage'
+import ExportPage from './ExportPage'
+import JournalPage from './JournalPage'
 import ManagersPage from './ManagersPage'
+import RecrutementPage from './RecrutementPage'
 import SynthesePage from './SynthesePage'
 import SettingsPage from './SettingsPage'
 import StructuresPage from './StructuresPage'
@@ -36,11 +39,11 @@ function PortalLogin() {
   }
 
   return (
-    <GateLayout title="Espace admin" subtitle="Carte commerciale">
+    <GateLayout title="Admins et managers" subtitle="Carte commerciale">
       <div className="stack">
         <p className="gate-note" style={{ marginTop: 0 }}>
-          Pour les admins et les responsables nommés dans la carte. La connexion passe par le portail du groupe : mot de passe, passkey et
-          double authentification s'y gèrent.
+          Pour les admins et les managers. La connexion passe par le portail du groupe : mot de passe, passkey et double authentification s'y
+          gèrent.
         </p>
         {error && (
           <div className="alert error" role="alert">
@@ -97,9 +100,41 @@ function UserBadge({ email }: { email: string }) {
   )
 }
 
-function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
+/** Données lues une fois pour toutes les pages, rechargées après chaque enregistrement. */
+function WithData({ children }: { children: (props: AdminDataProps) => ReactNode }) {
   const { data, error, reload } = useAdminData()
+  return (
+    <main className="admin-main">
+      {error && <div className="alert error">{error}</div>}
+      {!data && !error && <p className="muted">Chargement…</p>}
+      {data && children({ data, reload })}
+    </main>
+  )
+}
 
+function SessionActions({ email, portalUrl }: { email: string; portalUrl?: string | null }) {
+  return (
+    <>
+      <Link className="btn small" to="/">
+        <Icon name="map" size={16} />
+        Voir la carte
+      </Link>
+      {portalUrl && (
+        <a className="btn small ghost" href={`${portalUrl}/compte/securite`} target="_blank" rel="noopener noreferrer" title="Mon compte GD One">
+          <Icon name="lock" size={16} />
+          <span className="hide-below-1600">Mon compte</span>
+        </a>
+      )}
+      <UserBadge email={email} />
+      <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
+        <Icon name="logout" size={16} />
+        <span className="hide-below-1600">Déconnexion</span>
+      </button>
+    </>
+  )
+}
+
+function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
   return (
     <div className="admin-shell">
       <AppHeader
@@ -112,73 +147,66 @@ function AdminLayout({ email, portalUrl }: { email: string; portalUrl: string | 
             </NavLink>
             <NavLink to="/admin/managers">Managers</NavLink>
             <NavLink to="/admin/structures">Structures</NavLink>
+            <NavLink to="/admin/recrutement">Recrutement</NavLink>
             <NavLink to="/admin/synthese">Synthèse</NavLink>
-            <NavLink to="/admin/import">Import / export</NavLink>
+            <NavLink to="/admin/journal">Journal</NavLink>
+            <NavLink to="/admin/export">Export</NavLink>
             <NavLink to="/admin/parametres">Paramètres</NavLink>
           </nav>
         }
-        actions={
-          <>
-            <Link className="btn small" to="/">
-              <Icon name="map" size={16} />
-              Voir la carte
-            </Link>
-            <UserBadge email={email} />
-            <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
-              <Icon name="logout" size={16} />
-              <span className="hide-below-1600">Déconnexion</span>
-            </button>
-          </>
-        }
+        actions={<SessionActions email={email} />}
       />
-      <main className="admin-main">
-        {error && <div className="alert error">{error}</div>}
-        {!data && !error && <p className="muted">Chargement…</p>}
-        {data && (
+      <WithData>
+        {({ data, reload }) => (
           <Routes>
             <Route index element={<CommerciauxPage data={data} reload={reload} />} />
             <Route path="managers" element={<ManagersPage data={data} reload={reload} />} />
             <Route path="structures" element={<StructuresPage data={data} reload={reload} />} />
+            <Route path="recrutement" element={<RecrutementPage data={data} reload={reload} />} />
             <Route path="synthese" element={<SynthesePage data={data} reload={reload} />} />
-            <Route path="import" element={<ImportExportPage data={data} reload={reload} />} />
+            <Route path="journal" element={<JournalPage />} />
+            <Route path="export" element={<ExportPage data={data} />} />
+            <Route path="import" element={<Navigate to="/admin/export" replace />} />
             <Route path="parametres" element={<SettingsPage email={email} portalUrl={portalUrl} data={data} reload={reload} />} />
           </Routes>
         )}
-      </main>
+      </WithData>
     </div>
   )
 }
 
-/** Responsable (D-009) : une seule page, les chiffres de son équipe. */
-function ResponsableLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
+/** Manager (D-010) : son équipe, ses chiffres et leur journal ; rien d'autre ne se modifie. */
+function ManagerLayout({ email, portalUrl }: { email: string; portalUrl: string | null }) {
   return (
     <div className="admin-shell">
       <AppHeader
-        subtitle="Chiffres de l'équipe"
+        subtitle="Espace manager"
         home="/admin"
-        actions={
-          <>
-            <Link className="btn small" to="/">
-              <Icon name="map" size={16} />
-              Voir la carte
-            </Link>
-            {portalUrl && (
-              <a className="btn small ghost" href={`${portalUrl}/compte/securite`} target="_blank" rel="noopener noreferrer" title="Mon compte GD One">
-                <Icon name="lock" size={16} />
-                <span className="hide-below-1600">Mon compte</span>
-              </a>
-            )}
-            <UserBadge email={email} />
-            <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
-              <Icon name="logout" size={16} />
-              <span className="hide-below-1600">Déconnexion</span>
-            </button>
-          </>
+        nav={
+          <nav className="tabs">
+            <NavLink to="/admin" end>
+              Mon équipe
+            </NavLink>
+            <NavLink to="/admin/chiffres">CA et objectifs</NavLink>
+            <NavLink to="/admin/journal">Journal</NavLink>
+          </nav>
         }
+        actions={<SessionActions email={email} portalUrl={portalUrl} />}
       />
-      <main className="admin-main">
-        <EquipePage />
-      </main>
+      <WithData>
+        {({ data, reload }) =>
+          data.manager ? (
+            <Routes>
+              <Route index element={<EquipePage data={data} reload={reload} />} />
+              <Route path="chiffres" element={<ChiffresPage data={data} reload={reload} />} />
+              <Route path="journal" element={<JournalPage team />} />
+              <Route path="*" element={<Navigate to="/admin" replace />} />
+            </Routes>
+          ) : (
+            <p className="muted">Votre compte n'est plus relié à un manager. Rechargez la page, ou demandez à un admin.</p>
+          )
+        }
+      </WithData>
     </div>
   )
 }
@@ -188,14 +216,14 @@ export default function AdminApp() {
 
   if (loading) return <div className="map-empty">Chargement…</div>
   if (!me.user) return <PortalLogin />
-  if (me.role === 'responsable') return <ResponsableLayout email={me.user.email} portalUrl={me.portalUrl} />
+  if (me.role === 'manager') return <ManagerLayout email={me.user.email} portalUrl={me.portalUrl} />
   if (me.role !== 'admin') {
     return (
       <GateLayout title="Accès refusé">
         <div className="stack">
           <p style={{ margin: 0, textAlign: 'center' }}>
-            Le compte <strong>{me.user.email}</strong> n'a pas de rôle sur la carte. Un admin peut le nommer admin ou responsable ; la carte
-            reste ouverte à tous avec le code d'accès.
+            Le compte <strong>{me.user.email}</strong> n'a pas de rôle sur la carte. Un admin peut le relier à un manager ou le nommer
+            admin ; la carte reste ouverte à tous avec le code d'accès.
           </p>
           <button type="button" className="btn" onClick={() => void leave()}>
             <Icon name="logout" size={16} />

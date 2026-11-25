@@ -3,7 +3,7 @@
 import { nameKey } from './text'
 
 /** Statuts proposés d'office ; leur écriture l'emporte sur les variantes. */
-export const STATUT_SUGGESTIONS = ['VRP', 'Agent commercial', 'ATC', 'À recruter']
+export const STATUT_SUGGESTIONS = ['VRP', 'Agent commercial', 'ATC']
 
 const clean = (s: string | null | undefined) => (s ?? '').trim().replace(/\s+/g, ' ')
 

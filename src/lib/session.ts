@@ -4,12 +4,12 @@ import { api } from './api'
 
 export const isDemo = import.meta.env.VITE_DEMO === '1'
 
-/** Rôles nommés dans la carte (D-009) ; sans rôle, la carte s'ouvre avec le code d'accès. */
-export type SessionRole = 'admin' | 'responsable'
+/** Rôles de la carte (D-010) ; sans rôle, elle s'ouvre avec le code d'accès. */
+export type SessionRole = 'admin' | 'manager'
 
 export interface Me {
   user: { email: string; name: string; image: string | null } | null
-  /** null : pas connecté, ou connecté sans rôle dans la carte (ou sans droit d'usage sur le portail). */
+  /** null : pas connecté, ou connecté sans rôle dans la carte (ou sans accès sur le portail). */
   role: SessionRole | null
   /** Le portail, où se gèrent mot de passe, passkeys et double authentification. */
   portalUrl: string | null

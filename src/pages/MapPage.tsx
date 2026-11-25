@@ -6,6 +6,7 @@ import Icon from '../components/Icon'
 import Legend from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import ZonePanel from '../components/ZonePanel'
+import PlaceCommercial from '../components/PlaceCommercial'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import ZoneTooltip from '../components/ZoneTooltip'
@@ -25,9 +26,10 @@ import {
   type Tab,
 } from '../lib/mapModel'
 import { availableYears, defaultYear } from '../lib/performance'
+import { activeManagers, managerLabel } from '../lib/managers'
 import { plural } from '../lib/text'
 import { signIn, signOut, type SessionRole } from '../lib/session'
-import { sortStructures } from '../lib/structures'
+import { sortStructures, structureCodes } from '../lib/structures'
 import type { MapData } from '../lib/types'
 import CodeGate from './CodeGate'
 
@@ -62,7 +64,7 @@ export default function MapPage() {
       busy={access.status === 'loading'}
       onSubmit={access.submit}
       onPortal={() => signIn('/')}
-      // Connecté par le portail, mais sans rôle dans la carte : le code, comme tout le monde (D-009)
+      // Connecté par le portail, mais sans rôle dans la carte : le code, comme tout le monde
       deniedEmail={session.me.user && !role ? session.me.user.email : null}
       onSignOut={leave}
     />
@@ -98,8 +100,12 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
   )
   const tab = pick<Tab>('onglet', tabs.map((t) => t.key), 'ALL')
   const view = pick<MapViewMode>('vue', VIEWS.map((v) => v.key), 'france')
-  // CA et objectifs : réservés aux admins (vue Performance, année, chiffres de la légende)
-  const colorModes = COLOR_MODES.filter((c) => c.key !== 'performance' || data.admin)
+  // CA et objectifs : admins et managers (vue Performance, année, chiffres de la légende). Un manager
+  // désactivé dans les paramètres n'a plus de vue.
+  const managers = useMemo(() => activeManagers(data.settings), [data.settings])
+  const colorModes = COLOR_MODES.filter(
+    (c) => (c.key !== 'performance' || data.chiffres) && ((c.key !== 'manager1' && c.key !== 'manager2') || managers.includes(c.key)),
+  ).map((c) => (c.key === 'manager1' || c.key === 'manager2' ? { ...c, label: managerLabel(c.key, managers) } : c))
   const colorMode = pick<ColorMode>('couleur', colorModes.map((c) => c.key), 'commercial')
   const years = useMemo(() => availableYears(data.objectifs), [data.objectifs])
   const year = Number(params.get('annee')) || defaultYear(data.objectifs)
@@ -119,7 +125,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
       { replace: true },
     )
 
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<Filters>(() => ({ ...DEFAULT_FILTERS, managerField: managers[0] }))
   const [showFilters, setShowFilters] = useState(false)
   const [highlighted, setHighlighted] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
@@ -157,6 +163,8 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
   }
 
   const filterCount = activeFilterCount(filters)
+  /** Lignes de la légende qui sont des personnes (les départements à recruter à part). */
+  const people = model.legend.filter((l) => !l.group).length
   const tabInfo = tabs.find((t) => t.key === tab)!
   const updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString('fr-FR') : null
 
@@ -178,7 +186,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
         .map((l) => ({ label: l.shortLabel ?? l.label, color: l.color, group: l.group && LEGEND_GROUP_TITLES[l.group] }))
       const parts = [
         VIEWS.find((v) => v.key === view)!.label,
-        `couleur : ${COLOR_MODES.find((c) => c.key === colorMode)!.label}`,
+        `couleur : ${colorModes.find((c) => c.key === colorMode)!.label}`,
         filterCount ? `${plural(filterCount, 'filtre actif', 'filtres actifs')}` : null,
         `export du ${new Date().toLocaleDateString('fr-FR')}`,
       ]
@@ -227,11 +235,11 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
                 <Icon name="settings" size={16} />
                 Admin
               </Link>
-            ) : role === 'responsable' ? (
+            ) : role === 'manager' ? (
               <>
                 <Link className="btn small" to="/admin">
-                  <Icon name="pencil" size={16} />
-                  Chiffres
+                  <Icon name="users" size={16} />
+                  Mon équipe
                 </Link>
                 <button type="button" className="btn small ghost" onClick={() => void leave()} title="Fermer la session de la carte">
                   <Icon name="logout" size={16} />
@@ -277,7 +285,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
             ))}
           </div>
         </div>
-        {data.admin && (
+        {data.chiffres && (
           <div className="group">
             <span className="label">CA</span>
             <Select
@@ -416,8 +424,8 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
                 {colorMode !== 'couverture' && colorMode !== 'performance' && (
                   <span className="muted small">
                     {colorMode === 'commercial'
-                      ? plural(model.legend.length, 'commercial', 'commerciaux')
-                      : plural(model.legend.length, 'manager')}
+                      ? plural(people, 'commercial', 'commerciaux')
+                      : plural(people, 'manager')}
                   </span>
                 )}
                 <span className="sheet-toggle" aria-hidden="true">
@@ -431,17 +439,23 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
               <ZonePanel
                 code={selected}
                 model={model}
+                single={tab !== 'ALL'}
                 view={view}
                 highlighted={highlighted}
                 onToggleHighlight={toggleHighlight}
                 onChangeView={(v) => setParam('vue', v, 'france')}
-              />
+              >
+                {data.manager && (
+                  <PlaceCommercial key={selected} code={selected} data={data} structures={tab === 'ALL' ? structureCodes(data.structures) : [tab]} onSaved={onReload} />
+                )}
+              </ZonePanel>
             ) : (
               <Legend
                 items={model.legend}
                 ranking={model.ranking}
                 year={year}
                 colorMode={colorMode}
+                what={colorMode === 'manager1' || colorMode === 'manager2' ? managerLabel(colorMode, managers).toLowerCase() : 'commercial'}
                 highlighted={highlighted}
                 onToggle={toggleHighlight}
                 onClear={() => setHighlighted(new Set())}
