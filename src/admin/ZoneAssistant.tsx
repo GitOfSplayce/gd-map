@@ -9,6 +9,7 @@ import { NEUTRAL_SLICE, dotsId, sliceOf, stripesId, type MapModel, type ZoneStyl
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS, COUVERTURES, type Couverture } from '../lib/types'
 import { coverageIn, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from '../lib/zoneEditing'
+import Sliding from '../components/Sliding'
 import { DROM_CODES, PARIS_ARR_CODES, ZONES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 
 interface Props {
@@ -125,25 +126,25 @@ export default function ZoneAssistant({ title, value, onApply, onClose, blocked 
         <div className="assistant-tools">
           <div className="group">
             <span className="label">Couverture</span>
-            <div className="seg brush">
+            <Sliding className="seg brush">
               {COUVERTURES.map((c) => (
                 <button key={c} type="button" aria-pressed={brush === c} onClick={() => setBrush(c)}>
                   <KeySwatch kind={c} />
                   {COUVERTURE_LABELS[c]}
                 </button>
               ))}
-            </div>
+            </Sliding>
           </div>
-          <div className="seg">
+          <Sliding className="seg">
             <button type="button" aria-pressed={mode === 'carte'} onClick={() => setMode('carte')}>
               <Icon name="map" size={15} /> Carte
             </button>
             <button type="button" aria-pressed={mode === 'liste'} onClick={() => setMode('liste')}>
               <Icon name="layers" size={15} /> Liste
             </button>
-          </div>
+          </Sliding>
           {mode === 'carte' ? (
-            <div className="seg">
+            <Sliding className="seg">
               {(
                 [
                   ['france', 'France'],
@@ -155,7 +156,7 @@ export default function ZoneAssistant({ title, value, onApply, onClose, blocked 
                   {label}
                 </button>
               ))}
-            </div>
+            </Sliding>
           ) : (
             <SearchInput style={{ width: 240 }} value={search} onChange={setSearch} placeholder="Code, département ou région…" />
           )}

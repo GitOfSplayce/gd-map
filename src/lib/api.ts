@@ -121,14 +121,14 @@ export async function setManagerColor(nom: string, couleur: string): Promise<voi
   await guarded(() => api('PATCH', `/admin/managers/${seg(nom)}`, { couleur }))
 }
 
-/** Coordonnées, compte GD One (null pour effacer) et structures d'un manager : seules les clés envoyées changent. */
-export async function updateManager(nom: string, patch: Partial<Pick<Manager, 'telephone' | 'email' | 'compte' | 'structures'>>): Promise<void> {
+/** Coordonnées, compte GD One, fiche de commercial (null pour effacer) et structures d'un manager : seules les clés envoyées changent. */
+export async function updateManager(nom: string, patch: Partial<Pick<Manager, 'telephone' | 'email' | 'compte' | 'commercial_id' | 'structures'>>): Promise<void> {
   if (DEMO) return (await demo()).demoUpdateManager(nom, patch)
   await guarded(
     () => api('PATCH', `/admin/managers/${seg(nom)}`, patch),
     (error) => {
       if (error instanceof ApiError && error.code === '23514') throw new Error('Téléphone ou e-mail illisible.')
-      if (error instanceof ApiError && error.code === '23505') throw new Error('Ce compte GD One est déjà relié à un autre manager.')
+      if (error instanceof ApiError && error.code === '23505') throw new Error(/commercial/.test(error.message) ? 'Cette fiche est déjà celle d\'un autre manager.' : 'Ce compte GD One est déjà relié à un autre manager.')
       fail(error)
     },
   )
@@ -229,10 +229,19 @@ export async function convertirARecruter(ids: string[]): Promise<{ fiches: numbe
 
 // ---------- Journal (D-010) ----------
 
-/** Du plus récent au plus ancien ; `avant` : l'identifiant de la dernière ligne déjà reçue. */
-export async function fetchJournal(avant?: number): Promise<{ lignes: JournalLine[]; suite: boolean }> {
-  if (DEMO) return { lignes: [], suite: false }
-  return guarded(() => api('GET', `/journal${avant ? `?avant=${avant}` : ''}`))
+export interface JournalPageData {
+  lignes: JournalLine[]
+  /** Nombre d'enregistrements, toutes pages confondues. */
+  total: number
+  page: number
+  taille: number
+}
+
+/** Une page d'enregistrements, du plus récent au plus ancien ; la recherche porte sur tout le journal. */
+export async function fetchJournal(page: number, recherche = ''): Promise<JournalPageData> {
+  if (DEMO) return { lignes: [], total: 0, page: 1, taille: 20 }
+  const query = new URLSearchParams({ page: String(page), ...(recherche && { recherche }) })
+  return guarded(() => api('GET', `/journal?${query}`))
 }
 
 // ---------- Rôles (D-010) : les admins ici, les managers par leur compte (onglet Managers) ----------

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FILTERS, buildMapModel } from './mapModel'
-import { activeManagers, managerLabel, manages, managersOf } from './managers'
+import { activeManagers, fichesOf, managerLabel, manages, managersOf, teamManager } from './managers'
 import { blockedZones, isARecruter, occupancyOf, sectorOf, vacancyIn, vacancyText, vacantZones } from './recrutement'
 import { DEFAULT_STRUCTURES } from './structures'
 import type { ARecruter, Affectation, Commercial, Couverture, MapData, Structure } from './types'
@@ -27,9 +27,33 @@ describe('managers actifs', () => {
 
   it('un manager désactivé ne donne plus de droits', () => {
     const c = person('A', { manager1: 'Sud', manager2: 'Nord' })
-    expect(manages('Sud', c, activeManagers())).toBe(true)
-    expect(manages('Sud', c, activeManagers(only2))).toBe(false)
+    expect(manages('Sud', c, activeManagers(), new Map())).toBe(true)
+    expect(manages('Sud', c, activeManagers(only2), new Map())).toBe(false)
     expect(managersOf({ manager1: 'Sud', manager2: 'Sud' }, activeManagers())).toEqual(['Sud'])
+  })
+})
+
+describe('fiche d\'un manager (D-013)', () => {
+  const manon = person('E', { nom: 'PERRIN Manon', manager2: 'Direction' })
+  const fiches = fichesOf([{ nom: 'Manon', commercial_id: 'E' }, { nom: 'Direction', commercial_id: null }])
+
+  it('est à elle et à son manager, et compte dans sa propre équipe', () => {
+    expect(manages('Manon', manon, ['manager2'], fiches)).toBe(true)
+    expect(manages('Direction', manon, ['manager2'], fiches)).toBe(true)
+    expect(manages('Sud', manon, ['manager2'], fiches)).toBe(false)
+    expect(teamManager(manon, 'manager2', fiches)).toBe('Manon')
+    expect(teamManager(person('Z', { manager2: 'Direction' }), 'manager2', fiches)).toBe('Direction')
+  })
+
+  it('prend la couleur de son équipe en vue Manager, et ses départements bloquent les autres', () => {
+    const data = { ...map([manon, person('Z', { manager2: 'Direction' })], [aff('E', '35'), aff('Z', '22')]), managers: [{ nom: 'Manon', couleur: '#112233', commercial_id: 'E' }, { nom: 'Direction', couleur: '#445566' }] }
+    const m = buildMapModel(data, 'MD', DEFAULT_FILTERS, 'manager2')
+    expect(m.legend.map((l) => [l.label, l.zoneCount])).toEqual([['Direction', 1], ['Manon', 1]])
+    expect(m.styleOf('35', new Set()).fill).toBe('#112233')
+    const only = buildMapModel(data, 'MD', { ...DEFAULT_FILTERS, managerField: 'manager2', managers: ['Manon'] }, 'commercial')
+    expect(only.legend.map((l) => l.label)).toEqual(['PERRIN Manon'])
+    expect(blockedZones(data, person('Z', { manager2: 'Sud' }), 'MD', 'Sud', ['manager2']).get('35')).toBe('PERRIN Manon (manager)')
+    expect(blockedZones(data, data.commerciaux[1], 'MD', 'Manon', ['manager2']).has('35')).toBe(false)
   })
 })
 
@@ -52,7 +76,7 @@ describe('départements vides', () => {
     expect(vacancyIn('75-7', 'MD', occ, rows)).toBeNull()
     // « 75 » entier vaut pour chaque arrondissement
     expect(vacancyIn('75-5', 'SP', occ, [row('SP', '75', 2)])).toMatchObject({ priorite: 2, arrondissements: null })
-    expect(vacancyText({ structure: 'MD', priorite: 1, secteurs: ['Centre'], arrondissements: null })).toBe('Priorité 1 · secteur Centre')
+    expect(vacancyText({ structure: 'MD', priorite: 1, secteurs: ['Centre'], arrondissements: null })).toBe('Priorité 1 · groupe Centre')
     expect(vacancyText({ structure: 'MD', priorite: null, secteurs: [], arrondissements: null })).toBe('sans priorité')
   })
 
@@ -114,11 +138,17 @@ describe('carte : départements à recruter', () => {
 
   it('légende : un poste par secteur, puis par priorité ; un clic isole ses départements', () => {
     const legend = model('MD').legend.filter((l) => l.group)
-    expect(legend.map((l) => [l.shortLabel, l.zoneCount, l.detail])).toEqual([['Centre', 2, 'Priorité 1'], ['Priorité 3', 1, 'sans secteur']])
+    expect(legend.map((l) => [l.shortLabel, l.zoneCount, l.detail])).toEqual([['Centre', 2, 'Priorité 1'], ['Priorité 3', 1, 'sans groupe']])
     const m = model('MD')
     const hit = new Set([legend[0].key])
     expect(m.styleOf('18', hit).strokeWidth).toBeGreaterThan(1)
     expect(m.styleOf('40', hit).fillOpacity).toBeLessThan(0.5)
+  })
+
+  it('groupes : leurs départements, leur nom et leur couleur, pour le contour', () => {
+    expect(model('MD').groups).toEqual([{ key: 'r:MD|Centre', label: 'Centre', color: '#c4320a', codes: ['18', '36'] }])
+    expect(model('ALL').groups[0].label).toBe('Centre (MD)')
+    expect(model('SP').groups).toEqual([])
   })
 
   it('vue globale : occupé dès qu\'une structure y est ; le détail dit ce qui manque', () => {

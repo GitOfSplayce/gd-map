@@ -308,13 +308,38 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 
 /* Choix exclusifs (vue, couleur, mode…) */
 .seg {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   padding: 3px;
   border-radius: calc(var(--radius-sm) + 3px);
   background: #e7eef6;
 }
 
+/* La marque du choix actif, qui glisse (components/Sliding.tsx). Tant qu'elle n'est pas placée, le bouton
+   actif porte lui-même son fond. */
+.slide-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--w);
+  height: var(--h);
+  transform: translate(var(--x), var(--y));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.24s cubic-bezier(0.3, 0.75, 0.25, 1), width 0.24s cubic-bezier(0.3, 0.75, 0.25, 1), height 0.24s cubic-bezier(0.3, 0.75, 0.25, 1);
+}
+[data-slides] > .slide-mark { opacity: 1; }
+
+.seg > .slide-mark {
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm), 0 0 0 1px rgb(26 66 138 / 6%);
+}
+
 .seg button {
+  position: relative;
+  z-index: 1;
   padding: 6px 12px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -333,6 +358,7 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
   color: var(--saphir);
   box-shadow: var(--shadow-sm), 0 0 0 1px rgb(26 66 138 / 6%);
 }
+.seg[data-slides] > button[aria-pressed='true'] { background: transparent; box-shadow: none; }
 
 .alert {
   display: flex;
@@ -521,7 +547,7 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
 
 .topbar .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
 
-.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; align-self: stretch; align-items: stretch; }
+.tabs { position: relative; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; align-self: stretch; align-items: stretch; }
 
 .tabs button,
 .tabs a {
@@ -557,6 +583,18 @@ input[type='checkbox']:not([role='switch']):focus-visible { outline: none; box-s
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: var(--jaune);
+}
+.tabs[data-slides] button[aria-selected='true']::after,
+.tabs[data-slides] a.active::after { content: none; }
+.tabs > .slide-mark {
+  z-index: 2;
+  top: auto;
+  bottom: 0;
+  width: calc(var(--w) - 24px);
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--jaune);
+  transform: translateX(calc(var(--x) + 12px));
 }
 
 .tabs .tab-sub { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); }
@@ -983,6 +1021,18 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .seg .key-swatch { width: 14px; height: 14px; }
 .recruit .seg,
 .seg.wrap { flex-wrap: wrap; }
+.groups { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.group-chip { display: inline-flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
+.group-chip:hover { border-color: var(--saphir); }
+.group-chip.on { border-color: var(--saphir); background: var(--saphir-50); box-shadow: inset 0 0 0 1px var(--saphir); }
+.group-pick { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 6px 3px 10px; border: 0; background: none; color: var(--saphir); font-size: 13px; font-weight: 600; cursor: pointer; }
+.group-pick:last-child { padding-right: 12px; }
+.group-pick .key-swatch { width: 14px; height: 14px; }
+.group-tool { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.group-tool:hover { background: var(--saphir-100); color: var(--saphir); }
+.group-tool:last-child { margin-right: 4px; }
+.group-form .input { width: 200px; min-height: 30px; padding: 3px 10px; }
+.recruit-map { -webkit-touch-callout: none; user-select: none; }
 .zone-tile:disabled { cursor: not-allowed; background: #e3e8ee; border-color: #cdd6e0; }
 .zone-tile:disabled b { color: var(--muted); }
 .place { display: flex; flex-direction: column; gap: 9px; }
@@ -991,6 +1041,10 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .place .seg button { padding: 4px 8px; font-size: 12.5px; }
 .export-sheets { margin: 0; padding-left: 20px; }
 .export-sheets li + li { margin-top: 4px; }
+
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 18px; }
+.pagination .page { min-width: 34px; justify-content: center; font-variant-numeric: tabular-nums; }
+.pagination .page[aria-current='page'] { background: var(--saphir); border-color: var(--saphir); color: #fff; cursor: default; }
 
 /* Journal des modifications */
 .journal-day { margin: 18px 0 8px; font-size: 13px; color: var(--muted); }
@@ -1075,6 +1129,16 @@ input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.75; }
 .select-pop .opt-label { flex: 1; min-width: 0; }
 .select-pop .opt-label small { display: block; color: var(--muted); font-weight: 400; font-size: 11.5px; }
 .select-pop .opt-check { color: var(--saphir); }
+
+/* Choix de plusieurs valeurs (MultiSelect) */
+.multi-values { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.multi-values.placeholder { color: #98a4b5; }
+.multi-value { padding: 1px 7px; border-radius: 6px; background: var(--saphir-50); color: var(--saphir); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; line-height: 20px; }
+.multi-all { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 9px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--saphir); font-size: 13px; font-weight: 600; cursor: pointer; }
+.multi-all:hover { background: var(--saphir-50); }
+.multi-all .muted { font-weight: 500; font-size: 12px; }
+.multi-box { flex: none; display: grid; place-items: center; width: 17px; height: 17px; border: 1.5px solid var(--input-border); border-radius: 5px; background: var(--surface); color: #fff; transition: background 0.15s, border-color 0.15s; }
+.multi-box.on { border-color: var(--saphir); background: var(--saphir); }
 
 /* Sélecteur de couleur */
 .cp-field { display: flex; align-items: center; gap: 8px; }

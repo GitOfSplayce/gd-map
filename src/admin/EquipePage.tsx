@@ -4,7 +4,7 @@ import { PerfBar } from '../components/Legend'
 import SearchInput from '../components/SearchInput'
 import { useConfirm } from '../hooks/useConfirm'
 import { saveEquipe } from '../lib/api'
-import { myStructures, teamOf } from '../lib/equipe'
+import { isMine, myStructures, teamOf } from '../lib/equipe'
 import { activeManagers } from '../lib/managers'
 import { objectifsDraft, objectifsIssue, objectifsPayload } from '../lib/objectifsDraft'
 import { formatZoneList, parseZoneList } from '../lib/parseZones'
@@ -86,7 +86,9 @@ export default function EquipePage({ data, reload }: AdminDataProps) {
                     <div className="who">
                       <span className="swatch" style={{ background: c.couleur }} />
                       <div>
-                        <div className="who-name">{c.nom}</div>
+                        <div className="who-name">
+                          {c.nom} {isMine(data, c) && <span className="badge">vous</span>}
+                        </div>
                         <div className="who-sub">{[c.statut, c.secteur, !c.actif && 'inactif'].filter(Boolean).join(' · ') || ' '}</div>
                       </div>
                     </div>

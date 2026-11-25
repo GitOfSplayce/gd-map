@@ -3,6 +3,8 @@ import ColorPicker from '../components/ColorPicker'
 import Icon from '../components/Icon'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import { MissingContact } from '../components/ContactLinks'
+import MultiSelect from '../components/MultiSelect'
+import Select from '../components/Select'
 import { useConfirm } from '../hooks/useConfirm'
 import { createManager, deleteManager, listAccess, renameManager, setManagerColor, updateManager, type KnownUser, type RoleEntry } from '../lib/api'
 import { isTooLight, managerColors, rankedFreeColors } from '../lib/colors'
@@ -18,6 +20,8 @@ interface EditForm {
   telephone: string
   email: string
   compte: string
+  /** Sa fiche de commercial, ou ''. */
+  fiche: string
   structures: string[]
 }
 
@@ -95,12 +99,14 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
       telephone: formatPhone(form.telephone) || null,
       email: normalizeEmail(form.email) || null,
       compte: normalizeEmail(form.compte) || null,
+      commercial_id: form.fiche || null,
       structures: inStructureOrder(form.structures, codes),
     }
     const patch = {
       ...(next.telephone !== (m.telephone ?? null) && { telephone: next.telephone }),
       ...(next.email !== (m.email ?? null) && { email: next.email }),
       ...(next.compte !== (m.compte ?? null) && { compte: next.compte }),
+      ...(next.commercial_id !== (m.commercial_id ?? null) && { commercial_id: next.commercial_id }),
       ...(!sameList(next.structures, m.structures ?? []) && { structures: next.structures }),
     }
     const renamed = target !== oldName
@@ -233,6 +239,7 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
                           {!nameKey(m.nom).startsWith('a recruter') && <MissingContact telephone={m.telephone} email={m.email} />}
                         </div>
                         {(m.telephone || m.email) && <div className="who-sub">{[m.telephone, m.email].filter(Boolean).join(' · ')}</div>}
+                        {m.commercial_id && <div className="who-sub">fiche de commercial : {data.commerciaux.find((c) => c.id === m.commercial_id)?.nom ?? '—'}</div>}
                       </div>
                     </div>
                   </td>
@@ -326,6 +333,7 @@ export default function ManagersPage({ data, reload }: AdminDataProps) {
           structures={codes.map((code) => ({ code, nom: structureName(data.structures, code) }))}
           accounts={access?.users ?? []}
           adminEmails={access?.roles.map((r) => r.email) ?? []}
+          commerciaux={data.commerciaux.filter((c) => c.id === editing.commercial_id || !data.managers.some((m) => m.commercial_id === c.id))}
           onClose={() => setEditing(null)}
           onSave={(form) => save(editing, form)}
         />
@@ -341,13 +349,15 @@ interface DrawerProps {
   /** Comptes déjà venus par le portail, proposés à la saisie. */
   accounts: KnownUser[]
   adminEmails: string[]
+  /** Fiches qu'on peut lui relier : celles d'aucun autre manager. */
+  commerciaux: Commercial[]
   onClose: () => void
   onSave: (form: EditForm) => Promise<string | null>
 }
 
 /** Panneau latéral d'un manager : nom, coordonnées, compte GD One et structures. */
-function ManagerDrawer({ manager: m, color, structures, accounts, adminEmails, onClose, onSave }: DrawerProps) {
-  const [form, setForm] = useState<EditForm>({ nom: m.nom, telephone: m.telephone ?? '', email: m.email ?? '', compte: m.compte ?? '', structures: m.structures ?? [] })
+function ManagerDrawer({ manager: m, color, structures, accounts, adminEmails, commerciaux, onClose, onSave }: DrawerProps) {
+  const [form, setForm] = useState<EditForm>({ nom: m.nom, telephone: m.telephone ?? '', email: m.email ?? '', compte: m.compte ?? '', fiche: m.commercial_id ?? '', structures: m.structures ?? [] })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const set = (patch: Partial<EditForm>) => {
@@ -448,23 +458,32 @@ function ManagerDrawer({ manager: m, color, structures, accounts, adminEmails, o
             </section>
 
             <section>
+              <h3>Sa fiche de commercial</h3>
+              <p className="muted small" style={{ marginTop: 0 }}>
+                Pour un manager qui a aussi ses propres départements. Reliée, sa fiche fait partie de son équipe : ses départements prennent sa couleur
+                en vue Manager, son CA compte avec celui de l'équipe, et il peut la modifier.
+              </p>
+              <Select
+                ariaLabel={`Fiche de commercial de ${m.nom}`}
+                value={form.fiche}
+                options={[...commerciaux].sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map((c) => ({ value: c.id, label: c.nom, color: c.couleur, hint: c.statut ?? undefined }))}
+                onChange={(v) => set({ fiche: v })}
+                emptyLabel="— Aucune —"
+              />
+            </section>
+
+            <section>
               <h3>Ses structures</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
                 Ses départements et ses chiffres se modifient dans ces structures seulement.
               </p>
-              <div className="row" style={{ gap: '8px 18px' }}>
-                {structures.map((s) => (
-                  <label key={s.code} className="check">
-                    <input
-                      type="checkbox"
-                      checked={form.structures.includes(s.code)}
-                      onChange={() => set({ structures: form.structures.includes(s.code) ? form.structures.filter((x) => x !== s.code) : [...form.structures, s.code] })}
-                    />
-                    <span className="struct-tag">{s.code}</span>
-                    <span>{s.nom}</span>
-                  </label>
-                ))}
-              </div>
+              <MultiSelect
+                ariaLabel={`Structures de ${m.nom}`}
+                values={form.structures}
+                options={structures.map((s) => ({ value: s.code, label: s.nom, tag: s.code }))}
+                onChange={(list) => set({ structures: list })}
+                placeholder="Aucune structure"
+              />
             </section>
           </div>
           <footer className="drawer-foot">

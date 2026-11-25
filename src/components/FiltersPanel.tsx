@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Icon from './Icon'
 import SearchInput from './SearchInput'
+import Sliding from './Sliding'
 import Switch from './Switch'
 import type { Filters, MapModel } from '../lib/mapModel'
 import { COUVERTURE_LABELS, COUVERTURES, type Commercial } from '../lib/types'
@@ -38,13 +39,13 @@ export default function FiltersPanel({ filters, onChange, model, commerciaux, on
 
       <h3>Manager</h3>
       {model.activeManagers.length > 1 && (
-        <div className="seg" style={{ marginBottom: 6 }}>
+        <Sliding className="seg" style={{ marginBottom: 6 }}>
           {model.activeManagers.map((m) => (
             <button key={m} type="button" aria-pressed={filters.managerField === m} onClick={() => set({ managerField: m, managers: [] })}>
               {model.managerLabel(m)}
             </button>
           ))}
-        </div>
+        </Sliding>
       )}
       <div className="pick-list">
         {managers.map((m) => (

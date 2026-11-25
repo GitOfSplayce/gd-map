@@ -41,7 +41,7 @@ export default function HelpPage() {
             </li>
             <li>
               <strong>Légende</strong> : un clic sur un nom met ses zones en évidence. Plusieurs noms peuvent être
-              sélectionnés. Les départements à recruter sont regroupés à part, en fin de liste, par secteur ou par priorité.
+              sélectionnés. Les départements à recruter sont regroupés à part, en fin de liste, par groupe ou par priorité.
             </li>
             <li>
               <strong>Filtres</strong> : manager, commercial, couverture, statut, et « masquer les départements à recruter ».
@@ -92,8 +92,8 @@ export default function HelpPage() {
           <h2>Départements à recruter</h2>
           <p>
             Un département <strong>vide</strong> dans une structure est <strong>à recruter</strong>. Les admins lui donnent une{' '}
-            <strong>priorité</strong> de 1 à 3, qui le hachure en couleur sur la carte, et un <strong>secteur</strong>, qui réunit les
-            départements d'un même poste. Sans priorité, il reste gris clair. Dès qu'un commercial y est placé, il n'est plus à recruter.
+            <strong>priorité</strong> de 1 à 3, qui le hachure en couleur sur la carte, et un <strong>groupe</strong>, qui réunit les
+            départements d'un même poste : il est entouré et nommé sur la carte. Sans priorité, il reste gris clair. Dès qu'un commercial y est placé, il n'est plus à recruter.
           </p>
           <ul>
             <li>L'onglet d'une structure montre ce que cette structure a à recruter.</li>
@@ -198,6 +198,10 @@ export default function HelpPage() {
             <li>
               un département, dans une structure, est à un seul manager, quel que soit le type (propre, partiel, gestion). Il peut le partager
               entre plusieurs de ses commerciaux ; celui d'un autre manager ne se prend pas. Un admin n'a pas cette limite ;
+            </li>
+            <li>
+              un manager qui a aussi sa propre fiche de commercial la modifie ; ses départements prennent la couleur de son équipe en vue
+              Manager, et son CA compte avec elle ;
             </li>
             <li>tout changement se voit aussitôt sur la carte, et le journal garde qui a modifié quoi.</li>
           </ul>

@@ -7,6 +7,7 @@ import Legend from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import ZonePanel from '../components/ZonePanel'
 import PlaceCommercial from '../components/PlaceCommercial'
+import Sliding from '../components/Sliding'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import ZoneTooltip from '../components/ZoneTooltip'
@@ -205,7 +206,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
     <div className="app-shell">
       <AppHeader
         nav={
-          <nav className="tabs" role="tablist" aria-label="Structure">
+          <Sliding as="nav" className="tabs" role="tablist" aria-label="Structure">
             {tabs.map((t) => (
               <button
                 key={t.key}
@@ -222,7 +223,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
                 <span className="tab-sub hide-mobile">{t.sub}</span>
               </button>
             ))}
-          </nav>
+          </Sliding>
         }
         actions={
           <>
@@ -259,7 +260,7 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
       <div className="toolbar">
         <div className="group">
           <span className="label">Vue</span>
-          <div className="seg">
+          <Sliding className="seg">
             {VIEWS.map((v) => (
               <button
                 key={v.key}
@@ -273,17 +274,17 @@ function MapScreen({ data, role, onLock, onReload }: ScreenProps) {
                 {v.label}
               </button>
             ))}
-          </div>
+          </Sliding>
         </div>
         <div className="group">
           <span className="label">Couleur</span>
-          <div className="seg">
+          <Sliding className="seg">
             {colorModes.map((c) => (
               <button key={c.key} type="button" aria-pressed={colorMode === c.key} onClick={() => setColorMode(c.key)}>
                 {c.label}
               </button>
             ))}
-          </div>
+          </Sliding>
         </div>
         {data.chiffres && (
           <div className="group">

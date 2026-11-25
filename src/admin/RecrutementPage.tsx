@@ -1,17 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import Icon from '../components/Icon'
 import { HatchSwatch } from '../components/Legend'
 import MapView, { type MapViewMode } from '../components/MapView'
 import SearchInput from '../components/SearchInput'
+import Sliding from '../components/Sliding'
 import Select from '../components/Select'
 import { useConfirm } from '../hooks/useConfirm'
 import { useGeo } from '../hooks/useGeo'
 import { convertirARecruter, setRecrutement } from '../lib/api'
 import { downloadExcel } from '../lib/excelSheets'
 import { exportSheets } from '../lib/exportExcel'
-import { hatchId, type MapModel, type ZoneStyle } from '../lib/mapModel'
+import { groupColor, hatchId, type MapGroup, type MapModel, type ZoneStyle } from '../lib/mapModel'
 import { defaultYear } from '../lib/performance'
-import { PRIORITES, isARecruter, occupancyOf, prioriteColor, prioriteLabel, sectorLabel, sectorOf, vacantZones } from '../lib/recrutement'
+import { PRIORITES, groupLabel, isARecruter, occupancyOf, prioriteColor, prioriteLabel, sectorOf, vacantZones } from '../lib/recrutement'
 import { structureCodes, structureName } from '../lib/structures'
 import { plural } from '../lib/text'
 import type { Commercial, MapData, Priorite, Structure } from '../lib/types'
@@ -19,15 +20,17 @@ import { PARIS_ARR_CODES, ZONE_BY_CODE, isParisArr } from '../lib/zones'
 import { formatEuros } from '../lib/zoneDetails'
 import type { AdminDataProps } from './AdminApp'
 
+/** `secteur` : le groupe du département (les départements d'un même poste). */
 type Row = { priorite: Priorite | null; secteur: string | null }
-type Brush = Priorite | 'none'
+/** null : le pinceau ne touche pas à la priorité. */
+type Brush = Priorite | 'efface' | null
 
 const TAKEN: ZoneStyle = { fill: '#c9d2de', fillOpacity: 1, stroke: '#ffffff', strokeWidth: 0.8, pattern: null, slices: null }
 const EMPTY: ZoneStyle = { ...TAKEN, fill: '#ffffff', stroke: '#b4c0cf' }
 const sameRow = (a: Row, b: Row) => a.priorite === b.priorite && (a.secteur ?? '') === (b.secteur ?? '')
 const NONE: Row = { priorite: null, secteur: null }
-/** Choix « Sans secteur » du pinceau ; rien de choisi laisse le secteur tel quel. */
-const NO_SECTOR = ' '
+/** Pinceau « sans groupe » ; rien de choisi laisse le groupe tel quel. */
+const NO_GROUP = ' '
 
 /** Les anciennes fiches « À recruter » : de faux commerciaux, à remplacer par des départements vides. */
 function LegacyCard({ data, reload }: AdminDataProps) {
@@ -43,7 +46,7 @@ function LegacyCard({ data, reload }: AdminDataProps) {
   const convert = async () => {
     const ok = await confirm({
       title: `Supprimer ${plural(fiches.length, 'fiche')} « À recruter » ?`,
-      message: `Leurs départements vides restent à recruter, avec le nom de la fiche pour secteur. ${
+      message: `Leurs départements vides restent à recruter, avec le nom de la fiche pour groupe. ${
         withFigures.length ? `Les CA et objectifs de ${plural(withFigures.length, 'fiche')} sont supprimés avec elles (le journal en garde la trace). ` : ''
       }Cette suppression est définitive.`,
       confirmLabel: 'Supprimer les fiches',
@@ -54,7 +57,7 @@ function LegacyCard({ data, reload }: AdminDataProps) {
     try {
       const res = await convertirARecruter(fiches.map((c) => c.id))
       await reload()
-      setMessage({ kind: 'success', text: `${plural(res.fiches, 'fiche supprimée', 'fiches supprimées')} ; ${plural(res.zones, 'département')} à recruter dans leur secteur.` })
+      setMessage({ kind: 'success', text: `${plural(res.fiches, 'fiche supprimée', 'fiches supprimées')} ; ${plural(res.zones, 'département')} à recruter dans leur groupe.` })
     } catch (e) {
       setMessage({ kind: 'error', text: (e as Error).message })
     } finally {
@@ -75,7 +78,7 @@ function LegacyCard({ data, reload }: AdminDataProps) {
           <thead>
             <tr>
               <th>Fiche</th>
-              <th>Deviendra le secteur</th>
+              <th>Deviendra le groupe</th>
               <th>Départements</th>
               <th>CA et objectifs, supprimés avec elle</th>
             </tr>
@@ -108,18 +111,45 @@ function LegacyCard({ data, reload }: AdminDataProps) {
         </button>
         <button type="button" className="btn danger" disabled={busy} onClick={() => void convert()}>
           <Icon name="trash" size={16} />
-          Supprimer les fiches, garder les secteurs
+          Supprimer les fiches, garder les groupes
         </button>
       </div>
     </div>
   )
 }
 
-/** Priorité et secteur des départements vides, structure par structure. */
+interface NameFormProps {
+  value: string
+  label: string
+  onChange: (value: string) => void
+  onSubmit: (e: FormEvent) => void
+  onCancel: () => void
+}
+
+/** Nom d'un groupe, à la création ou au renommage. */
+function NameForm({ value, label, onChange, onSubmit, onCancel }: NameFormProps) {
+  return (
+    <form className="row group-form" onSubmit={onSubmit}>
+      <input className="input" autoFocus placeholder="Nom du groupe" aria-label="Nom du groupe" value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && onCancel()} />
+      <button type="submit" className="btn small primary" disabled={!value.trim()}>
+        {label}
+      </button>
+      <button type="button" className="btn small ghost" onClick={onCancel}>
+        Annuler
+      </button>
+    </form>
+  )
+}
+
+/** Priorité et groupe des départements vides, structure par structure. */
 function Editor({ data, reload, structure }: { data: MapData; reload: () => Promise<void>; structure: Structure }) {
   const [drafts, setDrafts] = useState<Record<string, Row>>({})
   const [brush, setBrush] = useState<Brush>(1)
-  const [secteur, setSecteur] = useState('')
+  const [groupe, setGroupe] = useState('')
+  /** Groupes créés, pas encore posés sur un département. */
+  const [created, setCreated] = useState<string[]>([])
+  const [naming, setNaming] = useState<{ from: string | null; value: string } | null>(null)
+  const confirm = useConfirm()
   const [mode, setMode] = useState<'carte' | 'liste'>('carte')
   const [view, setView] = useState<MapViewMode>('france')
   const [hover, setHover] = useState<{ code: string; x: number; y: number } | null>(null)
@@ -143,16 +173,69 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
   const open = new Set(zones)
   const rowOf = (code: string): Row => drafts[code] ?? saved[code] ?? (isParisArr(code) && free.has('75') ? saved['75'] : undefined) ?? NONE
   const dirty = Object.keys(drafts).filter((code) => !sameRow(drafts[code], saved[code] ?? (isParisArr(code) ? (saved['75'] ?? NONE) : NONE)))
-  const secteurs = [...new Set([...Object.values(saved), ...Object.values(drafts)].map((r) => r.secteur).filter((s): s is string => Boolean(s)))].sort((a, b) => a.localeCompare(b, 'fr'))
+  // Chaque groupe et ses départements vides, brouillons compris
+  const groupZones = new Map<string, string[]>(created.map((g) => [g, []]))
+  for (const code of zones) {
+    const g = rowOf(code).secteur
+    if (g) groupZones.set(g, [...(groupZones.get(g) ?? []), code])
+  }
+  const groupNames = [...groupZones.keys()].sort((a, b) => a.localeCompare(b, 'fr'))
+  const groupTop = (g: string) => {
+    const p = (groupZones.get(g) ?? []).map((c) => rowOf(c).priorite).filter((x): x is Priorite => x !== null)
+    return p.length ? (Math.min(...p) as Priorite) : null
+  }
 
-  const paint = (code: string) => {
-    if (!open.has(code)) return
-    setMessage(null)
+  /** Ce que le pinceau fait d'un département, et ce que son retrait en laisse. */
+  const painted = (now: Row): Row => (brush === 'efface' ? NONE : { priorite: brush ?? now.priorite, secteur: groupe === '' ? now.secteur : groupe === NO_GROUP ? null : groupe })
+  const unpainted = (now: Row): Row => ({ priorite: brush === null ? now.priorite : null, secteur: groupe === '' ? now.secteur : null })
+
+  // Un trait commence sur un département déjà peint ainsi : il retire, sur tout le trait. Sinon il pose.
+  const removing = useRef(false)
+  const paint = (code: string, start: boolean) => {
+    if (!open.has(code) || (brush === null && groupe === '')) return false
     const now = rowOf(code)
-    const sector = secteur === '' ? now.secteur : secteur === NO_SECTOR ? null : secteur
-    const next: Row = brush === 'none' ? NONE : { priorite: brush, secteur: sector }
-    // Un nouveau clic avec le même pinceau retire ce qu'il pose, et rien d'autre
-    setDrafts((d) => ({ ...d, [code]: sameRow(now, next) ? { priorite: null, secteur: secteur === '' ? now.secteur : null } : next }))
+    if (start) {
+      setMessage(null)
+      removing.current = brush !== 'efface' && sameRow(now, painted(now))
+    }
+    const next = removing.current ? unpainted(now) : painted(now)
+    setDrafts((d) => ({ ...d, [code]: next }))
+    return true
+  }
+
+  const rename = (from: string, to: string) => {
+    setDrafts((d) => ({ ...d, ...Object.fromEntries((groupZones.get(from) ?? []).map((code) => [code, { ...rowOf(code), secteur: to }])) }))
+    setCreated((list) => [...new Set(list.map((g) => (g === from ? to : g)))])
+    if (groupe === from) setGroupe(to)
+  }
+  const submitName = (e: FormEvent) => {
+    e.preventDefault()
+    const name = naming?.value.trim()
+    if (!naming || !name) return
+    setMessage(null)
+    if (naming.from === null) {
+      // Le nouveau groupe devient le pinceau : il n'y a plus qu'à peindre
+      if (!groupZones.has(name)) setCreated((list) => [...list, name])
+      setGroupe(name)
+      setBrush(null)
+    } else if (name !== naming.from) rename(naming.from, name)
+    setNaming(null)
+  }
+  const removeGroup = async (g: string) => {
+    const codes = groupZones.get(g) ?? []
+    if (codes.length) {
+      const ok = await confirm({
+        title: `Supprimer le groupe « ${g} » ?`,
+        message: `${plural(codes.length, 'département reste', 'départements restent')} à recruter, sans groupe. Rien n'est enregistré avant « Enregistrer ».`,
+        confirmLabel: 'Supprimer le groupe',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    setMessage(null)
+    setDrafts((d) => ({ ...d, ...Object.fromEntries(codes.map((code) => [code, { ...rowOf(code), secteur: null }])) }))
+    setCreated((list) => list.filter((x) => x !== g))
+    if (groupe === g) setGroupe('')
   }
   const set = (code: string, patch: Partial<Row>) => {
     setMessage(null)
@@ -162,6 +245,7 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
   const model = useMemo(
     () =>
       ({
+        groups: groupNames.map((g): MapGroup => ({ key: g, label: g, color: groupColor(groupTop(g)), codes: groupZones.get(g)! })),
         styleOf: (code: string): ZoneStyle => {
           const codes = code === '75' && !open.has('75') ? PARIS_ARR_CODES.filter((c) => open.has(c)) : [code]
           if (!codes.length || !codes.some((c) => open.has(c))) return TAKEN
@@ -186,6 +270,7 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
       )
       await reload()
       setDrafts({})
+      setCreated([])
       setMessage({ kind: 'success', text: `${plural(dirty.length, 'département enregistré', 'départements enregistrés')}.` })
     } catch (e) {
       setMessage({ kind: 'error', text: (e as Error).message })
@@ -204,16 +289,16 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
   return (
     <div className="card stack recruit">
       <div className="row">
-        <div className="seg">
+        <Sliding className="seg">
           <button type="button" aria-pressed={mode === 'carte'} onClick={() => setMode('carte')}>
             <Icon name="map" size={15} /> Carte
           </button>
           <button type="button" aria-pressed={mode === 'liste'} onClick={() => setMode('liste')}>
             <Icon name="layers" size={15} /> Liste
           </button>
-        </div>
+        </Sliding>
         {mode === 'carte' ? (
-          <div className="seg">
+          <Sliding className="seg">
             {(
               [
                 ['france', 'France'],
@@ -225,16 +310,24 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                 {label}
               </button>
             ))}
-          </div>
+          </Sliding>
         ) : (
-          <SearchInput style={{ width: 240 }} value={search} onChange={setSearch} placeholder="Code, département, secteur…" />
+          <SearchInput style={{ width: 240 }} value={search} onChange={setSearch} placeholder="Code, département, groupe…" />
         )}
         <span className="muted small">
           {plural(zones.length, 'département vide', 'départements vides')} · {PRIORITES.map((p) => `${count(p.value)} en priorité ${p.value}`).join(', ')}
         </span>
         <span className="grow" />
         {dirty.length > 0 && (
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => setDrafts({})}>
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={busy}
+            onClick={() => {
+              setDrafts({})
+              setCreated([])
+            }}
+          >
             Annuler
           </button>
         )}
@@ -251,32 +344,90 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
         </div>
       )}
 
+      <div className="groups">
+        <span className="muted small">Groupes</span>
+        {groupNames.map((g) =>
+          naming?.from === g ? (
+            <NameForm key={g} value={naming.value} onChange={(value) => setNaming({ from: g, value })} onSubmit={submitName} onCancel={() => setNaming(null)} label="Renommer" />
+          ) : (
+            <span key={g} className={'group-chip' + (groupe === g ? ' on' : '')}>
+              <button
+                type="button"
+                className="group-pick"
+                aria-pressed={groupe === g}
+                title={groupe === g ? 'Ne plus peindre ce groupe' : 'Peindre ce groupe'}
+                onClick={() => {
+                  setGroupe(groupe === g ? '' : g)
+                  if (groupe !== g) setBrush(null)
+                }}
+              >
+                <HatchSwatch color={prioriteColor(groupTop(g))} />
+                {g} <span className="muted">{groupZones.get(g)!.length}</span>
+              </button>
+              <button type="button" className="group-tool" aria-label={`Renommer ${g}`} title="Renommer" onClick={() => setNaming({ from: g, value: g })}>
+                <Icon name="pencil" size={13} />
+              </button>
+              <button type="button" className="group-tool" aria-label={`Supprimer ${g}`} title="Supprimer" onClick={() => void removeGroup(g)}>
+                <Icon name="x" size={14} />
+              </button>
+            </span>
+          ),
+        )}
+        {groupNames.length > 0 && (
+          <span className={'group-chip' + (groupe === NO_GROUP ? ' on' : '')}>
+            <button
+              type="button"
+              className="group-pick"
+              aria-pressed={groupe === NO_GROUP}
+              onClick={() => {
+                setGroupe(groupe === NO_GROUP ? '' : NO_GROUP)
+                if (groupe !== NO_GROUP) setBrush(null)
+              }}
+            >
+              Sans groupe
+            </button>
+          </span>
+        )}
+        {naming && naming.from === null ? (
+          <NameForm value={naming.value} onChange={(value) => setNaming({ from: null, value })} onSubmit={submitName} onCancel={() => setNaming(null)} label="Créer" />
+        ) : (
+          <button type="button" className="btn small" onClick={() => setNaming({ from: null, value: '' })}>
+            <Icon name="plus" size={15} />
+            Nouveau groupe
+          </button>
+        )}
+      </div>
+
       {mode === 'carte' ? (
         <>
           <div className="row">
-            <span className="muted small">Cliquer pose</span>
-            <div className="seg">
+            <span className="muted small">Pinceau</span>
+            <Sliding className="seg">
               {PRIORITES.map((p) => (
-                <button key={p.value} type="button" aria-pressed={brush === p.value} onClick={() => setBrush(p.value)}>
+                <button key={p.value} type="button" aria-pressed={brush === p.value} onClick={() => setBrush(brush === p.value ? null : p.value)}>
                   <HatchSwatch color={p.color} /> {p.label}
                 </button>
               ))}
-              <button type="button" aria-pressed={brush === 'none'} onClick={() => setBrush('none')}>
+              <button
+                type="button"
+                aria-pressed={brush === 'efface'}
+                onClick={() => {
+                  setBrush(brush === 'efface' ? null : 'efface')
+                  setGroupe('')
+                }}
+              >
                 Effacer
               </button>
-            </div>
-            {brush !== 'none' && (
-              <Select
-                className="auto"
-                ariaLabel="Secteur"
-                value={secteur}
-                options={[{ value: NO_SECTOR, label: 'Sans secteur' }, ...secteurs.map((s) => ({ value: s, label: s }))]}
-                onChange={setSecteur}
-                emptyLabel="Secteur inchangé"
-                creatable
-                createLabel={(t) => `Nouveau secteur « ${t} »`}
-              />
-            )}
+            </Sliding>
+            <span className="muted small">
+              {brush === 'efface'
+                ? 'Retire la priorité et le groupe.'
+                : brush === null && groupe === ''
+                  ? 'Choisissez une priorité ou un groupe.'
+                  : `Pose : ${[brush && prioriteLabel(brush).toLowerCase(), groupe === NO_GROUP ? 'aucun groupe' : groupe && groupLabel(groupe)].filter(Boolean).join(' et ')}.`}{' '}
+              <span className="hide-mobile">Restez appuyé pour en peindre plusieurs ; clic droit ou fond de carte pour déplacer.</span>
+              <span className="show-mobile">Appui long puis glissez pour en peindre plusieurs.</span>
+            </span>
           </div>
           <div className="map-area recruit-map" onPointerLeave={() => setHover(null)}>
             {geo ? (
@@ -289,7 +440,11 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                 showLabels
                 sharedMode="rayures"
                 onHover={(code, pos) => setHover(code && pos ? { code, ...pos } : null)}
-                onSelect={(code) => (code === '75' && !open.has('75') ? setView('paris') : paint(code))}
+                onSelect={(code) => {
+                  if (code === '75' && !open.has('75')) setView('paris')
+                  else paint(code, true)
+                }}
+                onPaint={paint}
                 onBackground={() => undefined}
                 onSvg={() => undefined}
               />
@@ -302,7 +457,7 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                 <div className="t-sub">
                   {hover.code} ·{' '}
                   {open.has(hover.code)
-                    ? [prioriteLabel(rowOf(hover.code).priorite), rowOf(hover.code).secteur && sectorLabel(rowOf(hover.code).secteur!)].filter(Boolean).join(' · ')
+                    ? [prioriteLabel(rowOf(hover.code).priorite), rowOf(hover.code).secteur && groupLabel(rowOf(hover.code).secteur!)].filter(Boolean).join(' · ')
                     : hover.code === '75' && zones.some(isParisArr)
                       ? 'par arrondissement : cliquez pour ouvrir Paris'
                       : `occupé par ${[...new Set((occupancy.get(structure)?.get(hover.code) ?? (hover.code === '75' ? PARIS_ARR_CODES.flatMap((c) => occupancy.get(structure)?.get(c) ?? []) : [])).map((c) => c.nom))].join(', ')}`}
@@ -319,7 +474,7 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                 <th style={{ width: 80 }}>Code</th>
                 <th>Département</th>
                 <th>Priorité</th>
-                <th style={{ width: 280 }}>Secteur</th>
+                <th style={{ width: 280 }}>Groupe</th>
               </tr>
             </thead>
             <tbody>
@@ -335,7 +490,7 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                       <div className="muted small">{ZONE_BY_CODE.get(code)?.region}</div>
                     </td>
                     <td>
-                      <div className="seg">
+                      <Sliding className="seg">
                         {PRIORITES.map((p) => (
                           <button key={p.value} type="button" aria-pressed={row.priorite === p.value} onClick={() => set(code, { priorite: p.value })} title={p.label} aria-label={`${p.label} pour ${code}`}>
                             <HatchSwatch color={p.color} /> {p.value}
@@ -344,17 +499,17 @@ function Editor({ data, reload, structure }: { data: MapData; reload: () => Prom
                         <button type="button" aria-pressed={row.priorite === null} onClick={() => set(code, { priorite: null })}>
                           Aucune
                         </button>
-                      </div>
+                      </Sliding>
                     </td>
                     <td>
                       <Select
-                        ariaLabel={`Secteur de ${code}`}
+                        ariaLabel={`Groupe de ${code}`}
                         value={row.secteur ?? ''}
-                        options={secteurs.map((s) => ({ value: s, label: s }))}
+                        options={groupNames.map((s) => ({ value: s, label: s }))}
                         onChange={(v) => set(code, { secteur: v || null })}
-                        emptyLabel="Sans secteur"
+                        emptyLabel="Sans groupe"
                         creatable
-                        createLabel={(t) => `Nouveau secteur « ${t} »`}
+                        createLabel={(text) => `Nouveau groupe « ${text} »`}
                       />
                     </td>
                   </tr>
@@ -387,15 +542,15 @@ export default function RecrutementPage({ data, reload }: AdminDataProps) {
       </header>
       <LegacyCard data={data} reload={reload} />
       <div className="toolbar-row">
-        <div className="seg wrap">
+        <Sliding className="seg wrap">
           {codes.map((s) => (
             <button key={s} type="button" aria-pressed={structure === s} onClick={() => setStructure(s)}>
               {s}
             </button>
           ))}
-        </div>
+        </Sliding>
         <span className="muted small">
-          Un département vide est à recruter. La priorité (1 à 3) le colore sur la carte ; un secteur réunit les départements d'un même poste. Un
+          Un département vide est à recruter. La priorité (1 à 3) le colore sur la carte ; un groupe réunit les départements d'un même poste. Un
           département pourvu en sort tout seul.
         </span>
       </div>

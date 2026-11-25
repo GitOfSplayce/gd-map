@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { saveEquipe } from '../lib/api'
-import { activeManagers, manages } from '../lib/managers'
+import { activeManagers, fichesOf, manages } from '../lib/managers'
 import { atomsOf, blockedZones } from '../lib/recrutement'
 import { COUVERTURE_LABELS, COUVERTURES, type Couverture, type MapData, type Structure, type ZoneAssignment } from '../lib/types'
 import Icon from './Icon'
+import Sliding from './Sliding'
 import Select from './Select'
 
 interface Props {
@@ -24,7 +25,8 @@ export default function PlaceCommercial({ code, data, structures, onSaved }: Pro
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
-  const team = data.commerciaux.filter((c) => c.actif && manages(me.nom, c, active))
+  const fiches = fichesOf(data.managers)
+  const team = data.commerciaux.filter((c) => c.actif && manages(me.nom, c, active, fiches))
   const zonesOf = (commercial: string, s: Structure): ZoneAssignment[] =>
     data.affectations
       .filter((a) => a.commercial_id === commercial && a.structure === s)
@@ -67,28 +69,28 @@ export default function PlaceCommercial({ code, data, structures, onSaved }: Pro
     <div className="zp-section place">
       <h3>Placer un de mes commerciaux</h3>
       {choices.length > 1 && (
-        <div className="seg">
+        <Sliding className="seg">
           {choices.map((x) => (
             <button key={x} type="button" aria-pressed={x === s} onClick={() => setStructure(x)}>
               {x}
             </button>
           ))}
-        </div>
+        </Sliding>
       )}
       <Select
         ariaLabel="Commercial"
         value={chosen ? id : ''}
-        options={people.map((c) => ({ value: c.id, label: c.nom, color: c.couleur }))}
+        options={people.map((c) => ({ value: c.id, label: fiches.get(c.id) === me.nom ? `${c.nom} (vous)` : c.nom, color: c.couleur }))}
         onChange={setId}
         placeholder="Choisir un commercial"
       />
-      <div className="seg">
+      <Sliding className="seg">
         {COUVERTURES.map((c) => (
           <button key={c} type="button" aria-pressed={couverture === c} onClick={() => setCouverture(c)}>
             {COUVERTURE_LABELS[c]}
           </button>
         ))}
-      </div>
+      </Sliding>
       <div>
         <button type="button" className="btn small primary" disabled={busy || !chosen} onClick={() => void save()}>
           <Icon name={busy ? 'refresh' : 'plus'} size={15} className={busy ? 'spin' : undefined} />

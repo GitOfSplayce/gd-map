@@ -212,12 +212,13 @@ export function createApp(deps: AppDependencies) {
 
   // ---------- Journal : tout pour un admin, son équipe pour un manager ----------
 
+  /** Une page d'enregistrements, du plus récent au plus ancien ; `recherche` porte sur tout le journal. */
   app.get('/api/journal', async (c) => {
     signedIn(c)
-    const avant = c.req.query('avant')
-    if (avant !== undefined && !/^\d{1,18}$/.test(avant)) throw new HttpError(400, 'Page illisible')
-    const commercial = c.req.query('commercial') ?? null
-    return c.json(await one(c, 'select public.get_journal($1::bigint, 200, $2::uuid) as r', [avant ?? null, commercial]))
+    const page = c.req.query('page') ?? '1'
+    if (!/^[1-9]\d{0,5}$/.test(page)) throw new HttpError(400, 'Page illisible')
+    const recherche = c.req.query('recherche')?.slice(0, 100) ?? null
+    return c.json(await one(c, 'select public.get_journal($1::integer, 20, $2, $3::uuid) as r', [page, recherche, c.req.query('commercial') ?? null]))
   })
 
   app.use('/api/admin/*', async (c, next) => {
@@ -265,10 +266,10 @@ export function createApp(deps: AppDependencies) {
     return c.json({ ok: true })
   })
 
-  /** Couleur, coordonnées, compte GD One, structures : seules les clés envoyées changent. */
+  /** Couleur, coordonnées, compte GD One, fiche de commercial, structures : seules les clés envoyées changent. */
   app.patch('/api/admin/managers/:nom', async (c) => {
     const body = await jsonBody(c)
-    const fields = (['couleur', 'telephone', 'email', 'compte', 'structures'] as const).filter((key) => key in body)
+    const fields = (['couleur', 'telephone', 'email', 'compte', 'commercial_id', 'structures'] as const).filter((key) => key in body)
     if (!fields.length) throw new HttpError(400, 'Rien à modifier')
     const values = fields.map((key) => {
       if (key !== 'structures') {

@@ -1,6 +1,6 @@
 // Le journal en clair : les changements d'un même enregistrement réunis, une phrase par changement.
 import { formatEuros } from './zoneDetails'
-import { prioriteLabel, sectorLabel } from './recrutement'
+import { groupLabel, prioriteLabel } from './recrutement'
 import { COUVERTURE_LABELS, type Couverture, type JournalLine, type Priorite } from './types'
 import { ZONE_BY_CODE, isParisArr } from './zones'
 
@@ -16,7 +16,7 @@ export interface JournalEntry {
 const FIELD_LABELS: Record<string, string> = {
   nom: 'Nom', statut: 'Statut', manager1: 'Manager 1', manager2: 'Manager 2', couleur: 'Couleur', actif: 'Actif', notes: 'Notes',
   structures: 'Structures', jours_an: 'Jours par an', date_manager1: 'Date 1', date_manager2: 'Date 2', actions: 'Actions', secteur: 'Région',
-  telephone: 'Téléphone', email: 'E-mail', compte: 'Compte GD One', code: 'Code', role: 'Rôle', priorite: 'Priorité', ca: 'CA', objectif: 'Objectif',
+  telephone: 'Téléphone', email: 'E-mail', compte: 'Compte GD One', fiche: 'Fiche de commercial', code: 'Code', role: 'Rôle', priorite: 'Priorité', ca: 'CA', objectif: 'Objectif',
 }
 
 const REGLAGES: Record<string, string> = { default_shared_mode: 'Zones partagées par défaut', manager1_actif: 'Manager 1', manager2_actif: 'Manager 2' }
@@ -49,10 +49,10 @@ export function describeLine(l: JournalLine): string[] {
   }
   if (l.objet === 'recrutement') {
     const where = `${l.structure} · ${zoneName(l.zone_code)}`
-    const text = (o: Record<string, unknown>) => [prioriteLabel((o.priorite as Priorite) ?? null), o.secteur && sectorLabel(String(o.secteur))].filter(Boolean).join(', ')
+    const text = (o: Record<string, unknown>) => [prioriteLabel((o.priorite as Priorite) ?? null), o.secteur && groupLabel(String(o.secteur))].filter(Boolean).join(', ')
     if (l.action === 'ajout') return [`${where} : ${text(apres)}`]
-    if (l.action === 'retrait') return [`${where} : plus de priorité ni de secteur (était ${text(avant)})`]
-    return Object.keys(apres).map((k) => `${where}, ${k === 'secteur' ? 'secteur' : 'priorité'} : ${show(k, avant[k])} → ${show(k, apres[k])}`)
+    if (l.action === 'retrait') return [`${where} : plus de priorité ni de groupe (était ${text(avant)})`]
+    return Object.keys(apres).map((k) => `${where}, ${k === 'secteur' ? 'groupe' : 'priorité'} : ${show(k, avant[k])} → ${show(k, apres[k])}`)
   }
   if (l.objet === 'chiffres') {
     const keys = [...new Set([...Object.keys(avant), ...Object.keys(apres)])]
@@ -81,7 +81,7 @@ export function groupJournal(lines: JournalLine[]): JournalEntry[] {
   // L'identifiant croît dans l'ordre de l'enregistrement : à l'intérieur d'un groupe, on le remet dans cet ordre
   for (const l of [...lines].sort((a, b) => a.id - b.id)) {
     const sujet = SUJETS[l.objet] ?? (l.objet === 'structure' ? `Structure ${l.nom}` : l.objet === 'manager' ? `Manager ${l.nom}` : (l.nom ?? '—'))
-    const key = `${l.lot}|${l.commercial_id ?? sujet}`
+    const key = `${l.lot}|${l.le}|${l.commercial_id ?? sujet}`
     const entry = groups.get(key) ?? { key, le: l.le, auteur: l.auteur_nom || l.auteur || 'Automatique', sujet, changes: [] }
     groups.set(key, entry)
     entry.changes.push(...describeLine(l).map((text) => ({ text, kind: l.action })))

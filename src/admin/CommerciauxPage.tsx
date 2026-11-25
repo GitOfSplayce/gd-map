@@ -4,6 +4,7 @@ import { MissingContact } from '../components/ContactLinks'
 import { EmailInput, PhoneInput } from '../components/ContactInputs'
 import Icon from '../components/Icon'
 import SearchInput from '../components/SearchInput'
+import Sliding from '../components/Sliding'
 import Select from '../components/Select'
 import Switch from '../components/Switch'
 import { useConfirm } from '../hooks/useConfirm'
@@ -225,13 +226,13 @@ export default function CommerciauxPage({ data, reload }: AdminDataProps) {
           Ajouter
         </button>
         <SearchInput value={search} onChange={setSearch} placeholder="Nom, manager, zone…" ariaLabel="Rechercher un commercial" />
-        <div className="seg">
+        <Sliding className="seg">
           {['ALL', ...codes].map((s) => (
             <button key={s} type="button" aria-pressed={structureFilter === s} onClick={() => setStructureFilter(s)}>
               {s === 'ALL' ? 'Toutes' : s}
             </button>
           ))}
-        </div>
+        </Sliding>
         <Switch checked={showInactive} onChange={setShowInactive} label="Afficher les inactifs" />
         <Switch
           checked={onlyMissing}

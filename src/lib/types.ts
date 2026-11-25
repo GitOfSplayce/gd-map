@@ -61,6 +61,8 @@ export interface Manager {
   email?: string | null
   /** Structures qu'il gère (reçues des admins seulement). */
   structures?: Structure[]
+  /** Sa propre fiche de commercial, s'il en a une (D-013). */
+  commercial_id?: string | null
   /** Compte GD One qui lui ouvre « Mon équipe » (reçu des admins seulement). */
   compte?: string | null
 }

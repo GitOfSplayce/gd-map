@@ -1,6 +1,6 @@
 // Manager 1 et Manager 2 se désactivent pour toute la carte (Paramètres) : un manager désactivé n'a plus
 // de vue, de filtre ni de droits ; rien n'est effacé.
-import type { Commercial, DisplaySettings } from './types'
+import type { Commercial, DisplaySettings, Manager } from './types'
 
 export type ManagerField = 'manager1' | 'manager2'
 
@@ -16,9 +16,17 @@ export function activeManagers(settings?: Partial<DisplaySettings>): ManagerFiel
 export const managerLabel = (field: ManagerField, active: readonly ManagerField[]) =>
   active.length === 1 && active[0] === field ? 'Manager' : field === 'manager1' ? 'Manager 1' : 'Manager 2'
 
-/** Ce manager gère-t-il ce commercial ? Seuls comptent les managers actifs (même règle que gere() en base). */
-export const manages = (nom: string, c: Pick<Commercial, 'manager1' | 'manager2'>, active: readonly ManagerField[]) =>
-  active.some((f) => c[f] === nom)
+/** Fiche de commercial → le manager dont c'est la fiche (D-013). */
+export type Fiches = ReadonlyMap<string, string>
+export const fichesOf = (managers: readonly Pick<Manager, 'nom' | 'commercial_id'>[] = []): Fiches =>
+  new Map(managers.flatMap((m) => (m.commercial_id ? [[m.commercial_id, m.nom] as const] : [])))
+
+/** Ce manager gère-t-il ce commercial ? Par un manager actif, ou parce que c'est sa fiche (même règle que gere() en base). */
+export const manages = (nom: string, c: Pick<Commercial, 'id' | 'manager1' | 'manager2'>, active: readonly ManagerField[], fiches: Fiches) =>
+  active.some((f) => c[f] === nom) || fiches.get(c.id) === nom
+
+/** L'équipe où compte un commercial, sur la carte et dans les totaux : la fiche d'un manager compte dans la sienne. */
+export const teamManager = (c: Pick<Commercial, 'id' | 'manager1' | 'manager2'>, field: ManagerField, fiches: Fiches) => fiches.get(c.id) ?? c[field]
 
 /** Les managers actifs d'un commercial, sans doublon. */
 export const managersOf = (c: Pick<Commercial, 'manager1' | 'manager2'>, active: readonly ManagerField[]) =>
