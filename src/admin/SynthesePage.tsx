@@ -143,8 +143,8 @@ export default function SynthesePage({ data }: AdminDataProps) {
       </header>
 
       <div className="toolbar-row">
-        <div className="row small muted">
-          Année
+        <div className="row">
+          <span className="muted small">Année</span>
           <Select
             className="auto year-select"
             ariaLabel="Année"
@@ -161,8 +161,8 @@ export default function SynthesePage({ data }: AdminDataProps) {
             </button>
           ))}
         </Sliding>
-        <div className="row small muted">
-          Regrouper par
+        <div className="row">
+          <span className="muted small">Regrouper par</span>
           <Sliding className="seg">
             {groups.map((g) => (
               <button key={g.key} type="button" aria-pressed={groupBy === g.key} onClick={() => setGroupBy(g.key)}>

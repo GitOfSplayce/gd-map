@@ -51,6 +51,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 - **CA et objectifs** (admins et managers connectés) : saisie par structure et par année (raccourcis `120k`, `1,2M`), par un admin dans le panneau d'un commercial ou par un manager pour son équipe ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
 - **À recruter** (D-011) : un département vide d'une structure. Les admins lui donnent une priorité de 1 à 3 (hachures de couleur) et un groupe, entouré et nommé sur la carte (onglet *Recrutement* : on peint en restant appuyé) ; pourvu, il en sort tout seul.
 - **Espace manager** (D-010) : *Mon équipe* (départements, CA et objectifs de ses commerciaux dans ses structures), saisie en tableau, journal de son équipe ; sur la carte, *Placer un de mes commerciaux* dans un département libre.
+- **Noms** (D-015) : « NOM Prénom » pour les commerciaux et les managers, mis en forme à la saisie.
 - **Journal** : qui a modifié quoi, quand, avant et après ; tout pour un admin, son équipe pour un manager.
 - Vue **Couverture** (dans « Couleur ») : carte de chaleur du niveau de couverture par zone (propre = 1, partiel = ½, gestion = ¼, gestion-partiel = ⅛, additionnés sur les commerciaux), du gris (non couverte) au bleu saphir.
 - « 75 » seul couvre les 20 arrondissements ; en vue France, le département 75 réunit tout ce qui est saisi sur Paris.

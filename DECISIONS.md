@@ -253,3 +253,9 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 **Pourquoi.** Deux départements vides, sans priorité tous les deux, se dessinaient différemment selon qu'ils avaient un groupe ou non : les rayures semblaient dire une priorité.
 
 **Conséquences.** L'export PNG reprend ces signes dans sa légende : il n'explique que les motifs présents sur l'image, et peut lister les départements de chacun. Il ne porte aucun CA.
+
+## D-015 — Les noms s'écrivent « NOM Prénom » (2026-11-25)
+
+**Décision (validée par l'équipe).** Commerciaux et managers s'écrivent « NOM Prénom », le nom de famille en majuscules. Dans l'admin, un nom saisi autrement (« Dupont Marie », « Marie DUPONT ») se met en forme en quittant le champ ; corrigé ensuite à la main, il reste comme on l'a écrit. Les noms déjà enregistrés ont été corrigés depuis l'admin, pas par une migration : elle aurait porté de vrais noms dans un dépôt public, et ne pouvait pas deviner les noms écrits dans l'autre sens.
+
+**Pourquoi.** Les trois quarts des fiches étaient déjà écrites ainsi ; les autres, et les managers, se classaient dans un autre ordre.

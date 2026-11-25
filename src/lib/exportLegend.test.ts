@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { exportLegend, packColumns, wrapItems, zoneTokens, type LegendOptions } from './exportLegend'
+import { exportLegend, layoutPage, packColumns, wrapItems, zoneTokens, type LegendOptions } from './exportLegend'
 import { DEFAULT_FILTERS, buildMapModel, type ColorMode, type Filters } from './mapModel'
 import { DEFAULT_STRUCTURES } from './structures'
 import type { ARecruter, Affectation, Commercial, Couverture, MapData, Structure } from './types'
@@ -129,5 +129,50 @@ describe('mise en colonnes', () => {
   it('passe à la ligne entre deux morceaux', () => {
     expect(wrapItems(['aaaa', 'bb', 'cc', 'dddddddddddd'], 10, (s) => s.length, 1)).toEqual([['aaaa', 'bb', 'cc'], ['dddddddddddd']])
     expect(wrapItems([], 10, () => 1, 1)).toEqual([])
+  })
+})
+
+describe('mise en page', () => {
+  const sizes = { title: 36, gap: 22, pad: 24, header: 78, gutter: 30, column: 270 }
+  const map = { w: 1250, h: 690 }
+  const people = (n: number) => [Array.from({ length: 6 }, () => 24), Array.from({ length: n }, () => 43)]
+  const bottom = (p: ReturnType<typeof layoutPage>) => p.top + Math.max(...p.columns.flat().map((r) => r.y))
+
+  it('met une courte légende à côté, sans agrandir la carte', () => {
+    const page = layoutPage(map, people(5), sizes)
+    expect(page).toMatchObject({ mapScale: 1, top: 78, xs: [24 + 1250 + 30] })
+    expect(page.width).toBe(24 + 1250 + 30 + 270 + 24)
+    expect(page.height).toBe(78 + 690 + 24)
+  })
+
+  it('n\'ouvre pas une colonne pour une ligne : la carte grandit un peu', () => {
+    const page = layoutPage(map, people(11), sizes)
+    expect(page.columns).toHaveLength(1)
+    expect(page.mapScale).toBeGreaterThan(1)
+    expect(page.mapScale).toBeLessThan(1.1)
+  })
+
+  it('met une longue légende sous la carte, en colonnes', () => {
+    const page = layoutPage(map, people(72), sizes)
+    expect(page.top).toBe(78 + map.h * page.mapScale + 30)
+    expect(page.columns.length).toBeGreaterThanOrEqual(4)
+    expect(page.xs[page.xs.length - 1] + 270).toBeLessThanOrEqual(page.width - 24)
+  })
+
+  it('ne laisse pas de grand vide, et garde tout dans l\'image', () => {
+    for (const n of [1, 5, 10, 20, 27, 40, 72, 120]) {
+      const page = layoutPage(map, people(n), sizes)
+      expect(page.columns.flat().filter((r) => r.entry !== null)).toHaveLength(6 + n)
+      expect(bottom(page)).toBeLessThan(page.height)
+      const beside = page.top === 78
+      const used = map.w * map.h * page.mapScale ** 2 + page.columns.reduce((sum, c) => sum + (c[c.length - 1].y + 43) * 270, 0)
+      expect(used / (page.width * page.height), `${n} lignes, ${beside ? 'à côté' : 'dessous'}`).toBeGreaterThan(0.6)
+    }
+  })
+
+  it('reste lisible sur téléphone, et sans légende', () => {
+    const phone = layoutPage({ w: 390, h: 520 }, people(20), sizes)
+    expect(Math.max(...phone.xs) + 270).toBeLessThanOrEqual(phone.width - 24)
+    expect(layoutPage(map, [], sizes)).toMatchObject({ columns: [], width: 1298, height: 792 })
   })
 })

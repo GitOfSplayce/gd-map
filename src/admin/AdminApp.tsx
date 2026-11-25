@@ -123,13 +123,13 @@ function SessionActions({ email, portalUrl }: { email: string; portalUrl?: strin
       {portalUrl && (
         <a className="btn small ghost" href={`${portalUrl}/compte/securite`} target="_blank" rel="noopener noreferrer" title="Mon compte GD One">
           <Icon name="lock" size={16} />
-          <span className="hide-below-1600">Mon compte</span>
+          <span className="hide-below-1760">Mon compte</span>
         </a>
       )}
       <UserBadge email={email} />
       <button type="button" className="btn small ghost" onClick={() => void leave()} title="Déconnexion">
         <Icon name="logout" size={16} />
-        <span className="hide-below-1600">Déconnexion</span>
+        <span className="hide-below-1760">Déconnexion</span>
       </button>
     </>
   )
