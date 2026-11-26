@@ -3,7 +3,7 @@ import { formatPct, perfBucketOf, perfText } from '../lib/performance'
 import { plural } from '../lib/text'
 import { COUVERTURE_LABELS } from '../lib/types'
 import { coverageText, formatEuros, zonePeople, zoneTitle } from '../lib/zoneDetails'
-import { prioriteColor, vacancyText } from '../lib/recrutement'
+import { isMarked, prioriteColor, vacancyText } from '../lib/recrutement'
 
 interface Props {
   code: string
@@ -19,7 +19,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
   const people = zonePeople(code, model)
   const shown = people.slice(0, 8)
   const vacancies = model.vacanciesOf(code)
-  const known = vacancies.filter((v) => v.priorite !== null || v.secteurs.length).slice(0, 3)
+  const known = vacancies.filter(isMarked).slice(0, 3)
 
   // Placement : à droite du curseur, ou à gauche s'il n'y a pas la place
   const left = x + 360 > containerWidth ? Math.max(8, x - 350) : x + 16
@@ -65,7 +65,7 @@ export default function ZoneTooltip({ code, x, y, model, containerWidth, contain
         <div className="t-row" key={v.structure}>
           <span className="swatch" style={{ background: prioriteColor(v.priorite) }} />
           <div className="t-meta">
-            {v.structure} à recruter : {vacancyText(v)}
+            {v.structure} à recruter{v.occupied ? ' aussi' : ''} : {vacancyText(v)}
           </div>
         </div>
       ))}

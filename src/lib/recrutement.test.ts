@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_FILTERS, buildMapModel } from './mapModel'
 import { activeManagers, fichesOf, managerLabel, manages, managersOf, teamManager } from './managers'
-import { blockedZones, isARecruter, occupancyOf, sectorOf, vacancyIn, vacancyText, vacantZones } from './recrutement'
+import { blockedZones, groupsOf, isARecruter, occupancyOf, sectorOf, vacancyIn, vacancyText, vacantZones } from './recrutement'
 import { DEFAULT_STRUCTURES } from './structures'
 import type { ARecruter, Affectation, Commercial, Couverture, MapData, Structure } from './types'
 
@@ -68,16 +68,29 @@ describe('départements vides', () => {
     expect(vacancyIn('35', 'SP', occ, [])).not.toBeNull()
   })
 
-  it('prend la plus forte priorité et les secteurs ; Paris par arrondissement', () => {
-    const rows = [row('MD', '75-1', 2, 'Centre'), row('MD', '75-2', 1), row('MD', '75-7', 3), row('SP', '75-3', 1)]
+  it('prend la plus forte priorité et les groupes ; Paris par arrondissement', () => {
+    const rows = [row('MD', '75-1', 2, 'Centre'), row('MD', '75-2', 1), row('SP', '75-3', 1)]
     const paris = vacancyIn('75', 'MD', occ, rows)!
-    expect(paris).toMatchObject({ priorite: 1, secteurs: ['Centre'] })
+    expect(paris).toMatchObject({ priorite: 1, secteurs: ['Centre'], occupied: false })
     expect(paris.arrondissements).toHaveLength(19)
     expect(vacancyIn('75-7', 'MD', occ, rows)).toBeNull()
     // « 75 » entier vaut pour chaque arrondissement
     expect(vacancyIn('75-5', 'SP', occ, [row('SP', '75', 2)])).toMatchObject({ priorite: 2, arrondissements: null })
-    expect(vacancyText({ structure: 'MD', priorite: 1, secteurs: ['Centre'], arrondissements: null })).toBe('Priorité 1 · groupe Centre')
-    expect(vacancyText({ structure: 'MD', priorite: null, secteurs: [], arrondissements: null })).toBe('sans priorité')
+    expect(vacancyText({ structure: 'MD', priorite: 1, secteurs: ['Centre'], arrondissements: null, occupied: false })).toBe('Priorité 1 · groupe Centre')
+    expect(vacancyText({ structure: 'MD', priorite: null, secteurs: [], arrondissements: null, occupied: false })).toBe('sans priorité')
+  })
+
+  it('un département occupé se marque à recruter aussi (D-016) ; sans marque, il ne l\'est pas', () => {
+    expect(vacancyIn('35', 'MD', occ, [row('MD', '35', 1, 'Ouest')])).toMatchObject({ priorite: 1, secteurs: ['Ouest'], occupied: true, arrondissements: null })
+    expect(vacancyIn('35', 'MD', occ, [row('SP', '35', 1)])).toBeNull()
+    // Paris : l'arrondissement occupé et marqué compte avec les vides
+    expect(vacancyIn('75', 'MD', occ, [row('MD', '75-7', 3)])).toMatchObject({ priorite: 3, arrondissements: null, occupied: true })
+    expect(vacancyIn('75-7', 'MD', occ, [row('MD', '75', 2)])).toMatchObject({ priorite: 2, occupied: true })
+  })
+
+  it('les groupes d\'une structure et leurs départements, dans l\'ordre', () => {
+    const rows = [row('MD', '41', null, 'Centre'), row('MD', '18', 1, 'Centre'), row('MD', '22', 2, 'Bretagne'), row('SP', '36', 1, 'Centre'), row('MD', '40', 3)]
+    expect([...groupsOf(rows, 'MD')]).toEqual([['Bretagne', ['22']], ['Centre', ['18', '41']]])
   })
 
   it('liste les zones vides : Paris entier, ou ses arrondissements vides', () => {
@@ -129,11 +142,23 @@ describe('carte : départements à recruter', () => {
   const model = (tab: string, filters = DEFAULT_FILTERS, mode: 'commercial' | 'couverture' = 'commercial') => buildMapModel(data, tab, filters, mode)
   const none = new Set<string>()
 
-  it('se hachurent à la couleur de leur priorité ; sans priorité, ils restent gris, groupe ou pas', () => {
+  it('se hachurent à la couleur de leur priorité, de gris dans un groupe sans priorité ; vides sans rien, ils restent gris uni', () => {
     const m = model('MD')
     expect(m.styleOf('18', none).pattern).toMatchObject({ kind: 'hatch', color: '#c4320a' })
-    expect(m.styleOf('36', none)).toMatchObject({ pattern: null, fill: m.styleOf('22', none).fill })
+    expect(m.styleOf('36', none).pattern).toMatchObject({ kind: 'hatch', color: '#8794a6' })
     expect(m.styleOf('22', none).pattern).toBeNull()
+    expect(m.styleOf('22', none).overlay).toBeUndefined()
+  })
+
+  it('occupé mais marqué : la couleur du commercial reste, les hachures passent par-dessus (D-016)', () => {
+    const marked = map([person('A')], [aff('A', '35'), aff('A', '29')], [...rows, row('MD', '35', 2, 'Ouest')])
+    const m = buildMapModel(marked, 'MD', DEFAULT_FILTERS, 'commercial')
+    expect(m.styleOf('35', none)).toMatchObject({ fill: '#1a428a', pattern: null, overlay: { pattern: { kind: 'overlay', color: '#e08600' }, opacity: 1 } })
+    expect(m.styleOf('29', none).overlay).toBeUndefined()
+    expect(m.groups.find((g) => g.label === 'Ouest')?.codes).toEqual(['35'])
+    expect(m.vacanciesOf('35')).toEqual([{ structure: 'MD', priorite: 2, secteurs: ['Ouest'], arrondissements: null, occupied: true }])
+    // Estompé avec sa zone quand on isole autre chose
+    expect(m.styleOf('35', new Set(['r:MD|Centre'])).overlay?.opacity).toBeLessThan(0.5)
   })
 
   it('légende : un poste par secteur, puis par priorité ; un clic isole ses départements', () => {
@@ -151,9 +176,9 @@ describe('carte : départements à recruter', () => {
     expect(model('SP').groups).toEqual([])
   })
 
-  it('vue globale : occupé dès qu\'une structure y est ; le détail dit ce qui manque', () => {
+  it('vue globale : un département marqué se voit, même là où une autre structure a quelqu\'un ; le détail dit ce qui manque', () => {
     const m = model('ALL')
-    expect(m.styleOf('35', none).pattern).toBeNull()
+    expect(m.styleOf('35', none)).toMatchObject({ pattern: null, overlay: { pattern: { color: '#c4320a' } } })
     expect(m.vacanciesOf('35').find((v) => v.structure === 'SP')).toMatchObject({ priorite: 1 })
     expect(model('SP').styleOf('35', none).pattern).toMatchObject({ kind: 'hatch', color: '#c4320a' })
     expect(m.legend.find((l) => l.group)?.shortLabel).toBe('Centre (MD)')

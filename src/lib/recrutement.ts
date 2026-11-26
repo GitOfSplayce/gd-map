@@ -1,6 +1,6 @@
-// Départements à recruter (D-011) : un département vide d'une structure est à recruter. Une ligne de
-// `a_recruter` n'y ajoute qu'une priorité (1 à 3) ou un groupe (colonne `secteur`) : les départements d'un
-// même poste. Paris se compte par arrondissement.
+// Départements à recruter (D-011, D-016) : un département vide d'une structure est à recruter. Une ligne de
+// `a_recruter` y ajoute une priorité (1 à 3) ou un groupe (colonne `secteur`) : les départements d'un même
+// poste. Elle peut aussi marquer un département où quelqu'un est déjà. Paris se compte par arrondissement.
 import { fichesOf, manages, managersOf, type ManagerField } from './managers'
 import { nameKey } from './text'
 import type { ARecruter, Commercial, MapData, Priorite, Structure } from './types'
@@ -40,9 +40,17 @@ export interface Vacancy {
   structure: Structure
   priorite: Priorite | null
   secteurs: string[]
-  /** Paris : arrondissements vides, quand une partie seulement l'est. */
+  /** Paris : arrondissements à recruter, quand une partie seulement l'est. */
   arrondissements: string[] | null
+  /** Quelqu'un y est déjà : le département est marqué à recruter quand même (D-016). */
+  occupied: boolean
 }
+
+/** Marqué : une priorité ou un groupe (un département vide sans rien n'est qu'à prendre). */
+export const isMarked = (v: Pick<Vacancy, 'priorite' | 'secteurs'>) => v.priorite !== null || v.secteurs.length > 0
+
+/** Une ligne vaut pour cet arrondissement, ce département, ou tout Paris. */
+const covers = (r: ARecruter, atom: string) => r.zone_code === atom || (r.zone_code === '75' && isParisArr(atom))
 
 /** « groupe Centre » ; un nom qui dit déjà « Groupe Est » ou « Secteur Est » reste tel quel. */
 export const groupLabel = (s: string) => (/^(groupe|secteur)\b/i.test(s) ? s : `groupe ${s}`)
@@ -52,22 +60,33 @@ export const vacancyText = (v: Vacancy) =>
   [v.priorite || v.secteurs.length ? prioriteLabel(v.priorite) : null, v.secteurs.length ? v.secteurs.map(groupLabel).join(', ') : null].filter(Boolean).join(' · ') ||
   'sans priorité'
 
-/** Ce qu'une structure a à recruter dans une zone, ou null si elle y est partout. */
+/** Ce qu'une structure a à recruter dans une zone : ses parties vides, et celles marquées même occupées ; null sinon. */
 export function vacancyIn(code: string, structure: Structure, occupancy: Occupancy, rows: readonly ARecruter[]): Vacancy | null {
   const atoms = atomsOf(code)
   const taken = occupancy.get(structure)
-  const free = atoms.filter((atom) => !taken?.get(atom)?.length)
-  if (!free.length) return null
-  const mine = rows.filter(
-    (r) => r.structure === structure && (r.zone_code === code || free.includes(r.zone_code) || (r.zone_code === '75' && isParisArr(code))),
-  )
+  const busy = (atom: string) => Boolean(taken?.get(atom)?.length)
+  const mine = rows.filter((r) => r.structure === structure && atoms.some((atom) => covers(r, atom)))
+  const open = atoms.filter((atom) => !busy(atom) || mine.some((r) => covers(r, atom)))
+  if (!open.length) return null
   const priorites = mine.map((r) => r.priorite).filter((p): p is Priorite => p !== null)
   return {
     structure,
     priorite: priorites.length ? (Math.min(...priorites) as Priorite) : null,
     secteurs: [...new Set(mine.map((r) => r.secteur).filter((s): s is string => Boolean(s)))].sort((a, b) => a.localeCompare(b, 'fr')),
-    arrondissements: free.length < atoms.length ? free : null,
+    arrondissements: open.length < atoms.length ? open : null,
+    occupied: open.some(busy),
   }
+}
+
+/** Les groupes d'une structure et leurs départements, dans l'ordre (pour les attribuer à un commercial). */
+export function groupsOf(rows: readonly ARecruter[], structure: Structure): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const r of rows) if (r.structure === structure && r.secteur) out.set(r.secteur, [...(out.get(r.secteur) ?? []), r.zone_code])
+  return new Map(
+    [...out]
+      .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+      .map(([g, codes]) => [g, codes.sort(compareZoneCodes)]),
+  )
 }
 
 /** Toutes les zones vides d'une structure (Paris entier s'il l'est, sinon ses arrondissements vides), dans l'ordre. */

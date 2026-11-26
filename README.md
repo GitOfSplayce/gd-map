@@ -49,7 +49,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 - Couleur par **commercial** ou par manager (**Manager 1**, **Manager 2**, selon ceux que les admins ont activés dans *Paramètres*, D-010). Couleurs des commerciaux attribuées automatiquement, modifiables dans l'admin.
 - **Propre** = plein, **Gestion** (G) = trame de points, **Partiel** (P) = rayé comme une zone partagée, avec du **blanc** s'il est seul sur la zone, **Gestion-partiel** (GP) = traits pointillés (avec du blanc s'il est seul). Une zone partagée montre chaque part avec son motif (bande en points pour une gestion…). Zone partagée, au choix dans la légende : **Rayures** aux couleurs de chacun, **Découpage** (une bande verticale par commercial), **Camemberts** (teinte légère et petit camembert) ou **Dominante** (couleur du principal et badge « +N »). Le mode proposé par défaut se règle dans l'admin (*Paramètres → Affichage de la carte*) ; Rayures au départ.
 - **CA et objectifs** (admins et managers connectés) : saisie par structure et par année (raccourcis `120k`, `1,2M`), par un admin dans le panneau d'un commercial ou par un manager pour son équipe ; sur la carte, sélecteur d'année, CA et taux d'atteinte dans la légende, vue **Performance** (zones du rouge au vert selon le taux d'atteinte de leurs commerciaux) ; onglet **Synthèse** de l'admin (par commercial, manager ou structure, export Excel).
-- **À recruter** (D-011) : un département vide d'une structure. Les admins lui donnent une priorité de 1 à 3 (hachures de couleur) et un groupe, entouré et nommé sur la carte (onglet *Recrutement* : on peint en restant appuyé) ; pourvu, il en sort tout seul.
+- **À recruter** (D-011, D-016) : un département vide d'une structure, ou un département occupé que les admins marquent (second commercial, commercial en propre). Priorité de 1 à 3 (rayures de couleur, grises sans priorité, par-dessus la couleur d'un occupé) et groupe, entouré et nommé sur la carte (onglet *Recrutement* : on peint en restant appuyé). Il sort du recrutement quand un commercial y arrive en propre. Un groupe s'attribue d'un coup à un commercial (fiche du commercial ou onglet *Recrutement*).
 - **Espace manager** (D-010) : *Mon équipe* (départements, CA et objectifs de ses commerciaux dans ses structures), saisie en tableau, journal de son équipe ; sur la carte, *Placer un de mes commerciaux* dans un département libre.
 - **Noms** (D-015) : « NOM Prénom » pour les commerciaux et les managers, mis en forme à la saisie.
 - **Journal** : qui a modifié quoi, quand, avant et après ; tout pour un admin, son équipe pour un manager.
@@ -62,7 +62,7 @@ La CI (`.github/workflows/ci.yml`) vérifie types, lint, tests et build sur les 
 
 ### Export Excel
 
-La carte est la source des données : elle n'importe plus d'Excel (D-012). L'onglet *Export* (admins) produit un classeur mis en forme, avec filtres et volets figés : **Commerciaux**, **Départements** (une ligne par structure, département et commercial, ou « à recruter » avec priorité et groupe), **CA et objectifs**, **Managers**.
+La carte est la source des données : elle n'importe plus d'Excel (D-012). L'onglet *Export* (admins) produit un classeur mis en forme, avec filtres et volets figés : **Commerciaux**, **Départements** (une ligne par structure, département et commercial, ou « à recruter » avec priorité et groupe, y compris sur un département occupé), **CA et objectifs**, **Managers**.
 
 ### Saisie des départements
 
@@ -100,7 +100,7 @@ src/
   admin/        connexion ; admins : commerciaux, managers, structures, recrutement, synthèse, journal, export, paramètres ;
                 managers : mon équipe, CA et objectifs, journal
   lib/          parseZones (listes de zones), mapModel (couleurs, zones partagées, filtres), managers (managers actifs),
-                recrutement (départements vides), exportExcel, journal, zones (référentiel), api (appels au serveur), session
+                recrutement (départements à recruter, groupes), exportExcel, journal, zones (référentiel), api (appels au serveur), session
 server/         serveur Hono : API (app.ts), connexion par le portail (auth.ts), base (db.ts), migrations
 db/
   migrations/   socle, schéma, RLS, fonctions, zones, connexion par le portail et rôles

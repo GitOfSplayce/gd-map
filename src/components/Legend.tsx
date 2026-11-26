@@ -72,27 +72,54 @@ export function KeySwatch({ kind }: { kind: SwatchKind }) {
   )
 }
 
-/** Pastille d'un département à recruter, comme sur la carte : rayée à la couleur de sa priorité, grise sans priorité. */
+/** Pastille d'un département à recruter, comme sur la carte : rayée à la couleur de sa priorité, de gris sans priorité. */
 export function HatchSwatch({ color }: { color: string }) {
-  if (color === NO_PRIORITY_COLOR) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
-        <rect x="0.75" y="0.75" width="16.5" height="16.5" rx="4" fill="#e9ecf1" stroke="#b4c0cf" strokeWidth="1.5" />
-      </svg>
-    )
-  }
+  const id = `hs-${color.slice(1)}`
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
       <defs>
-        <clipPath id={`hs-${color.slice(1)}`}>
+        <clipPath id={id}>
           <rect width="18" height="18" rx="4.5" />
         </clipPath>
       </defs>
-      <g clipPath={`url(#hs-${color.slice(1)})`}>
+      <g clipPath={`url(#${id})`}>
         <rect width="18" height="18" fill="#ffffff" />
         <rect width="18" height="18" fill={color} fillOpacity={0.14} />
         {[-12, -6, 0, 6, 12].map((o) => (
           <path key={o} d={`M${o},0 L${o + 18},18`} stroke={color} strokeWidth={1.8} fill="none" />
+        ))}
+      </g>
+      <rect x="0.5" y="0.5" width="17" height="17" rx="4" fill="none" stroke="rgb(0 0 0 / 12%)" />
+    </svg>
+  )
+}
+
+/** Département vide, sans priorité ni groupe : gris uni, comme sur la carte. */
+export function EmptySwatch() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
+      <rect x="0.75" y="0.75" width="16.5" height="16.5" rx="4" fill="#e9ecf1" stroke="#b4c0cf" strokeWidth="1.5" />
+    </svg>
+  )
+}
+
+/** Occupé mais à recruter : la couleur d'un commercial, les hachures de la priorité par-dessus (D-016). */
+export function OverlaySwatch({ color }: { color: string }) {
+  const id = `os-${color.slice(1)}`
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" className="key-swatch" aria-hidden="true">
+      <defs>
+        <clipPath id={id}>
+          <rect width="18" height="18" rx="4.5" />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${id})`}>
+        <rect width="18" height="18" fill={BRAND.saphir} fillOpacity={COUVERTURE_OPACITY.propre} />
+        {[-12, -6, 0, 6, 12].map((o) => (
+          <Fragment key={o}>
+            <path d={`M${o},0 L${o + 18},18`} stroke="#ffffff" strokeOpacity={0.85} strokeWidth={3.2} fill="none" />
+            <path d={`M${o},0 L${o + 18},18`} stroke={color} strokeWidth={1.6} fill="none" />
+          </Fragment>
         ))}
       </g>
       <rect x="0.5" y="0.5" width="17" height="17" rx="4" fill="none" stroke="rgb(0 0 0 / 12%)" />
@@ -126,7 +153,13 @@ export function CoverageKey({ sharedMode = 'rayures', onSharedMode }: KeyProps) 
         </div>
       ))}
       <div>
-        <HatchSwatch color={NO_PRIORITY_COLOR} /> À recruter
+        <HatchSwatch color={NO_PRIORITY_COLOR} /> À recruter, sans priorité
+      </div>
+      <div>
+        <OverlaySwatch color={PRIORITES[0].color} /> Déjà occupé, à recruter aussi
+      </div>
+      <div>
+        <EmptySwatch /> Sans commercial
       </div>
       {onSharedMode && (
         <div className="shared-mode">

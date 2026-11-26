@@ -353,7 +353,7 @@ describe('départements à recruter (D-011)', () => {
   it('un admin pose priorités et secteurs, et convertit les anciennes fiches', async () => {
     expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: [{ zone_code: '18', priorite: 1, secteur: 'Centre' }] })).status).toBe(200)
     expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: 'nope' })).status).toBe(400)
-    expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: [{ zone_code: '59', priorite: 1 }] })).status).toBe(400)
+    expect((await call('admin', 'PUT', '/api/admin/recrutement/MD', { zones: [{ zone_code: '59', priorite: 5 }] })).status).toBe(400)
     const fiche = await call('admin', 'POST', '/api/admin/commerciaux', { nom: 'À recruter – Est', structures: ['MD'], affectations: [{ structure: 'MD', zone_code: '67', couverture: 'propre' }] })
     expect((await call('admin', 'POST', '/api/admin/recrutement/convertir', { ids: [fiche.body.id] })).body).toEqual({ fiches: 1, zones: 1 })
     expect((await call('admin', 'POST', '/api/admin/recrutement/convertir', { ids: 'nope' })).status).toBe(400)

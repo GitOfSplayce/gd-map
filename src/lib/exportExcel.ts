@@ -4,7 +4,7 @@ import { activeManagers, fichesOf, managerLabel, teamManager, type ManagerField 
 import { strongest } from './mapModel'
 import { formatZoneList } from './parseZones'
 import { sumPerf, type Perf } from './performance'
-import { isARecruter, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, vacantZones } from './recrutement'
+import { isARecruter, isMarked, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, vacantZones } from './recrutement'
 import { inStructureOrder, sortStructures, structureCodes } from './structures'
 import { plural } from './text'
 import { COUVERTURE_LABELS, type Commercial, type Couverture, type MapData, type Priorite, type Structure } from './types'
@@ -74,7 +74,7 @@ interface ZoneRow {
   secteurs: string
 }
 
-/** Une ligne par département et par commercial, structure par structure ; un département vide est à recruter. */
+/** Une ligne par département et par commercial, structure par structure ; un département vide est à recruter, un occupé peut l'être aussi. */
 export function zoneRows(data: MapData): ZoneRow[] {
   const occupancy = occupancyOf(data)
   const byId = new Map(data.commerciaux.map((c) => [c.id, c]))
@@ -88,7 +88,12 @@ export function zoneRows(data: MapData): ZoneRow[] {
       group.couvertures.push(a.couverture)
       groups.set(key, group)
     }
-    const filled: ZoneRow[] = [...groups.values()].map((g) => ({ structure, code: g.code, commercial: g.commercial, couverture: strongest(g.couvertures), priorite: null, secteurs: '' }))
+    // Un département occupé peut être à recruter aussi (D-016) : sa priorité et son groupe restent sur ses lignes
+    const marks = (code: string) => {
+      const v = vacancyIn(code, structure, occupancy, data.a_recruter)
+      return v && isMarked(v) ? { priorite: v.priorite, secteurs: v.secteurs.join(', ') } : { priorite: null, secteurs: '' }
+    }
+    const filled: ZoneRow[] = [...groups.values()].map((g) => ({ structure, code: g.code, commercial: g.commercial, couverture: strongest(g.couvertures), ...marks(g.code) }))
     const vacant: ZoneRow[] = vacantZones(structure, occupancy).map((code) => {
       const v = vacancyIn(code, structure, occupancy, data.a_recruter)!
       return { structure, code, commercial: null, couverture: null, priorite: v.priorite, secteurs: v.secteurs.join(', ') }
@@ -105,7 +110,13 @@ function departementsSheet(data: MapData, active: ManagerField[], today: string)
     { header: 'Code', width: 9, value: (r) => r.code, bold: true, ...CENTER },
     { header: 'Département', width: 30, value: (r) => ZONE_BY_CODE.get(r.code)?.nom ?? r.code },
     { header: 'Région', width: 28, value: (r) => ZONE_BY_CODE.get(r.code)?.region ?? '' },
-    { header: 'Situation', width: 14, value: (r) => (r.commercial && !isARecruter(r.commercial) ? 'Pourvu' : 'À recruter'), bold: true, color: (r) => (r.commercial ? '#137A48' : prioriteColor(r.priorite)) },
+    {
+      header: 'Situation',
+      width: 20,
+      value: (r) => (!r.commercial || isARecruter(r.commercial) ? 'À recruter' : r.priorite || r.secteurs ? 'Pourvu, à recruter' : 'Pourvu'),
+      bold: true,
+      color: (r) => (r.commercial && !r.priorite && !r.secteurs ? '#137A48' : prioriteColor(r.priorite)),
+    },
     { header: 'Commercial', width: 28, value: (r) => r.commercial?.nom ?? null },
     { header: 'Type', width: 16, value: (r) => (r.couverture ? COUVERTURE_LABELS[r.couverture] : null) },
     ...active.map((f): Column<ZoneRow> => ({ header: managerLabel(f, active), width: 22, value: (r) => r.commercial?.[f] ?? null })),
