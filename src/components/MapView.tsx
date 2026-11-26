@@ -420,6 +420,7 @@ export default function MapView({
     const byId = new Map<string, ZonePattern>()
     for (const st of styles.values()) {
       if (st.pattern) byId.set(st.pattern.id, st.pattern)
+      if (st.overlay) byId.set(st.overlay.pattern.id, st.overlay.pattern)
       for (const sl of st.slices ?? []) {
         if (sl.kind === 'points') byId.set(dotsId(sl.color), { id: dotsId(sl.color), kind: 'dots', color: sl.color })
         if (sl.kind === 'tirets') byId.set(dashesId(sl.color), { id: dashesId(sl.color), kind: 'dashes', color: sl.color })
@@ -617,20 +618,23 @@ export default function MapView({
   const zonePath = (code: string, d: string, key?: string, shape?: Shape) => {
     const st = effectiveStyle(code, shape)
     return (
-      <path
-        key={key ?? code}
-        data-code={code}
-        className="zone"
-        d={d}
-        fill={st.fill}
-        fillOpacity={st.fillOpacity}
-        stroke={st.stroke}
-        strokeWidth={st.strokeWidth}
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-        aria-label={ZONE_BY_CODE.get(code)?.nom ?? code}
-        {...pointer(code)}
-      />
+      <Fragment key={key ?? code}>
+        <path
+          data-code={code}
+          className="zone"
+          d={d}
+          fill={st.fill}
+          fillOpacity={st.fillOpacity}
+          stroke={st.stroke}
+          strokeWidth={st.strokeWidth}
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+          aria-label={ZONE_BY_CODE.get(code)?.nom ?? code}
+          {...pointer(code)}
+        />
+        {/* Occupé mais à recruter : les hachures par-dessus (D-016) */}
+        {st.overlay && <path d={d} fill={`url(#${st.overlay.pattern.id})`} fillOpacity={st.overlay.opacity} stroke="none" pointerEvents="none" />}
+      </Fragment>
     )
   }
 
@@ -666,6 +670,16 @@ export default function MapView({
                     <rect width={5} height={5} fill="#ffffff" />
                     <rect width={5} height={5} fill={p.color} fillOpacity={0.14} />
                     <line x1={2.5} y1={0} x2={2.5} y2={5} stroke={p.color} strokeWidth={1.4} />
+                  </pattern>
+                )
+              }
+              if (p.kind === 'overlay') {
+                // À recruter là où quelqu'un est déjà : les mêmes hachures, sans fond, bordées de blanc pour se
+                // lire sur toutes les couleurs
+                return (
+                  <pattern key={p.id} id={p.id} patternUnits="userSpaceOnUse" width={6} height={6} patternTransform="rotate(-45)">
+                    <line x1={3} y1={0} x2={3} y2={6} stroke="#ffffff" strokeOpacity={0.85} strokeWidth={2.6} />
+                    <line x1={3} y1={0} x2={3} y2={6} stroke={p.color} strokeWidth={1.3} />
                   </pattern>
                 )
               }

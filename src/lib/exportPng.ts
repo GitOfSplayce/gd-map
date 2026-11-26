@@ -379,7 +379,11 @@ function drawSwatch(ctx: CanvasRenderingContext2D, swatch: Swatch, x: number, y:
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
     }
-  } else if (swatch.color) {
+  } else if (swatch.kind === 'occupe') {
+    fill(c, COUVERTURE_OPACITY.propre)
+    for (const o of [-12, -6, 0, 6, 12]) line(o, 0, o + 18, 18, 'rgba(255,255,255,0.85)', 3.2)
+    for (const o of [-12, -6, 0, 6, 12]) line(o, 0, o + 18, 18, swatch.color, 1.6)
+  } else if (swatch.kind === 'recruter' && swatch.color) {
     fill(swatch.color, 0.14)
     for (const o of [-12, -6, 0, 6, 12]) line(o, 0, o + 18, 18, swatch.color, 1.8)
   } else fill('#e9ecf1')
@@ -388,7 +392,7 @@ function drawSwatch(ctx: CanvasRenderingContext2D, swatch: Swatch, x: number, y:
   const outline = swatch.kind === 'recruter' ? swatch.outline : null
   const width = outline ? 2.6 : 1
   roundedRect(ctx, width / 2, width / 2, 18 - width, 18 - width, 4.5 - width / 2)
-  ctx.strokeStyle = outline ?? (swatch.kind === 'recruter' && !swatch.color ? '#b4c0cf' : 'rgba(0,0,0,0.12)')
+  ctx.strokeStyle = outline ?? (swatch.kind === 'vide' || (swatch.kind === 'recruter' && !swatch.color) ? '#b4c0cf' : 'rgba(0,0,0,0.12)')
   ctx.lineWidth = width
   ctx.stroke()
   ctx.restore()

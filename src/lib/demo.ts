@@ -54,9 +54,14 @@ export async function demoMapData(): Promise<MapData> {
   return data
 }
 
-/** Un département pourvu n'est plus à recruter (comme le déclencheur en base, sans le détail de Paris). */
-function fill(s: MapData, zones: ZoneAssignment[]) {
-  s.a_recruter = s.a_recruter.filter((r) => !zones.some((z) => z.structure === r.structure && z.zone_code === r.zone_code))
+/**
+ * Un département où un commercial arrive en propre, ou y passe, n'est plus à recruter (comme le déclencheur
+ * en base, D-016, sans le détail de Paris). En gestion ou en partiel, il le reste.
+ */
+function fill(s: MapData, zones: ZoneAssignment[], before: readonly ZoneAssignment[]) {
+  const wasPropre = (z: ZoneAssignment) => before.some((b) => b.structure === z.structure && b.zone_code === z.zone_code && b.couverture === 'propre')
+  const arrived = zones.filter((z) => z.couverture === 'propre' && !wasPropre(z))
+  s.a_recruter = s.a_recruter.filter((r) => !arrived.some((z) => z.structure === r.structure && z.zone_code === r.zone_code))
 }
 
 function writeFigures(s: MapData, id: string, objectifs: Omit<Objectif, 'commercial_id'>[]) {
@@ -77,8 +82,9 @@ export async function demoSave(p: CommercialPayload): Promise<string> {
   if (existing) Object.assign(existing, fields)
   else s.commerciaux.push({ actif: true, statut: null, manager1: null, manager2: null, couleur: '#4363d8', structures: [], secteur: null, ordre: s.commerciaux.length + 1, ...fields, id, nom: p.nom ?? '' } as Commercial)
   if (affectations) {
+    const before = s.affectations.filter((a) => a.commercial_id === id)
     s.affectations = [...s.affectations.filter((a) => a.commercial_id !== id), ...affectations.map((a, i) => ({ ...a, id: `${id}-${i}`, commercial_id: id }))]
-    fill(s, affectations)
+    if (existing?.actif ?? true) fill(s, affectations, before)
   }
   if (objectifs) writeFigures(s, id, objectifs)
   s.updated_at = new Date().toISOString()

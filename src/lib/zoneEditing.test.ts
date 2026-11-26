@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coverageIn, isPainted, paintZone, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from './zoneEditing'
+import { addZonesToText, coverageIn, isPainted, paintZone, selectionFromText, selectionToText, toggleGroup, toggleZone, type ZoneSelection } from './zoneEditing'
 import { PARIS_ARR_CODES } from './zones'
 
 const text = (t: string, ...steps: [string, 'propre' | 'partiel' | 'gestion'][]) =>
@@ -67,5 +67,20 @@ describe('trait de pinceau', () => {
     expect(stroke('75', 'propre', '75')).toBe('')
     expect(selectionFromText(stroke('75', 'propre', '75-7')).has('75-7')).toBe(false)
     expect(stroke('75-1', 'propre', '75')).toBe('75')
+  })
+})
+
+describe('ajout d\'un groupe à recruter', () => {
+  it('ajoute ses départements en propre ; ceux déjà là gardent leur couverture', () => {
+    expect(addZonesToText('', ['18', '36', '41'])).toBe('18, 36, 41')
+    expect(addZonesToText('22, 36P', ['18', '36', '41'])).toBe('18, 22, 36P, 41')
+  })
+
+  it('Paris : un arrondissement déjà dans « 75 » ne change rien ; « 75 » complète les arrondissements', () => {
+    expect(addZonesToText('75G', ['75-7'])).toBe('75G')
+    const t = addZonesToText('75-7P', ['75'])
+    expect(t).toContain('75-7P')
+    expect(t.split(', ')).toHaveLength(20)
+    expect(addZonesToText('75-7', ['75'])).toBe('75')
   })
 })

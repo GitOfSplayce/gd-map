@@ -41,13 +41,23 @@ describe('légende de l\'export', () => {
   it('a un titre pour chaque partie, et explique les motifs présents seulement', () => {
     const sections = legend(full, 'commercial')
     expect(sections.map((s) => s.title)).toEqual(['Lecture de la carte', 'Commerciaux', 'À recruter'])
-    expect(sections[0].entries.map((e) => e.label)).toEqual(['Propre', 'Partiel', 'Gestion', 'Zone partagée', 'À recruter, priorité 1', 'À recruter, priorité 3', 'À recruter, sans priorité', 'Groupe à recruter'])
+    expect(sections[0].entries.map((e) => e.label)).toEqual(['Propre', 'Partiel', 'Gestion', 'Zone partagée', 'À recruter, priorité 1', 'À recruter, priorité 3', 'À recruter, sans priorité', 'Sans commercial', 'Groupe à recruter'])
     expect(sections[1].entries.map((e) => [e.label, e.count, e.zones])).toEqual([['Commercial A', '2 zones', undefined], ['Commercial B', '1 zone', undefined], ['Commercial C', '1 zone', undefined]])
     expect(sections[2].entries.map((e) => [e.label, e.swatch])).toEqual([
       ['Centre', { kind: 'recruter', color: '#c4320a', outline: '#c4320a' }],
-      ['Ouest', { kind: 'recruter', color: null, outline: '#4b5869' }],
+      ['Ouest', { kind: 'recruter', color: '#8794a6', outline: '#4b5869' }],
       ['Priorité 3', { kind: 'recruter', color: '#2f8fb3', outline: null }],
     ])
+  })
+
+  it('explique les hachures par-dessus un département occupé (D-016)', () => {
+    const [key, , recruit] = legend(data([aff('A', '22'), aff('B', '29', 'gestion')], [row('22', 2), row('29', null, 'Ouest')]), 'commercial', { withZones: true })
+    expect(key.entries.filter((e) => e.label.startsWith('À recruter') || e.label.startsWith('Déjà')).map((e) => [e.label, e.swatch])).toEqual([
+      ['À recruter, priorité 2', { kind: 'recruter', color: '#e08600', outline: null }],
+      ['À recruter, sans priorité', { kind: 'recruter', color: '#8794a6', outline: null }],
+      ['Déjà occupé, à recruter aussi', { kind: 'occupe', color: '#e08600' }],
+    ])
+    expect(recruit.entries.map((e) => [e.label, text(e.zones)])).toEqual([['Ouest', '29'], ['Priorité 2', '22']])
   })
 
   it('liste les départements sur demande, avec les lettres dans la lecture', () => {
@@ -80,7 +90,7 @@ describe('légende de l\'export', () => {
   })
 
   it('suit la mise en évidence, et ne dit pas « à recruter » quand un filtre cache des personnes', () => {
-    expect(legend(full, 'commercial', { highlighted: new Set(['A']) }).map((s) => [s.title, s.entries.length])).toEqual([['Lecture de la carte', 8], ['Commerciaux', 1]])
+    expect(legend(full, 'commercial', { highlighted: new Set(['A']) }).map((s) => [s.title, s.entries.length])).toEqual([['Lecture de la carte', 9], ['Commerciaux', 1]])
     const filtered = legend(full, 'commercial', {}, { ...DEFAULT_FILTERS, commerciaux: ['C'] })
     expect(filtered.map((s) => [s.title, s.entries.map((e) => e.label)])).toEqual([['Lecture de la carte', ['Propre']], ['Commerciaux', ['Commercial C']]])
   })

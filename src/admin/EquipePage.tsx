@@ -14,6 +14,7 @@ import { inStructureOrder, structureCodes, structureName } from '../lib/structur
 import { plural } from '../lib/text'
 import type { Commercial, MapData, Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
+import GroupPicker from './GroupPicker'
 import ObjectifsEditor from './ObjectifsEditor'
 import ZoneAssistant from './ZoneAssistant'
 import ZoneInput from './ZoneInput'
@@ -171,6 +172,7 @@ function TeamDrawer({ commercial: c, data, onClose, onSaved }: DrawerProps) {
   const [assistantFor, setAssistantFor] = useState<Structure | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const blocked = useMemo(() => {
     const active = activeManagers(data.settings)
     return new Map(mine.map((s) => [s, blockedZones(data, c, s, data.manager!.nom, active)]))
@@ -250,7 +252,8 @@ function TeamDrawer({ commercial: c, data, onClose, onSaved }: DrawerProps) {
               <h3>Départements</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
                 Saisie rapide (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
-                l'assistant. Un département occupé par le commercial d'un autre manager ne se prend pas.
+                l'assistant, ou d'un coup avec « Ajouter un groupe » (les départements d'un groupe à recruter, en propre). Un département
+                occupé par le commercial d'un autre manager ne se prend pas.
               </p>
               <div className="stack" style={{ gap: 12 }}>
                 {mine.map((s) => (
@@ -260,10 +263,27 @@ function TeamDrawer({ commercial: c, data, onClose, onSaved }: DrawerProps) {
                         <span className="struct-tag">{s}</span>
                         {structureName(data.structures, s)}
                       </span>
-                      <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
-                        <Icon name="map" size={15} />
-                        Assistant
-                      </button>
+                      <span className="row" style={{ gap: 6 }}>
+                        <GroupPicker
+                          rows={data.a_recruter}
+                          structure={s}
+                          value={zones[s]}
+                          blocked={blocked.get(s)}
+                          onAdd={(text, skipped) => {
+                            setZones({ ...zones, [s]: text })
+                            setError(null)
+                            setNotice(
+                              skipped.length
+                                ? `${skipped.map(([code, who]) => `${code} (${who})`).join(', ')} : ${skipped.length > 1 ? 'occupés' : 'occupé'} par le commercial d'un autre manager, ${skipped.length > 1 ? 'pas ajoutés' : 'pas ajouté'}.`
+                                : null,
+                            )
+                          }}
+                        />
+                        <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
+                          <Icon name="map" size={15} />
+                          Assistant
+                        </button>
+                      </span>
                     </div>
                     <ZoneInput
                       value={zones[s]}
@@ -294,6 +314,12 @@ function TeamDrawer({ commercial: c, data, onClose, onSaved }: DrawerProps) {
           </div>
 
           <footer className="drawer-foot">
+            {notice && (
+              <div className="alert warning" role="status">
+                <Icon name="alert" size={16} />
+                {notice}
+              </div>
+            )}
             {error && (
               <div className="alert error" role="alert">
                 <Icon name="alert" size={16} />

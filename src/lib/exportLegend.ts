@@ -13,8 +13,12 @@ export type Swatch =
   | { kind: 'couleur'; color: string }
   | { kind: 'couverture'; couverture: Couverture }
   | { kind: 'partage'; mode: SharedMode }
-  /** À recruter : rayé à la couleur de sa priorité (`color` null : gris), entouré s'il a un groupe. */
+  /** À recruter : rayé à la couleur de sa priorité, de gris sans priorité ; `color` null : fond seul (le contour d'un groupe). */
   | { kind: 'recruter'; color: string | null; outline: string | null }
+  /** Déjà occupé, à recruter aussi : la couleur d'un commercial, les hachures par-dessus (D-016). */
+  | { kind: 'occupe'; color: string }
+  /** Personne, rien de décidé : gris uni. */
+  | { kind: 'vide' }
 
 /** Morceau de texte ; `strong` : la lettre d'une couverture. */
 export interface Segment {
@@ -92,12 +96,14 @@ function keyEntries(model: MapModel, { shown, sharedMode, withZones }: LegendOpt
   const coverages = new Set<Couverture>()
   let shared = false
   const hatches = new Set<string>()
+  const overlays = new Set<string>()
   let grey = false
   const none = new Set<string>()
   for (const code of shown) {
     const list = model.entries.get(code) ?? []
+    const { pattern, overlay } = model.styleOf(code, none)
+    if (overlay) overlays.add(overlay.pattern.color)
     if (!list.length) {
-      const { pattern } = model.styleOf(code, none)
       if (pattern?.kind === 'hatch') hatches.add(pattern.color)
       else grey = true
       continue
@@ -118,10 +124,17 @@ function keyEntries(model: MapModel, { shown, sharedMode, withZones }: LegendOpt
     out.push({ label: 'Zone partagée', detail: byManager ? detail.replace('commercial', 'manager') : detail, swatch: { kind: 'partage', mode: sharedMode } })
   }
   if (!model.showsRecruit) return out
+  // Une priorité se lit pareil sur un département vide et par-dessus un occupé
+  const marked = new Set([...hatches, ...overlays])
   for (const p of PRIORITES) {
-    if (hatches.has(p.color)) out.push({ label: `À recruter, ${p.label.toLowerCase()}`, swatch: { kind: 'recruter', color: p.color, outline: null } })
+    if (marked.has(p.color)) out.push({ label: `À recruter, ${p.label.toLowerCase()}`, swatch: { kind: 'recruter', color: p.color, outline: null } })
   }
-  if (grey) out.push({ label: 'À recruter, sans priorité', swatch: { kind: 'recruter', color: null, outline: null } })
+  if (marked.has(NO_PRIORITY_COLOR)) out.push({ label: 'À recruter, sans priorité', swatch: { kind: 'recruter', color: NO_PRIORITY_COLOR, outline: null } })
+  if (overlays.size) {
+    const first = [...PRIORITES.map((p) => p.color), NO_PRIORITY_COLOR].find((c) => overlays.has(c))!
+    out.push({ label: 'Déjà occupé, à recruter aussi', detail: 'hachures par-dessus sa couleur', swatch: { kind: 'occupe', color: first } })
+  }
+  if (grey) out.push({ label: 'Sans commercial', swatch: { kind: 'vide' } })
   if (model.groups.some((g) => g.codes.some((code) => isShown(code, shown)))) {
     out.push({ label: 'Groupe à recruter', detail: 'départements entourés ensemble', swatch: { kind: 'recruter', color: null, outline: '#4b5869' } })
   }
@@ -161,11 +174,10 @@ export function exportLegend(model: MapModel, options: LegendOptions): LegendSec
   const toEntry = (item: LegendItem): LegendEntry => {
     const group = groups.get(item.key)
     const recruit = item.key.startsWith('r:')
-    const color = item.color === NO_PRIORITY_COLOR ? null : item.color
     return {
       label: item.shortLabel ?? item.label,
-      swatch: recruit ? { kind: 'recruter', color, outline: group?.color ?? null } : { kind: 'couleur', color: item.color },
-      ...(group && color && { detail: item.detail }),
+      swatch: recruit ? { kind: 'recruter', color: item.color, outline: group?.color ?? null } : { kind: 'couleur', color: item.color },
+      ...(group && item.color !== NO_PRIORITY_COLOR && { detail: item.detail }),
       count: plural(item.zoneCount, 'zone'),
       ...(withZones && { zones: zoneTokens(item.zones) }),
     }

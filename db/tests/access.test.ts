@@ -644,11 +644,10 @@ describe('règles d\'accès', () => {
       await expect(set('MD', 'nope')).rejects.toThrow(/illisible/)
     })
 
-    it('refuse un département occupé, Paris compris ; une autre structure est libre', async () => {
-      await expect(set('MD', [{ zone_code: '44', priorite: 1 }])).rejects.toThrow(/44 \(MD\) n'est pas vide/)
-      await expect(set('MD', [{ zone_code: '75', priorite: 1 }])).rejects.toThrow(/n'est pas vide/)
+    it('marque aussi un département occupé (D-016) ; une autre structure est libre', async () => {
+      await set('MD', [{ zone_code: '44', priorite: 1 }])
       await set('SP', [{ zone_code: '44', priorite: 1 }, { zone_code: '75', priorite: 2 }])
-      expect(await aRecruter()).toEqual(['MD 18 2 Centre', 'MD 36 - Centre', 'SP 44 1 -', 'SP 75 2 -'])
+      expect(await aRecruter()).toEqual(['MD 18 2 Centre', 'MD 36 - Centre', 'MD 44 1 -', 'SP 44 1 -', 'SP 75 2 -'])
     })
 
     it('part avec la carte, code compris', async () => {
@@ -662,6 +661,8 @@ describe('règles d\'accès', () => {
       ])
       const list = await aRecruter()
       expect(list).not.toContain('MD 18 2 Centre')
+      // Déjà là en partiel, il passe en propre : le 44 est pourvu
+      expect(list).not.toContain('MD 44 1 -')
       expect(list.filter((z) => z.startsWith('SP 75')).length).toBe(19)
       expect(list).not.toContain('SP 75-7 2 -')
       // Et Paris entier redevient une seule ligne, ou s'efface d'un coup
@@ -682,6 +683,22 @@ describe('règles d\'accès', () => {
       await rpc('admin', 'save_commercial', '$1::jsonb', [JSON.stringify({ id: dormant, actif: true })])
       expect(await aRecruter()).not.toContain('MD 36 - Centre')
       await as('admin', 'delete from public.commerciaux where id = $1', [dormant])
+    })
+
+    it('en gestion ou en partiel, un département reste à recruter ; il en sort en propre (D-016)', async () => {
+      await set('MD', [{ zone_code: '52', priorite: 1, secteur: 'Est' }, { zone_code: '54', priorite: 2 }])
+      const renfort = (await rpc('admin', 'save_commercial', '$1::jsonb', [
+        JSON.stringify({ nom: 'Renfort', structures: ['MD'], affectations: [{ structure: 'MD', zone_code: '52', couverture: 'gestion' }, { structure: 'MD', zone_code: '54', couverture: 'partiel' }] }),
+      ])) as unknown as string
+      expect(await aRecruter()).toEqual(expect.arrayContaining(['MD 52 1 Est', 'MD 54 2 -']))
+      await rpc('admin', 'save_commercial', '$1::jsonb', [
+        JSON.stringify({ id: renfort, affectations: [{ structure: 'MD', zone_code: '52', couverture: 'propre' }, { structure: 'MD', zone_code: '54', couverture: 'partiel' }] }),
+      ])
+      const list = await aRecruter()
+      expect(list).not.toContain('MD 52 1 Est')
+      expect(list).toContain('MD 54 2 -')
+      await as('admin', 'delete from public.commerciaux where id = $1', [renfort])
+      await set('MD', [{ zone_code: '54', priorite: null }])
     })
 
     it('les fiches « À recruter » deviennent des secteurs ; leurs départements encore occupés n\'en sont pas', async () => {

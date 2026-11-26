@@ -1,7 +1,7 @@
 // Calcul de ce que la carte affiche : affectations filtrées par zone, couleurs, zones partagées, couverture et légende.
 import { managerColors } from './colors'
 import { activeManagers, fichesOf, managerLabel, teamManager, type ManagerField } from './managers'
-import { isARecruter, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, type Vacancy } from './recrutement'
+import { isARecruter, isMarked, occupancyOf, prioriteColor, prioriteLabel, vacancyIn, type Vacancy } from './recrutement'
 import { PERF_BUCKETS, defaultYear, perfBucketOf, sumPerf, type Perf } from './performance'
 import { inStructureOrder, structureCodes, type StructureDef } from './structures'
 import type { Affectation, Commercial, Couverture, Manager, MapData, Objectif, Priorite, Structure } from './types'
@@ -119,10 +119,15 @@ export type ZonePattern =
   | { id: string; kind: 'stripes'; stripes: Stripe[] }
   | { id: string; kind: 'dots'; color: string }
   | { id: string; kind: 'dashes'; color: string }
-  /** Département à recruter avec une priorité : hachures à sa couleur, dans l'autre sens que les zones partagées. */
+  /** Département à recruter : hachures à la couleur de sa priorité (grises sans), dans l'autre sens que les zones partagées. */
   | { id: string; kind: 'hatch'; color: string }
+  /** À recruter là où quelqu'un est déjà : les mêmes hachures, sans fond, par-dessus sa couleur (D-016). */
+  | { id: string; kind: 'overlay'; color: string }
 
 export const hatchId = (color: string) => 'hatch-' + color.slice(1)
+export const overlayId = (color: string) => 'over-' + color.slice(1)
+/** Hachures « à recruter » posées sur une zone occupée ; `opacity` suit l'estompage de la zone. */
+export const recruitOverlay = (color: string, opacity = 1): ZoneOverlay => ({ pattern: { id: overlayId(color), kind: 'overlay', color }, opacity })
 export const dotsId = (color: string) => 'dots-' + color.slice(1)
 export const dashesId = (color: string) => 'dashes-' + color.slice(1)
 export const stripesId = (slices: Stripe[]) => 'stripes-' + slices.map((s) => s.kind[0] + s.color.slice(1) + Math.round(s.opacity * 100)).join('-')
@@ -135,6 +140,13 @@ export interface ZoneStyle {
   pattern: ZonePattern | null
   /** Zone partagée : une part par commercial (ou manager), pour l'affichage en camemberts. */
   slices: Stripe[] | null
+  /** Hachures « à recruter » par-dessus le remplissage : la zone est occupée, mais marquée (D-016). */
+  overlay?: ZoneOverlay | null
+}
+
+export interface ZoneOverlay {
+  pattern: Extract<ZonePattern, { kind: 'overlay' }>
+  opacity: number
 }
 
 /** Teinte selon la couverture : le partiel garde sa couleur pleine, ce sont ses rayures qui le distinguent. */
@@ -316,8 +328,9 @@ export function buildMapModel(
     return result
   }
 
-  // À recruter : vide pour toutes les structures de l'onglet (une seule suffit à occuper la vue globale).
-  // Un filtre sur des personnes ne montre qu'elles : le reste n'est pas « à recruter » pour autant.
+  // À recruter : un département marqué (priorité ou groupe) par une structure de l'onglet, vide ou non (D-016).
+  // Un département vide sans marque reste gris. Un filtre sur des personnes ne montre qu'elles : le reste
+  // n'est pas « à recruter » pour autant.
   const occupancy = occupancyOf(data)
   const rows = data.a_recruter ?? []
   const vacancyCache = new Map<string, Vacancy[]>()
@@ -338,9 +351,8 @@ export function buildMapModel(
     !filters.statuts.length
   const recruitOf = (code: string): { priorite: Priorite | null; keys: string[] } | null => {
     if (!showRecruit) return null
-    const list = vacanciesOf(code)
-    if (list.length < structs.length || list.some((v) => v.arrondissements)) return null
-    const known = list.filter((v) => v.priorite !== null || v.secteurs.length)
+    // Paris marqué par arrondissement seulement : il se lit sur la carte de Paris, pas sur son bloc
+    const known = vacanciesOf(code).filter((v) => isMarked(v) && !v.arrondissements)
     if (!known.length) return null
     const priorites = known.map((v) => v.priorite).filter((p): p is Priorite => p !== null)
     return {
@@ -456,7 +468,7 @@ export function buildMapModel(
   const styleCache = new Map<string, ZoneStyle>()
   const styleOf = (code: string, highlighted: Set<string>): ZoneStyle => {
     const list = entries.get(code) ?? []
-    const recruit = list.length ? null : recruitOf(code)
+    const recruit = recruitOf(code)
     const cacheKey = code + '|' + [...highlighted].join(',')
     const cached = styleCache.get(cacheKey)
     if (cached) return cached
@@ -467,8 +479,8 @@ export function buildMapModel(
       style = { fill: color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
     } else if (colorMode === 'couverture') {
       style = { fill: coverageOf(code).bucket.color, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: null, slices: null }
-    } else if (recruit?.priorite) {
-      // Rayé : une priorité. Sans priorité, le département reste gris ; son groupe, s'il en a un, l'entoure.
+    } else if (recruit && !list.length) {
+      // Rayé : à recruter, à la couleur de sa priorité, gris sans priorité (D-016). Son groupe l'entoure.
       const color = prioriteColor(recruit.priorite)
       const id = hatchId(color)
       style = { fill: `url(#${id})`, fillOpacity: 1, stroke: BORDER, strokeWidth: 0.8, pattern: { id, kind: 'hatch', color }, slices: null }
@@ -502,6 +514,8 @@ export function buildMapModel(
           slices,
         }
       }
+      // Occupé, mais marqué à recruter : les hachures passent par-dessus sa couleur
+      if (recruit) style = { ...style, overlay: recruitOverlay(prioriteColor(recruit.priorite)) }
     }
 
     if (highlighted.size) {
@@ -513,7 +527,7 @@ export function buildMapModel(
             Boolean(recruit?.keys.some((key) => highlighted.has(key)))
       style = hit
         ? { ...style, stroke: '#1b2232', strokeWidth: 1.8 }
-        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER }
+        : { ...style, fillOpacity: style.fillOpacity * 0.18, stroke: BORDER, overlay: style.overlay && { ...style.overlay, opacity: 0.18 } }
     }
 
     styleCache.set(cacheKey, style)

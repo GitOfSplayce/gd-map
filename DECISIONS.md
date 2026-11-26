@@ -259,3 +259,17 @@ Le bouton « Se connecter avec GD One » passe lui aussi par cette entrée : il 
 **Décision (validée par l'équipe).** Commerciaux et managers s'écrivent « NOM Prénom », le nom de famille en majuscules. Dans l'admin, un nom saisi autrement (« Dupont Marie », « Marie DUPONT ») se met en forme en quittant le champ ; corrigé ensuite à la main, il reste comme on l'a écrit. Les noms déjà enregistrés ont été corrigés depuis l'admin, pas par une migration : elle aurait porté de vrais noms dans un dépôt public, et ne pouvait pas deviner les noms écrits dans l'autre sens.
 
 **Pourquoi.** Les trois quarts des fiches étaient déjà écrites ainsi ; les autres, et les managers, se classaient dans un autre ordre.
+
+## D-016 — À recruter aussi là où quelqu'un est déjà ; un poste se pourvoit en propre ; un groupe s'attribue d'un coup (2026-11-26)
+
+**Décision (validée par l'équipe).**
+
+- **Un département occupé peut être à recruter.** Dans l'onglet *Recrutement*, les admins posent une priorité ou un groupe sur n'importe quel département, qu'il soit vide ou non : pour un second commercial, ou pour un commercial en propre là où il n'y a que de la gestion ou du partiel. Un département vide reste à recruter sans rien écrire (D-011).
+- **Sur la carte**, un département occupé et marqué garde la couleur de son commercial ; les hachures de la priorité passent par-dessus. La légende l'explique (« Déjà occupé, à recruter aussi »). Sur l'onglet *Globale*, un département marqué se voit même si une autre structure y a quelqu'un.
+- **Rayé gris** : un département dans un groupe, sans priorité, est rayé de gris (D-014 le laissait gris uni). Un département vide où rien n'est décidé reste gris uni (« Sans commercial »).
+- **Pourvu en propre seulement.** Un département sort du recrutement quand un commercial actif y arrive en propre, ou y passe en propre. En gestion ou en partiel, il y reste.
+- **Attribuer un groupe.** Dans la fiche d'un commercial (admin) et dans celle d'un commercial de son équipe (manager), « Ajouter un groupe » reprend d'un coup les départements d'un groupe, en propre ; ceux qu'il a déjà gardent leur couverture, ceux d'un autre manager sont laissés de côté. Dans l'onglet *Recrutement*, « Attribuer à… » sur un groupe fait la même chose pour un commercial existant, après confirmation.
+
+**Pourquoi.** Il n'y a aujourd'hui qu'un commercial par département, il pourra y en avoir plusieurs ; et sans personne en propre, on veut quelqu'un en propre. Créer un commercial obligeait à ressaisir un par un les départements du groupe préparé pour lui.
+
+**Conséquences.** La base accepte une priorité ou un groupe sur un département occupé ; le déclencheur qui pourvoit ne réagit plus qu'au propre. Les managers ne prennent toujours pas un département où un autre manager a quelqu'un. L'export Excel garde priorité et groupe sur les lignes des départements occupés (« Pourvu, à recruter »).

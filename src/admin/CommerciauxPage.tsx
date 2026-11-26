@@ -22,6 +22,7 @@ import { statutChoices, statutNormalizer } from '../lib/statuts'
 import { structureCodes, structureName } from '../lib/structures'
 import type { Commercial, CommercialPayload, MapData, Structure } from '../lib/types'
 import type { AdminDataProps } from './AdminApp'
+import GroupPicker from './GroupPicker'
 import ObjectifsEditor from './ObjectifsEditor'
 import ZoneAssistant from './ZoneAssistant'
 import ZoneInput from './ZoneInput'
@@ -569,7 +570,7 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
               <h3>Zones par structure</h3>
               <p className="muted small" style={{ marginTop: 0 }}>
                 Saisie rapide (<code>22, 35P, 52G, 54GP, 75-7</code> : P = partiel, G = gestion, GP = gestion-partiel, 75 = tout Paris) ou avec
-                l'assistant.
+                l'assistant. « Ajouter un groupe » reprend d'un coup les départements d'un groupe à recruter, en propre.
               </p>
               <div className="stack" style={{ gap: 12 }}>
                 {codes.map((s) => {
@@ -587,10 +588,18 @@ function EditDrawer({ draft, data, onClose, onSaved, onDelete }: DrawerProps) {
                           <span className="struct-tag">{s}</span>
                           <span>{structureName(data.structures, s)}</span>
                         </label>
-                        <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
-                          <Icon name="map" size={15} />
-                          Assistant
-                        </button>
+                        <span className="row" style={{ gap: 6 }}>
+                          <GroupPicker
+                            rows={data.a_recruter}
+                            structure={s}
+                            value={zonesText(d, s)}
+                            onAdd={(text) => set({ zones: { ...d.zones, [s]: text }, structures: d.structures.includes(s) ? d.structures : [...d.structures, s] })}
+                          />
+                          <button type="button" className="btn small" onClick={() => setAssistantFor(s)}>
+                            <Icon name="map" size={15} />
+                            Assistant
+                          </button>
+                        </span>
                       </div>
                       <ZoneInput value={zonesText(d, s)} onChange={(v) => set({ zones: { ...d.zones, [s]: v } })} label={`Zones ${s}`} />
                     </div>

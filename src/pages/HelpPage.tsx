@@ -95,14 +95,26 @@ export default function HelpPage() {
           <h2>Départements à recruter</h2>
           <p>
             Un département <strong>vide</strong> dans une structure est <strong>à recruter</strong>. Les admins lui donnent une{' '}
-            <strong>priorité</strong> de 1 à 3, qui le hachure en couleur sur la carte, et un <strong>groupe</strong>, qui réunit les
-            départements d'un même poste : il est entouré et nommé sur la carte. Sans priorité, il reste gris clair, groupe ou pas. Dès qu'un commercial y est placé, il n'est plus à recruter.
+            <strong>priorité</strong> de 1 à 3, qui le raye de sa couleur sur la carte, et un <strong>groupe</strong>, qui réunit les
+            départements d'un même poste : il est entouré et nommé sur la carte. Dans un groupe sans priorité, il est rayé de gris ; vide
+            sans rien de décidé, il reste gris uni.
           </p>
           <ul>
+            <li>
+              Un département <strong>déjà occupé</strong> peut être à recruter aussi : pour un second commercial, ou un commercial en
+              propre là où il n'y a que de la gestion ou du partiel. Il garde la couleur de son commercial, les rayures passent par-dessus.
+            </li>
+            <li>
+              Il sort du recrutement dès qu'un commercial y arrive <strong>en propre</strong> ; en gestion ou en partiel, il y reste.
+            </li>
+            <li>
+              Un groupe s'attribue d'un coup : « Ajouter un groupe » dans la fiche d'un commercial, ou « Attribuer à… » sur le groupe, dans
+              l'onglet <em>Recrutement</em>.
+            </li>
             <li>L'onglet d'une structure montre ce que cette structure a à recruter.</li>
             <li>
-              Sur l'onglet <em>Globale</em>, un département n'est à recruter que si aucune structure n'y a quelqu'un ; son détail dit
-              lesquelles y manquent.
+              Sur l'onglet <em>Globale</em>, un département vide n'est à recruter que si aucune structure n'y a quelqu'un ; un département
+              marqué se voit toujours. Son détail dit quelles structures recrutent.
             </li>
           </ul>
         </section>

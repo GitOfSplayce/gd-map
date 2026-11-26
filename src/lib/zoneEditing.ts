@@ -67,3 +67,22 @@ export function toggleGroup(sel: ZoneSelection, codes: string[], brush: Couvertu
   }
   return next
 }
+
+/**
+ * Ajoute des zones (les départements d'un groupe à recruter) avec cette couverture ; celles qu'il a déjà
+ * gardent la leur. « 75 » complète les arrondissements qui manquent.
+ */
+export function addZones(sel: ZoneSelection, codes: readonly string[], couverture: Couverture = 'propre'): ZoneSelection {
+  const next = new Map(sel)
+  for (const code of codes) {
+    if (code === '75') {
+      if (next.has('75')) continue
+      for (const c of PARIS_ARR_CODES) if (!next.has(c)) next.set(c, couverture)
+    } else if (!coverageIn(next, code)) next.set(code, couverture)
+  }
+  return next
+}
+
+/** Les zones d'un texte (« 22, 35P ») complétées de celles-ci, en propre par défaut. */
+export const addZonesToText = (text: string, codes: readonly string[], couverture: Couverture = 'propre') =>
+  selectionToText(addZones(selectionFromText(text), codes, couverture))
